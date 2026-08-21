@@ -1,0 +1,3 @@
+-- Phase 0 baseline migration.
+-- Domain tables will be introduced in later phases.
+-- This migration intentionally has no schema changes.
