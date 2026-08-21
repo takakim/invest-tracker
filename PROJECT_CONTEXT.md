@@ -184,19 +184,19 @@ External data should use provider interfaces so the implementation can be change
 ### Backend
 
 - Java **25**
-- Spring Boot **4.x**; current Phase 0 implementation uses **4.1.1** after version/security review.
+- Spring Boot **4.x**; Phase 0 uses **4.1.1**.
 - Maven
-- PostgreSQL
-- Flyway
+- PostgreSQL **18.4** in integration testing
+- Flyway **12.11.0**
 - Spring Data JPA
 - Spring Validation
 - Spring Security
 - Spring Actuator
 - OpenAPI
-- JUnit **6.x**; current Phase 0 implementation relies on Spring Boot dependency management and targets JUnit 6.1.x rather than forcing unreleased/development versions.
+- JUnit **6.x** via Spring Boot dependency management
 - Mockito through the test stack
-- Testcontainers
-- JaCoCo
+- Testcontainers **2.0.5**
+- JaCoCo **0.8.15**
 
 ### Frontend
 
@@ -255,9 +255,9 @@ Current tooling/policy includes:
 - Dependabot for Maven dependencies and GitHub Actions.
 - GitHub Actions should be pinned to verified commit SHAs where practical.
 - Java setup uses signature verification.
-- Dependency versions must be checked against current upstream releases and vulnerability advisories before adoption.
+- Dependency versions must be checked against current stable releases and vulnerability advisories before adoption.
 
-GitHub Dependency Review was considered, but the current private-repository configuration does not provide the required GitHub Advanced Security capability. OWASP Dependency-Check remains the enforced dependency vulnerability gate.
+GitHub Dependency Review is not currently enabled because the private-repository configuration does not provide the required Advanced Security capability; OWASP Dependency-Check remains the enforced dependency vulnerability gate.
 
 ## 8. CI/CD and quality gates
 
@@ -298,20 +298,18 @@ Deployment infrastructure has deliberately **not** been selected yet. Do not ass
 
 ## 9. Phase roadmap
 
-The original detailed roadmap was refined into the following implementation sequence. Phase numbers may be adjusted as scope is clarified, but historical decisions must remain documented.
-
 ### Phase 0 — Foundation & Security
 
-**Status:** In progress / under review.
+**Status:** ✅ Completed and merged on 2026-08-21.
 
 Objective: Establish the secure, testable project foundation before domain implementation.
 
-Scope:
+Completed scope:
 
 - Java 25
-- Spring Boot 4.x
+- Spring Boot 4.1.1
 - Maven
-- PostgreSQL
+- PostgreSQL integration testing
 - Flyway
 - JUnit 6.x
 - Testcontainers PostgreSQL integration test
@@ -323,25 +321,34 @@ Scope:
 - Dependabot
 - GitHub Actions CI
 - Secure local PostgreSQL configuration
+- Canonical `PROJECT_CONTEXT.md`
 
-Acceptance criteria:
+Acceptance criteria status:
 
-- Application context starts against PostgreSQL in Testcontainers.
-- Flyway runs successfully.
-- Hibernate validates rather than manages the schema.
-- No credentials are committed.
-- CI runs tests, security checks, coverage checks, and SBOM generation.
-- CVSS >= 7 dependency findings fail the build.
-- Overall line coverage >= 90%.
-- Overall branch coverage >= 90%.
-- Phase branch is reviewed before merging to `main`.
+- Application context starts against PostgreSQL in Testcontainers. ✅
+- Flyway runs successfully. ✅
+- Hibernate validates rather than manages the schema. ✅
+- No credentials are committed. ✅
+- CI runs tests, security checks, coverage checks, and SBOM generation. ✅
+- CVSS >= 7 dependency findings fail the build. ✅
+- Overall line coverage >= 90%. ✅
+- Overall branch coverage >= 90%. ✅
+- Phase branch reviewed and merged to `main`. ✅
 
-Relevant tracking:
+Tracking:
 
-- GitHub Issue #1 — Phase 0: Foundation & Security
-- GitHub PR #2 — Phase 0: Foundation and security
+- GitHub Issue #1 — Phase 0: Foundation & Security — completed.
+- GitHub PR #2 — Phase 0: Foundation and security — merged as commit `41e5d0fddf722344f6b3fa4805a51d91b7aa2157`.
+
+Important post-merge security hardening recorded during Phase 0:
+
+- Dependency-Check NVD mirror configuration was corrected after initial XML/merge-ref issues.
+- A pipeline run successfully parsed the POM, compiled, ran 3 tests, passed the 90% coverage gates, executed Dependency-Check, and uploaded the JaCoCo report.
+- That scan identified CVE-2026-66299 (CVSS 7.5) in Tomcat 11.0.24; the project then updated Tomcat to 11.0.25 and Dependency-Check to 13.0.0 in the Phase 0 branch before merge. The merged repository should be verified against the final dependency graph before treating this hardening as fully complete.
 
 ### Phase 0.5 — Architecture & Domain Design
+
+**Status:** Next phase.
 
 Objective: Design the domain and contracts before substantial business implementation.
 
@@ -409,7 +416,7 @@ Objective: Import broker data reliably and derive current/historical positions.
 Planned scope:
 
 - Generic CSV import framework.
-- Broker-specific importers based on user-provided sample CSVs.
+- Broker-specific importers based on user-provided CSV samples.
 - Upload/preview/validation/conflict-resolution workflow.
 - Idempotent imports.
 - Position engine.
@@ -540,18 +547,20 @@ Broker-specific importer implementations should convert source rows into a commo
 
 ## 13. Current implementation status
 
-At the time this document was created:
+**Repository is now on `main` after Phase 0 merge.**
 
-- Repository exists and is private.
-- Phase 0 branch: `phase-0-foundation`.
-- Phase 0 draft PR: #2.
-- Phase 0 issue: #1.
-- CI workflow exists and runs Maven verification.
+Current known state:
+
+- Phase 0 PR #2 is merged.
+- Issue #1 is completed by PR #2.
+- Issue #3 is this documentation maintenance issue and is now being completed for the Phase 0 handover.
+- `PROJECT_CONTEXT.md` is the canonical LLM context document on `main`.
+- GitHub Actions CI exists and runs Maven verification.
 - JaCoCo coverage enforcement is configured for 90% line and branch coverage.
 - OWASP Dependency-Check is configured as a security gate.
 - CycloneDX SBOM generation is configured.
 - Dependabot monitors Maven and GitHub Actions.
-- Testcontainers PostgreSQL smoke/integration test exists.
+- Testcontainers PostgreSQL integration testing exists.
 - Flyway owns database migrations; Hibernate validates schema.
 - Spring Security baseline exists.
 
@@ -579,7 +588,7 @@ Before making changes:
 - Project created as `takakim/invest-tracker`.
 - Existing `takakim/investment-tracker` intentionally left untouched.
 - Java 25 selected.
-- Spring Boot 4.x selected; Phase 0 uses 4.1.1.
+- Spring Boot 4.x selected; Phase 0 used 4.1.1.
 - Maven selected.
 - PostgreSQL + Flyway selected.
 - JUnit 6.x selected.
@@ -597,3 +606,5 @@ Before making changes:
 - GitHub Actions CI established.
 - 90% line and branch coverage enforcement established.
 - PROJECT_CONTEXT.md established as the canonical LLM context document.
+- Phase 0 completed and merged as PR #2.
+- Issue #3 reviewed and completed as the documentation handover point between Phase 0 and Phase 0.5.
