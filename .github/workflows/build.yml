@@ -38,7 +38,7 @@ jobs:
 
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@043fb46e0dfd7f2d0f6b3c6a9d3a5d8b9c1e2f3a # v7.0.1
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: jacoco-report
           path: target/site/jacoco/
