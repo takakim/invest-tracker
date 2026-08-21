@@ -57,6 +57,10 @@ jobs:
         working-directory: frontend
         run: npm install --ignore-scripts
 
+      - name: Audit frontend dependencies
+        working-directory: frontend
+        run: npm audit --audit-level=high
+
       - name: Build frontend
         working-directory: frontend
         run: npm run build
