@@ -1,43 +1,43 @@
 # Invest Tracker — Project Context
 
-> Canonical, LLM-readable context for the project. Keep this file updated whenever a phase, architecture decision, constraint, security requirement, CI/CD rule, test strategy, or acceptance criterion changes. Preserve historical decisions unless explicitly superseded.
+> Canonical, LLM-readable context. Read this before making project changes. Update it whenever scope, architecture, security, CI/CD, testing, phase status, or a material decision changes. Preserve historical decisions unless explicitly superseded.
 
 ## 1. Project
 
-**Name:** Invest Tracker  
 **Repository:** `takakim/invest-tracker`  
-**Purpose:** Personal investment portfolio tracking and performance management platform.
+**Purpose:** Personal investment portfolio tracking and performance management.
 
 The system tracks investment transactions and calculates individual-investment and overall portfolio performance, including dividends, fees, taxes, gains/losses, cash flows, currencies, and market valuation.
 
-Authentication / multi-user support is intentionally deferred for now.
+Authentication/multi-user support is intentionally deferred.
 
-## 2. Core principles
+## 2. Engineering principles
 
-1. **Security first.** Security is considered in every phase, architectural decision, dependency selection, and implementation.
-2. **Correctness over cleverness.** Financial calculations must be deterministic, auditable, and reproducible.
-3. **Maintainability over premature optimisation.** Prefer clear domain boundaries and replaceable external-data providers.
-4. **Dependency security.** Before suggesting or adding a dependency, check the latest stable release and known vulnerabilities/advisories. Prefer actively maintained and current versions. Do not choose an older version merely because it is popular.
-5. **No assumptions when a decision materially affects the product.** Ask the user when there are multiple reasonable options or insufficient information.
-6. **API-first.** Define the REST API/OpenAPI contract before or alongside implementation so frontend and backend remain independently evolvable.
-7. **Tests are mandatory.** New functionality must include appropriate unit/integration tests and must preserve the 90% coverage gates.
-8. **Financial precision.** Use `BigDecimal`/appropriate decimal types for money and quantities; never use binary floating-point for financial calculations.
-9. **Reproducibility.** Portfolio state and performance should be derivable from transaction history and relevant historical market/FX data whenever available.
-10. **Auditability.** Calculations and portfolio state must be traceable back to source transactions and market/FX inputs.
+1. Security first.
+2. Correctness and auditability over cleverness.
+3. Maintainability over premature optimisation.
+4. Check latest stable dependency versions and known vulnerabilities before adding/updating dependencies.
+5. Ask the user when a material product/architecture decision is ambiguous; do not silently assume.
+6. API-first design.
+7. Every production change requires appropriate tests and must preserve >=90% line and branch coverage.
+8. Use `BigDecimal`/decimal-safe types for financial amounts and quantities; never binary floating point for financial calculations.
+9. Derived portfolio/performance state must be reproducible from transactions and market/FX inputs.
+10. External providers must be replaceable abstractions.
 
 ## 3. Agreed product scope
 
-### Portfolios and accounts
+### Portfolios/accounts
 
 - Multiple portfolios.
-- Multiple accounts/broker accounts per portfolio.
-- Cash is managed **per account**.
+- Multiple broker/custodian accounts per portfolio.
+- Cash is managed per account.
 - Multiple currencies.
-- User can choose an overall/base portfolio currency or retain/display an investment's native currency where appropriate.
+- Portfolio has a configurable base/reporting currency.
+- The same instrument may be held in multiple accounts and portfolios.
 
-### Investments
+### Instruments
 
-Support at minimum:
+Initial asset classes:
 
 - Stocks
 - ETFs
@@ -47,15 +47,11 @@ Support at minimum:
 - Crypto
 - Cash
 
-Investments should support fractional quantities/shares.
-
-Likely identifying/reference data includes ticker, ISIN, name, exchange, currency, sector, country, and asset class.
+Instruments support fractional quantities. Instrument master data is independent of ownership and may include ticker, ISIN, name, exchange, native currency, asset class, and provider identifiers.
 
 ### Transactions
 
-Transactions should be represented as financial events rather than separate dividend/fee domain objects where practical.
-
-Initial transaction types:
+Initial types:
 
 - Buy
 - Sell
@@ -65,105 +61,66 @@ Initial transaction types:
 - Withdrawal
 - Interest
 - Stock split
-- Reverse split
+- Reverse stock split
 - Transfer
 
-Future possibilities include rights issues, spin-offs, and tax payments.
+Transactions support quantities, prices, fees, taxes, currencies, notes, source/import metadata and corrections. Completed financial transactions are immutable; corrections use reversal/correction records.
 
-Transactions must support:
-
-- Fractional quantities
-- Multiple currencies
-- Prices
-- Fees
-- Taxes
-- Notes
-- Source/import metadata
-- Editing and deletion with automatic recalculation
-
-CSV import must be idempotent: re-importing the same source data must not silently create duplicates.
+CSV imports must be idempotent.
 
 ### Performance
 
-Performance calculation method is configurable per portfolio.
-
-Supported/required calculation choices:
+Performance method is configurable per portfolio. Required strategies:
 
 - FIFO
 - LIFO
 - Average Cost
 - XIRR
-- Time-Weighted Return (TWR)
-- Money-Weighted Return (MWR)
+- TWR
+- MWR
 
-The design should use pluggable calculation strategies so new methods can be added without rewriting the core engine.
+Performance must expose/reconcile realized gains, unrealized gains, dividends, fees, taxes, total return, annualized return and cash-flow effects where applicable.
 
-Performance should include, where applicable:
+### Market/FX
 
-- Realized gains
-- Unrealized gains
-- Dividends
-- Fees
-- Taxes
-- Total return
-- Annualized return
-- Cash flows
-
-### Market data
-
-Use free market-data APIs initially.
-
-External market-data providers must be behind a replaceable abstraction/interface. Candidate providers may include Yahoo Finance-compatible/free sources, subject to current availability, terms, reliability, and security review before implementation.
-
-Support:
-
-- Current prices
-- Historical prices where available
-- Corporate actions/splits where available
-- Dividend information where available
-
-### Currency / FX
-
-Multiple currencies are required.
-
-Use a replaceable FX provider abstraction.
-
-Historical FX rates should be used whenever available for historical portfolio valuation and performance.
+- Free market-data APIs initially.
+- Market data behind a replaceable provider abstraction.
+- Historical prices where available.
+- Historical FX where available.
+- Corporate actions/dividend data where available.
+- Missing historical price/FX data: calculate with available data, emit structured warnings, and allow explicit manual overrides.
+- Never silently substitute today's price/FX for missing historical data.
 
 ### Benchmarking
 
-Planned benchmarks:
+Planned later:
 
 - S&P 500
 - FTSE 100
 - MSCI World
 
-Benchmarking is intentionally postponed to a later phase.
-
-## 4. Architecture direction
-
-High-level target architecture:
+## 4. Architecture
 
 ```text
-React + TypeScript frontend
-            |
-        REST / OpenAPI
-            |
-Spring Boot Java backend
-            |
-      Domain / services
-            |
-     Spring Data JPA
-            |
-        PostgreSQL
+React + TypeScript
+       |
+   REST/OpenAPI
+       |
+Spring Boot backend
+       |
+ Domain/services
+       |
+ Spring Data JPA
+       |
+ PostgreSQL
 ```
 
-Backend should use domain-oriented modules rather than one large technical package. Initial conceptual modules:
+Use domain-oriented modules such as:
 
 ```text
 portfolio
 account
-investment
+instrument
 transaction
 position
 performance
@@ -175,436 +132,318 @@ common
 configuration
 ```
 
-Controllers must remain thin; business rules belong in services/domain components.
+Controllers remain thin. Business rules live in domain/services. Persistence and provider infrastructure are kept outside the domain model.
 
-External data should use provider interfaces so the implementation can be changed without coupling the domain to a specific vendor.
+## 5. Core domain decisions
 
-## 5. Technology decisions
+### Ownership model
 
-### Backend
+```text
+Instrument
+    ^
+    |
+Position ---- Account ---- Portfolio
+    ^            ^            ^
+    |            |            |
+Transaction ----+-------------+
+```
 
-- Java **25**
-- Spring Boot **4.x**; Phase 0 uses **4.1.1**.
-- Maven
-- PostgreSQL **18.4** in integration testing
-- Flyway **12.11.0**
-- Spring Data JPA
-- Spring Validation
-- Spring Security
-- Spring Actuator
-- OpenAPI
-- JUnit **6.x** via Spring Boot dependency management
-- Mockito through the test stack
-- Testcontainers **2.0.5**
-- JaCoCo **0.8.15**
+- **Instrument** = financial asset identity/master data.
+- **Position** = account-specific ownership state derived from transactions.
+- **Account** = broker/custodian boundary containing cash, transactions and positions.
+- **Portfolio** = reporting/strategy boundary containing accounts.
 
-### Frontend
+An Instrument is not owned by a Portfolio directly.
 
-Selected direction:
+### Transfers
+
+Transfers between accounts preserve acquisition lots/cost basis and do not create artificial gains/losses. Linked outgoing/incoming transfer events share a transfer identifier.
+
+### Ledger
+
+The transaction ledger is the financial source of truth for ownership and cash movement. Completed transactions are immutable. Corrections/reversals reference the original record and preserve an audit trail.
+
+### Derived state
+
+Positions, lots and performance are derived/rebuildable. Caches may be introduced later but are never authoritative.
+
+### Financial precision
+
+Use decimal types for money, prices, FX rates and fractional quantities. Currency is explicit on monetary values.
+
+## 6. Cost basis and performance architecture
+
+Separate:
+
+1. Transaction ledger.
+2. Position/lot derivation.
+3. Market valuation.
+4. FX conversion.
+5. Return calculation.
+
+Cost-basis strategies use a common strategy interface and are selected per Portfolio:
+
+```text
+CostBasisStrategy
+  calculateLotsAfter(transaction, currentLots)
+  calculateDisposal(transaction, currentLots)
+```
+
+Initial strategies: FIFO, LIFO, Average Cost.
+
+Performance calculations consume a normalized input model containing dated valuations, cash flows, income, costs, opening/closing values and data-quality warnings. Calculation results should record the method and algorithm version for reproducibility.
+
+## 7. Transaction semantics
+
+- **BUY:** increases quantity and consumes cash; acquisition costs participate in cost basis according to the selected rules.
+- **SELL:** reduces quantity and generates proceeds; realized gain/loss follows the selected cost-basis strategy.
+- **DIVIDEND:** records income; withholding tax is explicit when supplied.
+- **FEE:** records a separately auditable cost, optionally linked to another transaction.
+- **DEPOSIT/WITHDRAWAL:** cash movements, not investment performance by themselves.
+- **INTEREST:** cash interest income.
+- **STOCK_SPLIT/REVERSE_STOCK_SPLIT:** changes quantity/lots without economic gain/loss.
+- **TRANSFER:** moves ownership between accounts while preserving lots/cost basis.
+
+Deterministic transaction ordering uses effective timestamp, source sequence/reference when available, then stable transaction ID.
+
+Imported transaction fingerprints provide idempotency. Ambiguous duplicates require user review rather than silent merging.
+
+## 8. Market data and FX provider architecture
+
+Domain-facing abstractions conceptually provide:
+
+```text
+MarketDataProvider
+  getCurrentPrice(instrument, asOf)
+  getHistoricalPrices(instrument, range)
+  getCorporateActions(instrument, range)
+  getDividends(instrument, range)
+
+FxRateProvider
+  getRate(baseCurrency, quoteCurrency, asOf)
+  getHistoricalRates(baseCurrency, quoteCurrency, range)
+```
+
+Provider observations carry provenance, observed time/date and retrieval metadata. Manual overrides are separate observations and never overwrite provider history.
+
+Provider calls require timeouts, bounded retries for transient failures, rate-limit handling, response validation and no secret logging.
+
+Provider selection remains a Phase 4 implementation decision unless required earlier for tests.
+
+## 9. Database/Flyway design
+
+PostgreSQL is authoritative persistence. Flyway owns schema evolution; Hibernate uses `ddl-auto=validate` and never creates/updates the production schema.
+
+Core conceptual tables:
+
+- `portfolio`
+- `account`
+- `instrument`
+- `instrument_identifier`
+- `transaction`
+- `transaction_metadata`
+- `import_batch`
+- `import_record`
+- provider/manual observation tables
+
+Use PostgreSQL `numeric` for money and quantities. Foreign keys and unique constraints enforce ownership/integrity. Index transaction queries by account/instrument/date and import fingerprints.
+
+Migrations use `V<sequence>__<description>.sql`, are immutable once applied, and are exercised against PostgreSQL Testcontainers.
+
+## 10. API architecture
+
+Initial API boundary is `/api/v1`.
+
+Core resources:
+
+```text
+/portfolios
+/portfolios/{portfolioId}
+/portfolios/{portfolioId}/accounts
+/accounts/{accountId}
+/accounts/{accountId}/transactions
+/accounts/{accountId}/positions
+/instruments
+/portfolios/{portfolioId}/performance
+/portfolios/{portfolioId}/warnings
+```
+
+Use DTOs, server-side validation, bounded pagination, explicit filtering/sorting and RFC 9457-style Problem Details errors. Do not expose stack traces, SQL, secrets or internal implementation details.
+
+The design-level OpenAPI contract is `docs/api/openapi.yaml`.
+
+## 11. Frontend architecture
+
+Selected stack:
 
 - React
 - TypeScript
 - Vite
 - Material UI
+- React Router
 - TanStack Query
 - TanStack Table
 - React Hook Form
 - Zod
-- React Router
-- Recharts or Apache ECharts depending on charting requirements
+- Recharts or Apache ECharts, selected after chart requirements are clearer
 
-Frontend implementation is interleaved with backend phases rather than postponed until the end.
+Organize by feature/domain. TanStack Query owns server state; local UI state remains local unless shared. API types should be derived from/kept aligned with OpenAPI.
 
-## 6. Database and Flyway policy
+Desktop-first but responsive. Accessibility is a requirement.
 
-Flyway is the authoritative database schema migration mechanism.
+Phase 1 starts with portfolio/account shell; transaction, import and analytics flows arrive with their respective phases.
 
-- Schema changes are version-controlled SQL migrations.
-- Do not manually modify environments as a normal development workflow.
-- Do not modify already-applied migrations; create a new migration for changes.
-- Hibernate must use schema validation (`ddl-auto=validate`) rather than generating/updating the production schema.
-- Flyway history provides reproducible database state across environments.
-- Testcontainers integration tests should execute Flyway migrations against real PostgreSQL.
-- Structural migrations and reference-data management should be kept conceptually separate where useful.
+## 12. Security threat model
 
-## 7. Security baseline
+Key assets: financial ledger, holdings, broker imports, market/FX observations, manual overrides and future credentials.
 
-Security is a cross-cutting requirement from Phase 0 onward.
+Key controls:
 
-Current baseline includes:
+- Strict API/file validation and upload limits.
+- Immutable ledger.
+- Database constraints and integration tests.
+- Bounded external provider calls and response validation.
+- No arbitrary user-supplied outbound URLs.
+- No secrets in source control, logs or frontend bundles.
+- XSS-safe rendering and safe handling of imported content.
+- Authentication/authorization required before public exposure.
+- Rate limiting and secure headers before public exposure.
+- Dependabot, OWASP Dependency-Check, CycloneDX SBOM and verified action pins where practical.
 
-- Spring Security deny-by-default HTTP security baseline.
-- Input validation at API boundaries.
-- No secrets/credentials committed to Git.
-- Secure local database configuration.
-- Least-privilege database access where environments are deployed.
-- Centralised exception handling without leaking internal implementation details.
-- Sensitive information must not be logged.
-- File upload limits and validation for CSV imports.
-- CSV import must guard against malformed/malicious input and spreadsheet-formula injection where exported/imported data could be interpreted by spreadsheet software.
-- No frontend secrets embedded in bundles.
-- Avoid unsafe HTML rendering/XSS-prone APIs.
-- Rate limiting and further perimeter controls to be evaluated before public exposure.
+Full Phase 0.5 threat model is `docs/architecture/SECURITY_THREAT_MODEL.md`.
 
-### Dependency/supply-chain security
+## 13. CI/CD and quality gates
 
-Current tooling/policy includes:
+GitHub Actions CI runs Maven verification for pushes/PRs/manual dispatch.
 
-- OWASP Dependency-Check with build failure for CVSS >= 7.
-- CycloneDX SBOM generation.
-- Dependabot for Maven dependencies and GitHub Actions.
-- GitHub Actions should be pinned to verified commit SHAs where practical.
-- Java setup uses signature verification.
-- Dependency versions must be checked against current stable releases and vulnerability advisories before adoption.
-
-GitHub Dependency Review is not currently enabled because the private-repository configuration does not provide the required Advanced Security capability; OWASP Dependency-Check remains the enforced dependency vulnerability gate.
-
-## 8. CI/CD and quality gates
-
-GitHub Actions is the CI platform.
-
-Current CI expectations:
+Required pipeline stages:
 
 ```text
-checkout
-  -> Java 25 setup
-  -> Maven verify
-       -> compile
-       -> unit/integration tests
-       -> JaCoCo coverage verification
-       -> OWASP Dependency-Check
-       -> CycloneDX SBOM
-  -> publish JaCoCo report artifact
+checkout -> Java 25 -> Maven verify
+  -> tests/integration tests
+  -> JaCoCo
+  -> OWASP Dependency-Check
+  -> CycloneDX SBOM
+  -> JaCoCo report artifact
 ```
 
-CI runs for pull requests and relevant pushes, with manual workflow dispatch available.
+Minimum enforced coverage:
 
-### Coverage policy
+- 90% line coverage.
+- 90% branch coverage.
 
-Coverage is **enforced**, not merely reported.
+CVSS >= 7 dependency findings fail the build.
 
-Minimum overall coverage:
+GitHub Dependency Review is not enabled because the current private repository lacks the required Advanced Security capability.
 
-- **90% line coverage**
-- **90% branch coverage**
+Deployment/CD target remains intentionally undecided.
 
-A build below either threshold must fail.
+## 14. Technology baseline
 
-Every phase that adds production code must add enough tests to preserve these gates.
+- Java 25
+- Spring Boot 4.x (Phase 0 used 4.1.1)
+- Maven
+- PostgreSQL 18.4 integration testing baseline
+- Flyway 12.11.0
+- JUnit 6.x via Spring Boot dependency management
+- Testcontainers 2.0.5
+- JaCoCo 0.8.15
+- Spring Data JPA, Validation, Security, Actuator
 
-### CD
+Dependency versions must be re-verified for current stable releases and vulnerabilities before implementation phases add dependencies.
 
-Deployment infrastructure has deliberately **not** been selected yet. Do not assume AWS/Azure/GCP/VPS/Kubernetes/etc. The deployment target and production release strategy will be decided before production-readiness work.
-
-## 9. Phase roadmap
+## 15. Phase roadmap/status
 
 ### Phase 0 — Foundation & Security
 
-**Status:** ✅ Completed and merged on 2026-08-21.
+**Status: Completed and merged.**
 
-Objective: Establish the secure, testable project foundation before domain implementation.
-
-Completed scope:
-
-- Java 25
-- Spring Boot 4.1.1
-- Maven
-- PostgreSQL integration testing
-- Flyway
-- JUnit 6.x
-- Testcontainers PostgreSQL integration test
-- Spring Security baseline
-- Flyway-managed schema + Hibernate validation
-- JaCoCo 90% line/branch enforcement
-- OWASP Dependency-Check
-- CycloneDX SBOM
-- Dependabot
-- GitHub Actions CI
-- Secure local PostgreSQL configuration
-- Canonical `PROJECT_CONTEXT.md`
-
-Acceptance criteria status:
-
-- Application context starts against PostgreSQL in Testcontainers. ✅
-- Flyway runs successfully. ✅
-- Hibernate validates rather than manages the schema. ✅
-- No credentials are committed. ✅
-- CI runs tests, security checks, coverage checks, and SBOM generation. ✅
-- CVSS >= 7 dependency findings fail the build. ✅
-- Overall line coverage >= 90%. ✅
-- Overall branch coverage >= 90%. ✅
-- Phase branch reviewed and merged to `main`. ✅
-
-Tracking:
-
-- GitHub Issue #1 — Phase 0: Foundation & Security — completed.
-- GitHub PR #2 — Phase 0: Foundation and security — merged as commit `41e5d0fddf722344f6b3fa4805a51d91b7aa2157`.
-
-Important post-merge security hardening recorded during Phase 0:
-
-- Dependency-Check NVD mirror configuration was corrected after initial XML/merge-ref issues.
-- A pipeline run successfully parsed the POM, compiled, ran 3 tests, passed the 90% coverage gates, executed Dependency-Check, and uploaded the JaCoCo report.
-- That scan identified CVE-2026-66299 (CVSS 7.5) in Tomcat 11.0.24; the project then updated Tomcat to 11.0.25 and Dependency-Check to 13.0.0 in the Phase 0 branch before merge. The merged repository should be verified against the final dependency graph before treating this hardening as fully complete.
+Tracking: Issue #1, PR #2. Acceptance criteria were satisfied including PostgreSQL Testcontainers, Flyway, schema validation, security baseline, CI, 90% line/branch coverage, Dependency-Check and SBOM.
 
 ### Phase 0.5 — Architecture & Domain Design
 
-**Status:** Next phase.
+**Status: Design complete; awaiting final review/merge.**
 
-Objective: Design the domain and contracts before substantial business implementation.
+Tracking: Issue #19, branch `phase-0.5-architecture`.
 
-Planned scope:
+Deliverables on this branch:
 
-- Domain model and aggregates/value objects.
-- Portfolio/account/investment/transaction relationships.
-- Position and performance concepts.
-- Database schema design.
-- Flyway migration plan.
-- REST/OpenAPI contract.
-- Package/module boundaries.
-- Sequence diagrams for manual transaction, CSV import, and recalculation workflows.
-- Frontend wireframes/design system.
-- Test strategy.
-- Security threat considerations.
+- `docs/architecture/DOMAIN_MODEL.md`
+- `docs/architecture/TRANSACTION_LEDGER.md`
+- `docs/architecture/PERFORMANCE_MODEL.md`
+- `docs/architecture/PROVIDERS.md`
+- `docs/architecture/DATABASE_MODEL.md`
+- `docs/architecture/API.md`
+- `docs/architecture/FRONTEND.md`
+- `docs/architecture/SECURITY_THREAT_MODEL.md`
+- `docs/architecture/WORKFLOWS.md`
+- `docs/api/openapi.yaml`
+- `docs/adr/0001-instrument-position-account-portfolio.md`
+- `docs/adr/0002-immutable-financial-ledger.md`
+- `docs/adr/0003-missing-market-data-policy.md`
+- `docs/adr/0004-phase-0-5-design-boundary.md`
 
-Acceptance criteria:
+Phase 0.5 decisions explicitly agreed:
 
-- Core domain model reviewed and agreed.
-- API contract sufficiently defined for Phase 1.
-- Database model reviewed.
-- Major calculation and recalculation workflows documented.
-- Security and data-integrity risks identified.
+- Instrument → Position → Account → Portfolio ownership model.
+- Same instrument can exist in multiple accounts/portfolios.
+- Transfers preserve lots/cost basis.
+- Completed financial transactions are immutable; corrections use reversals/corrections.
+- Missing historical market/FX data results in calculation + structured warnings + manual override.
+- Authentication is deferred but architecture remains ready for it.
+- Paid market-data providers and deployment infrastructure are not assumed.
 
 ### Phase 1 — Portfolio & Account / Core Domain
 
-Objective: Implement the core portfolio/account domain and persistence.
-
-Planned scope:
-
-- Portfolio CRUD.
-- Account CRUD and portfolio relationship.
-- Portfolio base/overall currency.
-- Per-account cash handling model.
-- Investment catalogue foundations as needed by the core domain.
-- Validation and persistence.
-- REST API implementation.
-- Unit/integration tests.
-- Initial React application shell where appropriate.
-
-Do not assume final transaction/performance rules until Phase 0.5 has been reviewed.
+Implement portfolio/account persistence and APIs, base currency, per-account cash model, validation, tests and initial React shell. Do not begin until Phase 0.5 design is accepted.
 
 ### Phase 2 — Investment & Transaction Engine
 
-Objective: Implement the financial transaction ledger.
-
-Planned scope:
-
-- Investment catalogue.
-- Buy/sell/dividend/fee/deposit/withdrawal/interest/split/reverse-split/transfer transactions.
-- Fractional quantities.
-- Multi-currency transactions.
-- Fees/taxes.
-- Transaction editing/deletion with automatic recalculation.
-- Transaction validation.
-- Manual transaction UI.
-- Transaction list/filter/sort UI.
-- Comprehensive financial correctness tests.
+Implement instrument catalogue, transaction ledger, fees/taxes, multi-currency, fractional quantities, manual transaction UI and financial correctness tests.
 
 ### Phase 3 — CSV Import & Position Engine
 
-Objective: Import broker data reliably and derive current/historical positions.
-
-Planned scope:
-
-- Generic CSV import framework.
-- Broker-specific importers based on user-provided CSV samples.
-- Upload/preview/validation/conflict-resolution workflow.
-- Idempotent imports.
-- Position engine.
-- Cost basis and average price.
-- Historical positions where data permits.
-- Holdings UI.
+Implement generic/broker CSV import adapters, preview/validation/conflict resolution, idempotency, position engine, cost basis and holdings UI. Broker samples must be provided before format-specific assumptions.
 
 ### Phase 4 — Performance, Market Data & Currency
 
-Objective: Build the complete valuation/performance engine.
-
-Planned scope:
-
-- FIFO/LIFO/Average Cost strategies.
-- XIRR/TWR/MWR.
-- Realized/unrealized gains.
-- Dividends/fees/taxes/total return.
-- Free market-price provider integration.
-- Historical prices where available.
-- FX provider integration.
-- Historical FX valuation where available.
-- Portfolio and investment performance UI.
+Implement FIFO/LIFO/Average Cost, XIRR/TWR/MWR, market/FX providers, historical valuation, warnings/overrides and performance UI.
 
 ### Phase 5 — Reporting, Dashboard & Benchmarking
 
-Objective: Deliver user-facing analytics and comparisons.
-
-Planned scope:
-
-- Portfolio dashboard.
-- Holdings/allocation charts.
-- Dividend reports.
-- Fee reports.
-- Cash-flow reports.
-- Performance charts.
-- Exports (CSV/Excel/PDF subject to later decision).
-- S&P 500 benchmark.
-- FTSE 100 benchmark.
-- MSCI World benchmark.
-- Relative performance and selected risk metrics.
+Implement dashboard, allocation/dividend/fee/cash-flow reporting, exports and S&P 500/FTSE 100/MSCI World benchmarking.
 
 ### Phase 6 — Production Readiness & Deployment
 
-Objective: Make the application safely deployable.
+Decide and implement deployment target, secrets/configuration, backups/recovery, observability, production migrations, CD gates, release strategy and disaster recovery.
 
-Scope to be decided after the product is functional:
+## 16. Future LLM instructions
 
-- Deployment target.
-- Infrastructure.
-- Secrets/configuration management.
-- Database backups and recovery.
-- Observability.
-- Production migrations.
-- CI/CD deployment gates.
-- Release strategy.
-- Disaster recovery considerations.
+Before changing the repository:
 
-### Future enhancements
+1. Read this file completely.
+2. Inspect current GitHub branch/issue/PR state.
+3. Identify the active phase and avoid implementing later-phase functionality prematurely.
+4. Ask the user when a material choice is ambiguous.
+5. Verify current stable dependency versions and known vulnerabilities before adding/updating dependencies.
+6. Preserve 90% line and branch coverage.
+7. Add/update tests with production changes.
+8. Keep Flyway migrations immutable after application.
+9. Update OpenAPI and architecture documentation when contracts change.
+10. Update this context whenever a material decision or phase status changes.
+11. Do not silently introduce authentication, paid providers, cloud infrastructure or other major decisions.
+12. Before closing a phase, verify its acceptance criteria and CI/security/coverage gates.
 
-Potential later features, subject to user validation:
-
-- Scheduled market/FX synchronisation.
-- Dividend forecasting.
-- Portfolio goals.
-- Rebalancing suggestions.
-- Tax estimation/reporting.
-- Alerts.
-- Authentication and multi-user support.
-- Mobile/PWA experience.
-- Additional brokers/import formats.
-
-Do not implement future enhancements simply because they are listed here; confirm requirements first.
-
-## 10. Frontend delivery strategy
-
-React is selected, but frontend work is intentionally interleaved with backend phases.
-
-Initial frontend foundation should include:
-
-- Application shell/layout.
-- Routing.
-- Theme/light-dark support as appropriate.
-- API client.
-- Error/loading states.
-- Accessible reusable components.
-
-Then add UI capabilities alongside the relevant backend domain phase rather than creating the entire frontend at the end.
-
-## 11. CSV import strategy
-
-The user will provide sample CSV files. Do not assume broker formats before seeing the samples.
-
-Target architecture:
-
-```text
-CSV upload
-   -> importer detection/selection
-   -> parse
-   -> validate
-   -> preview
-   -> conflict/duplicate resolution
-   -> import
-   -> recalculate
-```
-
-Broker-specific importer implementations should convert source rows into a common transaction model.
-
-## 12. Important design questions already answered
-
-| Question | Decision |
-|---|---|
-| Fractional shares? | Yes |
-| Cash handling? | Per account |
-| Historical valuation? | Use historical prices/FX when possible |
-| Performance method? | Configurable per portfolio |
-| Performance options? | FIFO, LIFO, Average Cost, XIRR, TWR, MWR |
-| Currencies? | Multiple; portfolio/base currency configurable |
-| Portfolios? | Multiple |
-| Accounts? | Multiple per portfolio |
-| CSV import? | Yes; samples will be provided by user |
-| Market data? | Free API initially, behind provider abstraction |
-| Benchmarks? | S&P 500, FTSE 100, MSCI World; later phase |
-| Authentication? | Deferred |
-| Frontend? | React + TypeScript |
-| CI/CD? | GitHub Actions CI now; deployment target deferred |
-| Coverage? | Enforced >=90% line and branch |
-| Security? | First-class requirement throughout |
-
-## 13. Current implementation status
-
-**Repository is now on `main` after Phase 0 merge.**
-
-Current known state:
-
-- Phase 0 PR #2 is merged.
-- Issue #1 is completed by PR #2.
-- Issue #3 is this documentation maintenance issue and is now being completed for the Phase 0 handover.
-- `PROJECT_CONTEXT.md` is the canonical LLM context document on `main`.
-- GitHub Actions CI exists and runs Maven verification.
-- JaCoCo coverage enforcement is configured for 90% line and branch coverage.
-- OWASP Dependency-Check is configured as a security gate.
-- CycloneDX SBOM generation is configured.
-- Dependabot monitors Maven and GitHub Actions.
-- Testcontainers PostgreSQL integration testing exists.
-- Flyway owns database migrations; Hibernate validates schema.
-- Spring Security baseline exists.
-
-## 14. How future LLMs should work on this repository
-
-Before making changes:
-
-1. Read `PROJECT_CONTEXT.md` completely.
-2. Inspect the current repository state and relevant phase issue/PR.
-3. Identify whether the requested change belongs to the current phase or requires a design decision first.
-4. If the request has material ambiguity, ask the user rather than assuming.
-5. Check current stable versions and known vulnerabilities before adding/updating dependencies.
-6. Preserve the 90% line and branch coverage gates.
-7. Add/update tests with every production change.
-8. Keep Flyway migrations immutable once applied.
-9. Update OpenAPI/domain documentation when contracts change.
-10. Update this file whenever architecture, scope, phase status, acceptance criteria, security rules, or important decisions change.
-11. Do not silently introduce authentication, cloud infrastructure, paid market-data services, or other major product decisions that the user has not approved.
-12. Before considering a phase complete, verify tests, coverage, security gates, and acceptance criteria and record the result here.
-
-## 15. Change log
+## 17. Change log
 
 ### 2026-08-21
 
-- Project created as `takakim/invest-tracker`.
-- Existing `takakim/investment-tracker` intentionally left untouched.
-- Java 25 selected.
-- Spring Boot 4.x selected; Phase 0 used 4.1.1.
-- Maven selected.
-- PostgreSQL + Flyway selected.
-- JUnit 6.x selected.
-- React + TypeScript selected for frontend.
-- Multiple portfolios/accounts and currencies agreed.
-- Fractional shares agreed.
-- Per-account cash agreed.
-- Historical prices/FX used when possible.
-- Configurable performance methods agreed.
-- Free market-data APIs agreed initially.
-- CSV import agreed; user will provide broker samples.
-- S&P 500 / FTSE 100 / MSCI World benchmarking agreed but postponed.
-- Authentication deferred.
-- Security-first dependency policy established.
-- GitHub Actions CI established.
-- 90% line and branch coverage enforcement established.
-- PROJECT_CONTEXT.md established as the canonical LLM context document.
+- Repository created as `takakim/invest-tracker`; existing `investment-tracker` left untouched.
+- Java 25, Spring Boot 4.x, Maven, PostgreSQL/Flyway and JUnit 6.x selected.
+- React + TypeScript selected.
+- Multiple portfolios/accounts, currencies, fractional shares and per-account cash agreed.
+- Free market data initially; benchmarks postponed.
+- Security-first dependency policy, GitHub Actions CI and 90% coverage gates established.
 - Phase 0 completed and merged as PR #2.
-- Issue #3 reviewed and completed as the documentation handover point between Phase 0 and Phase 0.5.
+- Phase 0.5 decisions agreed: ownership model, immutable ledger, transfer/cost-basis preservation, missing-data warnings/manual overrides.
+- Phase 0.5 architecture documentation, ADRs, workflows and OpenAPI design added on `phase-0.5-architecture`.
