@@ -66,6 +66,18 @@ class CoreDomainIntegrationTests {
     }
 
     @Test
+    void archivedPortfolioCannotAcceptAccounts() throws Exception {
+        String portfolio = """{"name":"Archive Me","baseCurrency":"GBP","costBasisMethod":"LIFO","returnMethod":"MWR"}""";
+        String json = mockMvc.perform(post("/api/v1/portfolios").contentType(MediaType.APPLICATION_JSON).content(portfolio))
+            .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        String portfolioId = com.jayway.jsonpath.JsonPath.read(json, "$.id");
+        mockMvc.perform(delete("/api/v1/portfolios/{id}", portfolioId)).andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/v1/portfolios/{id}", portfolioId)).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("ARCHIVED"));
+        mockMvc.perform(post("/api/v1/portfolios/{id}/accounts", portfolioId).contentType(MediaType.APPLICATION_JSON).content("""{"name":"A","brokerName":"B","accountCurrency":"GBP"}"""))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void instrumentLifecycleAndValidation() throws Exception {
         String instrument = """{"name":"Acme","assetClass":"STOCK","ticker":"ACME","isin":"GB00ACME1234","exchange":"LSE","currency":"gbp"}""";
         String json = mockMvc.perform(post("/api/v1/instruments").contentType(MediaType.APPLICATION_JSON).content(instrument))
