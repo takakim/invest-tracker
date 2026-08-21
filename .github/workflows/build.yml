@@ -27,7 +27,7 @@ jobs:
           verify-signature: true
 
       - name: Build and test
-        run: ./mvnw -B verify
+        run: mvn -B verify
 
   dependency-review:
     if: github.event_name == 'pull_request'
