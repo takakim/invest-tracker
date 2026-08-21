@@ -1,0 +1,41 @@
+name: Build
+
+on:
+  push:
+    branches: [main, phase-0-foundation]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903c4c7a3d8e4d6f0b8d5a0d2b5e9d3a1c7b # v5.0.0
+
+      - name: Set up Java
+        uses: actions/setup-java@03ad4de2d8a6c0b4c0d4e4c5e8e9a7f4a3d2c1b0 # v5.6.0
+        with:
+          distribution: temurin
+          java-version: '25'
+          check-latest: true
+          cache: maven
+          verify-signature: true
+
+      - name: Build and test
+        run: ./mvnw -B verify
+
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Dependency review
+        uses: actions/dependency-review-action@a1d282b6e3f5c7d8a9b0c1d2e3f4a5b6c7d8e9f0 # v5.0.0
+        with:
+          fail-on-severity: high
