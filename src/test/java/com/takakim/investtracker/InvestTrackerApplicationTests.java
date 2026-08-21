@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class InvestTrackerApplicationTests {
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:18.4");
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18.4");
 
     @DynamicPropertySource
     static void configureDatasource(DynamicPropertyRegistry registry) {
