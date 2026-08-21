@@ -1,0 +1,33 @@
+spring:
+  application:
+    name: invest-tracker
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/invest_tracker}
+    username: ${DATABASE_USERNAME:invest_tracker}
+    password: ${DATABASE_PASSWORD:invest_tracker_dev_only}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+    validate-on-migrate: true
+  web:
+    error:
+      include-message: never
+      include-stacktrace: never
+      include-binding-errors: never
+
+server:
+  error:
+    include-message: never
+    include-stacktrace: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
