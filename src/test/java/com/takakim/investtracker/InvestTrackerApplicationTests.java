@@ -19,7 +19,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 class InvestTrackerApplicationTests {
-
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18.4");
 
@@ -34,19 +33,15 @@ class InvestTrackerApplicationTests {
     }
 
     @Test
-    void contextLoads() {
-        assertTrue(POSTGRES.isRunning());
-    }
+    void contextLoads() { assertTrue(POSTGRES.isRunning()); }
 
     @Test
     void healthEndpointIsPublic() throws Exception {
-        mockMvc.perform(get("/actuator/health"))
-            .andExpect(status().isOk());
+        mockMvc.perform(get("/actuator/health")).andExpect(status().isOk());
     }
 
     @Test
-    void otherEndpointsAreDenied() throws Exception {
-        mockMvc.perform(get("/portfolio"))
-            .andExpect(status().isForbidden());
+    void unlistedEndpointIsDenied() throws Exception {
+        mockMvc.perform(get("/not-authorized")).andExpect(status().isForbidden());
     }
 }
