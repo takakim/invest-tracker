@@ -157,6 +157,9 @@
                 <version>${dependency-check.version}</version>
                 <configuration>
                     <failBuildOnCVSS>7</failBuildOnCVSS>
+                    <!-- Use the Dependency-Check maintained NVD 2.0 mirror in CI to avoid
+                         unauthenticated NVD API rate limits. The mirror is refreshed daily. -->
+                    <nvdDatafeedUrl>https://dependency-check.github.io/DependencyCheck_Builder/nvd_cache/nvdcve-{0}.json.gz</n                    <nvdValidForHours>24</nvdValidForHours>
                     <formats>
                         <format>HTML</format>
                         <format>JSON</format>
