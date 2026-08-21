@@ -29,12 +29,12 @@ public class AccountController {
     public List<ApiDtos.AccountResponse> list(@PathVariable UUID portfolioId) { return service.list(portfolioId); }
 
     @GetMapping("/{id}")
-    public ApiDtos.AccountResponse get(@PathVariable UUID id) { return service.get(id); }
+    public ApiDtos.AccountResponse get(@PathVariable UUID portfolioId, @PathVariable UUID id) { return service.get(portfolioId, id); }
 
     @PutMapping("/{id}")
-    public ApiDtos.AccountResponse update(@PathVariable UUID id, @Valid @RequestBody ApiDtos.AccountRequest request) { return service.update(id, request); }
+    public ApiDtos.AccountResponse update(@PathVariable UUID portfolioId, @PathVariable UUID id, @Valid @RequestBody ApiDtos.AccountRequest request) { return service.update(portfolioId, id, request); }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void archive(@PathVariable UUID id) { service.archive(id); }
+    public void archive(@PathVariable UUID portfolioId, @PathVariable UUID id) { service.archive(portfolioId, id); }
 }
