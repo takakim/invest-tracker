@@ -28,10 +28,11 @@ Responsibilities:
 
 - Portfolio identity and name.
 - Base/reporting currency.
-- Configured performance methodology.
+- Configured **cost-basis method**: FIFO, LIFO or Average Cost.
+- Configured **return method**: XIRR, TWR or MWR.
 - Ownership of Accounts.
 
-Does not directly own quantities of instruments; those belong to Account Positions.
+Cost-basis selection determines acquisition/disposal accounting. Return-method selection determines how portfolio performance is measured. These are intentionally separate concepts.
 
 ### Account
 
@@ -64,7 +65,7 @@ A derived read/model representation:
 
 - Account + Instrument identity.
 - Quantity.
-- Lots/cost basis as required by configured calculation strategy.
+- Lots/cost basis according to the Portfolio cost-basis method.
 - Current valuation when market data is available.
 - Data-quality warnings.
 
@@ -124,7 +125,7 @@ Performance is calculated at multiple scopes:
 - Account within Portfolio.
 - Portfolio overall.
 
-The same calculation engine must operate on a well-defined cash-flow/valuation input model so that results can be compared consistently.
+Return methods are XIRR, TWR and MWR. Cost-basis methods are FIFO, LIFO and Average Cost. The same calculation engine must operate on a well-defined cash-flow/valuation input model so results can be compared consistently.
 
 ## Auditability
 
@@ -134,6 +135,7 @@ Every derived position/performance result should be traceable to:
 2. Relevant corporate actions.
 3. Market-price observations.
 4. FX observations or explicit manual overrides.
-5. Calculation method/version.
+5. Cost-basis method.
+6. Return method and algorithm version.
 
 This is a design requirement for later implementation and does not require a user-facing audit UI in Phase 0.5.
