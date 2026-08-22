@@ -2,9 +2,7 @@ openapi: 3.1.1
 info:
   title: Invest Tracker API
   version: 1.0.0
-  description: |
-    Design-level API contract for Invest Tracker. Authentication is intentionally
-    deferred; public deployment must not expose these endpoints without it.
+  description: Phase 1 portfolio, account and instrument API. Authentication is deferred; deployment must not expose these endpoints without an appropriate authentication boundary.
 servers:
   - url: /api/v1
 paths:
@@ -13,7 +11,7 @@ paths:
       operationId: listPortfolios
       responses:
         '200':
-          description: Portfolios
+          description: Active portfolios
           content:
             application/json:
               schema:
@@ -45,6 +43,26 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Portfolio' }
         '404': { $ref: '#/components/responses/Problem' }
+    put:
+      operationId: updatePortfolio
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PortfolioCreate' }
+      responses:
+        '200':
+          description: Updated portfolio
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Portfolio' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+    delete:
+      operationId: archivePortfolio
+      responses:
+        '204': { description: Archived }
+        '404': { $ref: '#/components/responses/Problem' }
   /portfolios/{portfolioId}/accounts:
     parameters:
       - { $ref: '#/components/parameters/PortfolioId' }
@@ -52,12 +70,13 @@ paths:
       operationId: listAccounts
       responses:
         '200':
-          description: Accounts
+          description: Active accounts
           content:
             application/json:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/Account' }
+        '404': { $ref: '#/components/responses/Problem' }
     post:
       operationId: createAccount
       requestBody:
@@ -72,104 +91,43 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Account' }
         '400': { $ref: '#/components/responses/Problem' }
-  /accounts/{accountId}/transactions:
+        '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/accounts/{accountId}:
     parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
       - { $ref: '#/components/parameters/AccountId' }
     get:
-      operationId: listTransactions
-      parameters:
-        - in: query
-          name: from
-          schema: { type: string, format: date }
-        - in: query
-          name: to
-          schema: { type: string, format: date }
-        - in: query
-          name: type
-          schema: { $ref: '#/components/schemas/TransactionType' }
-        - in: query
-          name: page
-          schema: { type: integer, minimum: 0, default: 0 }
-        - in: query
-          name: size
-          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      operationId: getAccount
       responses:
         '200':
-          description: Transaction page
+          description: Account
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/TransactionPage' }
-    post:
-      operationId: createTransaction
+              schema: { $ref: '#/components/schemas/Account' }
+        '404': { $ref: '#/components/responses/Problem' }
+    put:
+      operationId: updateAccount
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/TransactionCreate' }
+            schema: { $ref: '#/components/schemas/AccountCreate' }
       responses:
-        '201':
-          description: Created immutable transaction
+        '200':
+          description: Updated account
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Transaction' }
+              schema: { $ref: '#/components/schemas/Account' }
         '400': { $ref: '#/components/responses/Problem' }
-        '409': { $ref: '#/components/responses/Problem' }
-  /accounts/{accountId}/positions:
-    parameters:
-      - { $ref: '#/components/parameters/AccountId' }
-    get:
-      operationId: listPositions
+        '404': { $ref: '#/components/responses/Problem' }
+    delete:
+      operationId: archiveAccount
       responses:
-        '200':
-          description: Current positions
-          content:
-            application/json:
-              schema:
-                type: array
-                items: { $ref: '#/components/schemas/Position' }
-  /portfolios/{portfolioId}/performance:
-    parameters:
-      - { $ref: '#/components/parameters/PortfolioId' }
-    get:
-      operationId: getPortfolioPerformance
-      parameters:
-        - in: query
-          name: from
-          required: true
-          schema: { type: string, format: date }
-        - in: query
-          name: to
-          required: true
-          schema: { type: string, format: date }
-        - in: query
-          name: currency
-          schema: { type: string, minLength: 3, maxLength: 3 }
-      responses:
-        '200':
-          description: Performance result
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Performance' }
-  /portfolios/{portfolioId}/warnings:
-    parameters:
-      - { $ref: '#/components/parameters/PortfolioId' }
-    get:
-      operationId: listDataQualityWarnings
-      responses:
-        '200':
-          description: Data-quality warnings
-          content:
-            application/json:
-              schema:
-                type: array
-                items: { $ref: '#/components/schemas/DataQualityWarning' }
+        '204': { description: Archived }
+        '404': { $ref: '#/components/responses/Problem' }
   /instruments:
     get:
       operationId: listInstruments
-      parameters:
-        - in: query
-          name: query
-          schema: { type: string, maxLength: 200 }
       responses:
         '200':
           description: Instruments
@@ -178,6 +136,33 @@ paths:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/Instrument' }
+    post:
+      operationId: createInstrument
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InstrumentCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Instrument' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /instruments/{instrumentId}:
+    parameters:
+      - { $ref: '#/components/parameters/InstrumentId' }
+    get:
+      operationId: getInstrument
+      responses:
+        '200':
+          description: Instrument
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Instrument' }
+        '404': { $ref: '#/components/responses/Problem' }
 components:
   parameters:
     PortfolioId:
@@ -190,6 +175,11 @@ components:
       name: accountId
       required: true
       schema: { type: string, format: uuid }
+    InstrumentId:
+      in: path
+      name: instrumentId
+      required: true
+      schema: { type: string, format: uuid }
   responses:
     Problem:
       description: RFC 9457 problem details
@@ -199,19 +189,22 @@ components:
   schemas:
     Portfolio:
       type: object
-      required: [id, name, baseCurrency, costBasisMethod, returnMethod]
+      required: [id, name, baseCurrency, costBasisMethod, returnMethod, status, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
-        name: { type: string, minLength: 1, maxLength: 200 }
-        baseCurrency: { type: string, minLength: 3, maxLength: 3 }
+        name: { type: string, minLength: 1, maxLength: 120 }
+        baseCurrency: { type: string, pattern: '^[A-Z]{3}$' }
         costBasisMethod: { $ref: '#/components/schemas/CostBasisMethod' }
         returnMethod: { $ref: '#/components/schemas/ReturnMethod' }
+        status: { type: string, enum: [ACTIVE, ARCHIVED] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
     PortfolioCreate:
       type: object
       required: [name, baseCurrency, costBasisMethod, returnMethod]
       properties:
-        name: { type: string, minLength: 1, maxLength: 200 }
-        baseCurrency: { type: string, minLength: 3, maxLength: 3 }
+        name: { type: string, minLength: 1, maxLength: 120 }
+        baseCurrency: { type: string, pattern: '^[A-Za-z]{3}$' }
         costBasisMethod: { $ref: '#/components/schemas/CostBasisMethod' }
         returnMethod: { $ref: '#/components/schemas/ReturnMethod' }
     CostBasisMethod:
@@ -222,126 +215,58 @@ components:
       enum: [XIRR, TWR, MWR]
     Account:
       type: object
-      required: [id, portfolioId, name]
+      required: [id, portfolioId, name, brokerName, accountCurrency, status, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
         portfolioId: { type: string, format: uuid }
-        name: { type: string, minLength: 1, maxLength: 200 }
-        brokerName: { type: string, maxLength: 200 }
+        name: { type: string, minLength: 1, maxLength: 120 }
+        brokerName: { type: string, minLength: 1, maxLength: 120 }
+        accountCurrency: { type: string, pattern: '^[A-Z]{3}$' }
+        status: { type: string, enum: [ACTIVE, ARCHIVED] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
     AccountCreate:
       type: object
-      required: [name]
+      required: [name, brokerName, accountCurrency]
       properties:
-        name: { type: string, minLength: 1, maxLength: 200 }
-        brokerName: { type: string, maxLength: 200 }
+        name: { type: string, minLength: 1, maxLength: 120 }
+        brokerName: { type: string, minLength: 1, maxLength: 120 }
+        accountCurrency: { type: string, pattern: '^[A-Za-z]{3}$' }
     Instrument:
       type: object
-      required: [id, name, assetClass, nativeCurrency]
+      required: [id, name, assetClass, currency, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
-        name: { type: string }
-        ticker: { type: string }
-        isin: { type: string }
-        exchange: { type: string }
-        assetClass:
-          type: string
-          enum: [STOCK, ETF, MUTUAL_FUND, BOND, REIT, CRYPTO, CASH]
-        nativeCurrency: { type: string, minLength: 3, maxLength: 3 }
-    TransactionType:
+        name: { type: string, minLength: 1, maxLength: 160 }
+        assetClass: { $ref: '#/components/schemas/AssetClass' }
+        ticker: { type: string, maxLength: 32, nullable: true }
+        isin: { type: string, maxLength: 12, nullable: true }
+        exchange: { type: string, maxLength: 80, nullable: true }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    InstrumentCreate:
+      type: object
+      required: [name, assetClass, currency]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 160 }
+        assetClass: { $ref: '#/components/schemas/AssetClass' }
+        ticker: { type: string, maxLength: 32, nullable: true }
+        isin: { type: string, maxLength: 12, nullable: true }
+        exchange: { type: string, maxLength: 80, nullable: true }
+        currency: { type: string, pattern: '^[A-Za-z]{3}$' }
+    AssetClass:
       type: string
-      enum: [BUY, SELL, DIVIDEND, FEE, DEPOSIT, WITHDRAWAL, INTEREST, STOCK_SPLIT, REVERSE_STOCK_SPLIT, TRANSFER]
-    TransactionCreate:
-      type: object
-      required: [type, effectiveAt, currency]
-      properties:
-        type: { $ref: '#/components/schemas/TransactionType' }
-        instrumentId: { type: string, format: uuid }
-        effectiveAt: { type: string, format: date-time }
-        quantity: { type: number }
-        price: { $ref: '#/components/schemas/Money' }
-        grossAmount: { $ref: '#/components/schemas/Money' }
-        fee: { $ref: '#/components/schemas/Money' }
-        tax: { $ref: '#/components/schemas/Money' }
-        currency: { type: string, minLength: 3, maxLength: 3 }
-        sourceReference: { type: string, maxLength: 500 }
-    Transaction:
-      allOf:
-        - $ref: '#/components/schemas/TransactionCreate'
-        - type: object
-          required: [id]
-          properties:
-            id: { type: string, format: uuid }
-            immutable: { type: boolean, const: true }
-    TransactionPage:
-      type: object
-      required: [items, page, size, totalElements]
-      properties:
-        items:
-          type: array
-          items: { $ref: '#/components/schemas/Transaction' }
-        page: { type: integer }
-        size: { type: integer }
-        totalElements: { type: integer, format: int64 }
-    Position:
-      type: object
-      required: [accountId, instrumentId, quantity]
-      properties:
-        accountId: { type: string, format: uuid }
-        instrumentId: { type: string, format: uuid }
-        quantity: { type: number }
-        marketValue: { $ref: '#/components/schemas/Money' }
-        warnings:
-          type: array
-          items: { $ref: '#/components/schemas/DataQualityWarning' }
-    Money:
-      type: object
-      required: [amount, currency]
-      properties:
-        amount: { type: number }
-        currency: { type: string, minLength: 3, maxLength: 3 }
-    Performance:
-      type: object
-      required: [from, to, currency, returnMethod]
-      properties:
-        from: { type: string, format: date }
-        to: { type: string, format: date }
-        currency: { type: string, minLength: 3, maxLength: 3 }
-        returnMethod: { $ref: '#/components/schemas/ReturnMethod' }
-        realizedGain: { $ref: '#/components/schemas/Money' }
-        unrealizedGain: { $ref: '#/components/schemas/Money' }
-        dividends: { $ref: '#/components/schemas/Money' }
-        fees: { $ref: '#/components/schemas/Money' }
-        taxes: { $ref: '#/components/schemas/Money' }
-        totalReturn: { $ref: '#/components/schemas/Money' }
-        annualizedReturn: { type: number }
-        dataQualityWarnings:
-          type: array
-          items: { $ref: '#/components/schemas/DataQualityWarning' }
-    DataQualityWarning:
-      type: object
-      required: [severity, dataType, message]
-      properties:
-        severity:
-          type: string
-          enum: [INFO, WARNING, ERROR]
-        dataType:
-          type: string
-          enum: [PRICE, FX, CORPORATE_ACTION, DIVIDEND, OTHER]
-        message: { type: string }
-        instrumentId: { type: string, format: uuid }
-        affectedDate: { type: string, format: date }
-        resolved: { type: boolean }
+      enum: [STOCK, ETF, MUTUAL_FUND, BOND, REIT, CRYPTO, CASH, OTHER]
     Problem:
       type: object
-      required: [type, title, status]
+      required: [type, title, status, detail]
       properties:
-        type: { type: string, format: uri }
+        type: { type: string, format: uri, default: about:blank }
         title: { type: string }
         status: { type: integer }
         detail: { type: string }
         instance: { type: string, format: uri-reference }
         errors:
           type: array
-          items:
-            type: object
-            additionalProperties: true
+          items: { type: string }
