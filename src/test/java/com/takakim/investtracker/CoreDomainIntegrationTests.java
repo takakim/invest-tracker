@@ -89,5 +89,37 @@ class CoreDomainIntegrationTests {
         mockMvc.perform(post("/api/v1/instruments").contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"\",\"assetClass\":\"STOCK\",\"currency\":\"GBP\"}"))
             .andExpect(status().isBadRequest());
         mockMvc.perform(get("/api/v1/portfolios/00000000-0000-0000-0000-000000000000")).andExpect(status().isNotFound());
+        mockMvc.perform(put("/api/v1/portfolios/00000000-0000-0000-0000-000000000000").contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Test\",\"baseCurrency\":\"USD\",\"costBasisMethod\":\"FIFO\",\"returnMethod\":\"XIRR\"}")).andExpect(status().isNotFound());
+        mockMvc.perform(delete("/api/v1/portfolios/00000000-0000-0000-0000-000000000000")).andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/v1/portfolios/00000000-0000-0000-0000-000000000000/accounts")).andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/v1/portfolios/00000000-0000-0000-0000-000000000000/accounts/00000000-0000-0000-0000-000000000000")).andExpect(status().isNotFound());
+        mockMvc.perform(put("/api/v1/portfolios/00000000-0000-0000-0000-000000000000/accounts/00000000-0000-0000-0000-000000000000").contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"A\",\"brokerName\":\"B\",\"accountCurrency\":\"GBP\"}")).andExpect(status().isNotFound());
+        mockMvc.perform(delete("/api/v1/portfolios/00000000-0000-0000-0000-000000000000/accounts/00000000-0000-0000-0000-000000000000")).andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/v1/instruments/00000000-0000-0000-0000-000000000000")).andExpect(status().isNotFound());
+
+        // Instrument with null and blank isin
+        String noIsin1 = "{\"name\":\"Cash USD\",\"assetClass\":\"CASH\",\"currency\":\"USD\"}";
+        mockMvc.perform(post("/api/v1/instruments").contentType(MediaType.APPLICATION_JSON).content(noIsin1)).andExpect(status().isCreated());
+        String blankIsin = "{\"name\":\"Cash EUR\",\"assetClass\":\"CASH\",\"isin\":\"\",\"currency\":\"EUR\"}";
+        mockMvc.perform(post("/api/v1/instruments").contentType(MediaType.APPLICATION_JSON).content(blankIsin)).andExpect(status().isCreated());
+    }
+
+    @Test
+    void crossPortfolioAccountAccessIsRejected() throws Exception {
+        String p1 = mockMvc.perform(post("/api/v1/portfolios").contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"P1\",\"baseCurrency\":\"GBP\",\"costBasisMethod\":\"FIFO\",\"returnMethod\":\"XIRR\"}"))
+            .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        String p1Id = com.jayway.jsonpath.JsonPath.read(p1, "$.id");
+
+        String p2 = mockMvc.perform(post("/api/v1/portfolios").contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"P2\",\"baseCurrency\":\"GBP\",\"costBasisMethod\":\"FIFO\",\"returnMethod\":\"XIRR\"}"))
+            .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        String p2Id = com.jayway.jsonpath.JsonPath.read(p2, "$.id");
+
+        String acc = mockMvc.perform(post("/api/v1/portfolios/{id}/accounts", p1Id).contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Acc1\",\"brokerName\":\"Broker\",\"accountCurrency\":\"GBP\"}"))
+            .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        String accId = com.jayway.jsonpath.JsonPath.read(acc, "$.id");
+
+        mockMvc.perform(get("/api/v1/portfolios/{pId}/accounts/{aId}", p2Id, accId)).andExpect(status().isNotFound());
+        mockMvc.perform(put("/api/v1/portfolios/{pId}/accounts/{aId}", p2Id, accId).contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Acc1-Up\",\"brokerName\":\"Broker\",\"accountCurrency\":\"GBP\"}")).andExpect(status().isNotFound());
+        mockMvc.perform(delete("/api/v1/portfolios/{pId}/accounts/{aId}", p2Id, accId)).andExpect(status().isNotFound());
     }
 }
