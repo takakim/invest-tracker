@@ -172,4 +172,42 @@ class PositionIntegrationTests {
         mockMvc.perform(delete("/api/v1/portfolios/" + randomId + "/accounts/" + randomId + "/positions/" + randomId))
                 .andExpect(status().isNotFound());
     }
+
+    @Test
+    @DisplayName("Position service error paths that require valid portfolio/account")
+    void positionServiceLambdaErrorPaths() throws Exception {
+        // Create a real portfolio and account
+        String pResp = mockMvc.perform(post("/api/v1/portfolios")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Test Portfolio\",\"baseCurrency\":\"GBP\",\"costBasisMethod\":\"FIFO\",\"returnMethod\":\"XIRR\"}"))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String realPortfolioId = JsonPath.read(pResp, "$.id");
+
+        String aResp = mockMvc.perform(post("/api/v1/portfolios/" + realPortfolioId + "/accounts")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Test Account\",\"brokerName\":\"Test Broker\",\"accountCurrency\":\"GBP\"}"))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String realAccountId = JsonPath.read(aResp, "$.id");
+
+        UUID randomId = UUID.randomUUID();
+
+        // Real portfolio, invalid accountId → triggers lambda$getValidatedAccount$0
+        mockMvc.perform(get("/api/v1/portfolios/" + realPortfolioId + "/accounts/" + randomId + "/positions"))
+                .andExpect(status().isNotFound());
+
+        // Real portfolio, real account, invalid positionId → triggers lambda$getPosition$0
+        mockMvc.perform(get("/api/v1/portfolios/" + realPortfolioId + "/accounts/" + realAccountId + "/positions/" + randomId))
+                .andExpect(status().isNotFound());
+
+        // Real portfolio, real account, invalid instrumentId → triggers lambda$createPosition$0
+        String badInstrumentJson = String.format("""
+            {"instrumentId":"%s","quantity":1.0}
+            """, randomId);
+        mockMvc.perform(post("/api/v1/portfolios/" + realPortfolioId + "/accounts/" + realAccountId + "/positions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(badInstrumentJson))
+                .andExpect(status().isNotFound());
+    }
 }
