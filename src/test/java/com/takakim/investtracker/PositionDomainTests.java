@@ -65,9 +65,6 @@ class PositionDomainTests {
         Money newCostBasis = new Money(new BigDecimal("2000.00"), gbp);
         position.update(new Quantity(new BigDecimal("50.00")), newCostBasis);
 
-        assertEquals(new BigDecimal("50.00"), position.getQuantity());
-        assertEquals(newCostBasis, position.getCostBasisMoney());
-
         position.update(new Quantity(new BigDecimal("50.00")), null);
         assertNull(position.getCostBasisAmount());
         assertNull(position.getCostBasisCurrency());

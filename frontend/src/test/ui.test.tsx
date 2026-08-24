@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from '@mui/material';
 
 import { theme } from '../theme';
-import { ApiError, portfolioApi, instrumentApi, accountApi, positionApi, transactionApi } from '../api';
+import { ApiError, portfolioApi, instrumentApi, accountApi, positionApi, transactionApi, importApi } from '../api';
 import { ErrorAlert, EmptyState, ConfirmDialog, Layout } from '../components';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { PortfolioListPage } from '../features/portfolios/PortfolioListPage';
@@ -198,6 +198,7 @@ describe('Feature Pages', () => {
     vi.spyOn(positionApi, 'listPortfolio').mockResolvedValue(mockPositions);
     vi.spyOn(transactionApi, 'list').mockResolvedValue(mockTransactions);
     vi.spyOn(transactionApi, 'listPortfolio').mockResolvedValue(mockTransactions);
+    vi.spyOn(importApi, 'list').mockResolvedValue([]);
   });
 
   it('renders DashboardPage with active portfolios and metrics', async () => {

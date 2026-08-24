@@ -16,11 +16,13 @@ import {
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
 import ReceiptLongOutlinedIcon from '@mui/icons-material/ReceiptLongOutlined';
 import EditNoteOutlinedIcon from '@mui/icons-material/EditNoteOutlined';
 
 import { useTransactionsList, useCreateTransaction, useCorrectTransaction } from './useTransactions';
 import { TransactionFormModal } from './TransactionFormModal';
+import { CsvImportModal } from '../imports/CsvImportModal';
 import { EmptyState, ErrorAlert, LoadingState } from '../../components';
 import type { Transaction, TransactionCreateInput, TransactionType } from '../../types';
 import type { TransactionFormData } from '../../forms/schemas';
@@ -40,6 +42,7 @@ export function TransactionTable({
 }: TransactionTableProps) {
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<TransactionType | undefined>(undefined);
   const [formOpen, setFormOpen] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
 
   const {
     data: transactions = [],
@@ -103,14 +106,24 @@ export function TransactionTable({
           </Typography>
         </Box>
         {!isReadOnly && (
-          <Button
-            variant="contained"
-            size="small"
-            startIcon={<AddIcon />}
-            onClick={() => setFormOpen(true)}
-          >
-            Record Transaction
-          </Button>
+          <Stack direction="row" spacing={1}>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<UploadFileIcon />}
+              onClick={() => setImportModalOpen(true)}
+            >
+              Import CSV
+            </Button>
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<AddIcon />}
+              onClick={() => setFormOpen(true)}
+            >
+              Record Transaction
+            </Button>
+          </Stack>
         )}
       </Stack>
 
@@ -222,6 +235,14 @@ export function TransactionTable({
         error={createMutation.error}
         onClose={() => setFormOpen(false)}
         onSubmit={handleFormSubmit}
+      />
+
+      {/* CSV Import Modal */}
+      <CsvImportModal
+        open={importModalOpen}
+        portfolioId={portfolioId}
+        accountId={accountId}
+        onClose={() => setImportModalOpen(false)}
       />
     </Box>
   );

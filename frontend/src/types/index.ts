@@ -168,6 +168,52 @@ export interface TransactionCorrectInput {
   replacementNotes?: string | null;
 }
 
+export interface PreviewRow {
+  rowNumber: number;
+  rawType?: string | null;
+  mappedType?: string | null;
+  instrumentTitle?: string | null;
+  ticker?: string | null;
+  isin?: string | null;
+  quantity?: number | null;
+  price?: number | null;
+  grossAmount?: number | null;
+  feeAmount?: number | null;
+  taxAmount?: number | null;
+  currency?: string | null;
+  isDuplicate: boolean;
+  isIgnored: boolean;
+  diagnosticMessage?: string | null;
+}
+
+export interface CsvImportPreview {
+  brokerName: string;
+  fileName: string;
+  totalRows: number;
+  importableRows: number;
+  duplicateRows: number;
+  ignoredRows: number;
+  rows: PreviewRow[];
+}
+
+export interface ImportBatch {
+  id: string;
+  accountId: string;
+  fileName: string;
+  brokerType: string;
+  status: 'PENDING' | 'COMPLETED' | 'FAILED';
+  totalRows: number;
+  importedRows: number;
+  skippedRows: number;
+  createdAt: string;
+}
+
+export interface CsvImportInput {
+  fileName: string;
+  csvContent: string;
+}
+
+
 export interface ProblemDetail {
   type?: string;
   title: string;

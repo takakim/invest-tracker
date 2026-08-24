@@ -1,0 +1,131 @@
+package com.takakim.investtracker;
+
+import com.takakim.investtracker.domain.TransactionType;
+import com.takakim.investtracker.service.csv.FreetradeCsvParser;
+import com.takakim.investtracker.service.csv.ParsedTransactionRow;
+import java.math.BigDecimal;
+import java.util.List;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class FreetradeCsvParserTest {
+
+    private final FreetradeCsvParser parser = new FreetradeCsvParser();
+
+    @Test
+    @DisplayName("Freetrade parser supports Freetrade activity feed headers")
+    void supportsHeaderCheck() {
+        List<String> validHeaders = List.of(
+                "Title", "Type", "Timestamp", "Account Currency", "Total Amount in Account Currency",
+                "Buy / Sell", "Ticker", "ISIN", "Price per Share", "Stamp Duty", "Quantity"
+        );
+        assertTrue(parser.supports(validHeaders));
+        assertFalse(parser.supports(List.of("Date", "Amount", "Category")));
+        assertFalse(parser.supports(null));
+    }
+
+    @Test
+    @DisplayName("Parses Freetrade CSV order, dividend, interest, top up, and statement rows")
+    void parseSampleFreetradeCsv() {
+        String csv = """
+            Title,Type,Timestamp,Account Currency,Total Amount in Account Currency,Buy / Sell,Ticker,ISIN,Price per Share in Account Currency,Stamp Duty,Quantity,Venue,Order ID,Order Type,Instrument Currency,Total Amount in Instrument Currency,Price per Share,FX Rate,Base FX Rate,FX Fee (BPS),FX Fee Amount,Dividend Ex Date,Dividend Pay Date,Dividend Eligible Quantity,Dividend Amount Per Share,Dividend Gross Distribution Amount,Dividend Net Distribution Amount,Dividend Withheld Tax Percentage,Dividend Withheld Tax Amount
+            Figma,ORDER,2026-05-15T13:45:41.754Z,GBP,824.19,SELL,FIG,US3168411052,16.58160000,0.00,50.00000000,NASDAQ - All Markets,OC1C3R8YIS6T,MARKET,USD,1106.14,22.12280000,1.34204330,1.33417169,59,4.89,,,,,,,,,,,,,,,,,,,,,,,
+            Cerebras Systems,ORDER,2026-05-14T17:42:56.661Z,GBP,494.33,BUY,CBRS,US15675D1037,245.71500000,0.00,2.00000000,G1 Execution Services,339ABW9OS97A,MARKET,USD,659.40,329.69990000,1.33387544,1.34179201,59,2.90,,,,,,,,,,,,,,,,,,,,,,,
+            Apple,DIVIDEND,2026-05-14T14:50:00.000Z,GBP,14.78,,AAPL,US0378331005,,,86.99994805,,,,USD,,,,0.74049939,0,0.00,2026-05-11,2026-05-14,86.99994805,0.27000000,23.49,19.97,15,3.52,,,,,,,,,,,,,,,
+            Interest,INTEREST_FROM_CASH,2026-04-17T00:00:00.000Z,GBP,0.56,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+            Top up,TOP_UP,2025-01-16T19:42:13.426Z,GBP,550.21,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+            April Statement,MONTHLY_STATEMENT,2026-05-01T00:00:00.000Z,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+            """;
+
+        List<ParsedTransactionRow> rows = parser.parse(csv);
+        assertEquals(6, rows.size());
+
+        // Row 1: Figma SELL order
+        ParsedTransactionRow r1 = rows.get(0);
+        assertEquals(TransactionType.SELL, r1.mappedType());
+        assertEquals("FIG", r1.ticker());
+        assertEquals("US3168411052", r1.isin());
+        assertEquals(0, new BigDecimal("50.00000000").compareTo(r1.quantity()));
+        assertEquals(0, new BigDecimal("824.19").compareTo(r1.grossAmount()));
+        assertEquals(0, new BigDecimal("4.89").compareTo(r1.feeAmount()));
+        assertFalse(r1.isIgnored());
+
+        // Row 2: Cerebras Systems BUY order
+        ParsedTransactionRow r2 = rows.get(1);
+        assertEquals(TransactionType.BUY, r2.mappedType());
+        assertEquals("CBRS", r2.ticker());
+        assertEquals(0, new BigDecimal("494.33").compareTo(r2.grossAmount()));
+
+        // Row 3: Apple DIVIDEND
+        ParsedTransactionRow r3 = rows.get(2);
+        assertEquals(TransactionType.DIVIDEND, r3.mappedType());
+        assertEquals("AAPL", r3.ticker());
+        assertEquals(0, new BigDecimal("14.78").compareTo(r3.grossAmount()));
+        assertEquals(0, new BigDecimal("3.52").compareTo(r3.taxAmount()));
+
+        // Row 4: Interest
+        ParsedTransactionRow r4 = rows.get(3);
+        assertEquals(TransactionType.INTEREST, r4.mappedType());
+        assertEquals(0, new BigDecimal("0.56").compareTo(r4.grossAmount()));
+
+        // Row 5: Top Up
+        ParsedTransactionRow r5 = rows.get(4);
+        assertEquals(TransactionType.DEPOSIT, r5.mappedType());
+        assertEquals(0, new BigDecimal("550.21").compareTo(r5.grossAmount()));
+
+        // Row 6: Statement marker
+        ParsedTransactionRow r6 = rows.get(5);
+        assertTrue(r6.isIgnored());
+    }
+
+    @Test
+    @DisplayName("Splits quoted CSV lines correctly")
+    void parseCsvLineWithQuotes() {
+        String line = "\"Jane Street Capital, LLC\",ORDER,2026-05-14,GBP,100.00,BUY,TEST,US123,\"1,234.56\"";
+        List<String> tokens = FreetradeCsvParser.parseCsvLine(line);
+
+        assertEquals("Jane Street Capital, LLC", tokens.get(0));
+        assertEquals("ORDER", tokens.get(1));
+        assertEquals("1,234.56", tokens.get(8));
+    }
+
+    @Test
+    @DisplayName("Freetrade parser handles empty timestamp and unrecognized raw types")
+    void parserEdgeCases() {
+        String csv = """
+            Title,Type,Timestamp,Account Currency,Total Amount in Account Currency,Buy / Sell,Ticker,ISIN,Price per Share,Stamp Duty,Quantity
+            Unknown,SOMETHING_ELSE,,GBP,10.00,BUY,UNK,US0000000000,10.00,0.00,1.00
+            Invalid Order,ORDER,2026-05-14T12:00:00Z,GBP,10.00,HOLD,UNK,US0000000000,10.00,0.00,1.00
+            """;
+        List<ParsedTransactionRow> rows = parser.parse(csv);
+        assertEquals(2, rows.size());
+
+        assertTrue(rows.get(0).isIgnored());
+        assertEquals("Unsupported Freetrade row type: SOMETHING_ELSE", rows.get(0).ignoreReason());
+        assertNotNull(rows.get(0).timestamp());
+
+        assertTrue(rows.get(1).isIgnored());
+        assertEquals("Unknown buy/sell direction: HOLD", rows.get(1).ignoreReason());
+    }
+
+    @Test
+    @DisplayName("Freetrade parser handles empty CSV and non-Freetrade headers")
+    void parseEarlyCancelPaths() {
+        // Empty CSV content → lines.isEmpty() early return
+        List<ParsedTransactionRow> emptyRows = parser.parse("   \n  \n  ");
+        assertEquals(0, emptyRows.size());
+
+        // CSV with non-Freetrade headers → !supports(headers) early return
+        String nonFreetradeCsv = """
+            Date,Amount,Category
+            2026-01-01,100,Salary
+            """;
+        List<ParsedTransactionRow> unsupportedRows = parser.parse(nonFreetradeCsv);
+        assertEquals(0, unsupportedRows.size());
+    }
+}

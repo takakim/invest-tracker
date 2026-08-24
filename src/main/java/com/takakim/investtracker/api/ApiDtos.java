@@ -8,6 +8,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 public final class ApiDtos {
@@ -101,4 +102,46 @@ public final class ApiDtos {
         java.math.BigDecimal netAmount, String currency, java.math.BigDecimal fxRate,
         String counterCurrency, String notes, String status,
         UUID correctionOfTransactionId, Instant createdAt, Instant updatedAt) { }
+
+    public record CsvImportRequest(
+        @NotBlank String fileName,
+        @NotBlank String csvContent) { }
+
+    public record PreviewRowResponse(
+        int rowNumber,
+        String rawType,
+        String mappedType,
+        String instrumentTitle,
+        String ticker,
+        String isin,
+        java.math.BigDecimal quantity,
+        java.math.BigDecimal price,
+        java.math.BigDecimal grossAmount,
+        java.math.BigDecimal feeAmount,
+        java.math.BigDecimal taxAmount,
+        String currency,
+        boolean isDuplicate,
+        boolean isIgnored,
+        String diagnosticMessage) { }
+
+    public record CsvImportPreviewResponse(
+        String brokerName,
+        String fileName,
+        int totalRows,
+        int importableRows,
+        int duplicateRows,
+        int ignoredRows,
+        List<PreviewRowResponse> rows) { }
+
+    public record ImportBatchResponse(
+        UUID id,
+        UUID accountId,
+        String fileName,
+        String brokerType,
+        String status,
+        int totalRows,
+        int importedRows,
+        int skippedRows,
+        Instant createdAt) { }
 }
+
