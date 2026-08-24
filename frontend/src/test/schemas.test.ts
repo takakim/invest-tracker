@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { portfolioSchema, accountSchema, instrumentSchema, positionSchema } from '../forms/schemas';
+import { portfolioSchema, accountSchema, instrumentSchema, positionSchema, transactionSchema } from '../forms/schemas';
 
 describe('portfolioSchema', () => {
   it('validates a correct portfolio input and normalizes currency', () => {
@@ -229,6 +229,50 @@ describe('positionSchema', () => {
       positionSchema.safeParse({
         instrumentId: 'inst-123',
         quantity: -1,
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe('transactionSchema', () => {
+  it('validates a correct BUY transaction', () => {
+    const result = transactionSchema.safeParse({
+      type: 'BUY',
+      tradeDate: '2026-08-24T12:00',
+      instrumentId: 'inst-123',
+      quantity: 10,
+      price: 150,
+      grossAmount: 1500,
+      feeAmount: 5,
+      currency: 'usd',
+      notes: 'Test buy',
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.type).toBe('BUY');
+      expect(result.data.grossAmount).toBe(1500);
+      expect(result.data.currency).toBe('USD');
+      expect(result.data.notes).toBe('Test buy');
+    }
+  });
+
+  it('rejects invalid transaction type or negative gross amount', () => {
+    expect(
+      transactionSchema.safeParse({
+        type: 'INVALID_TYPE',
+        tradeDate: '2026-08-24T12:00',
+        grossAmount: 100,
+        currency: 'USD',
+      }).success,
+    ).toBe(false);
+
+    expect(
+      transactionSchema.safeParse({
+        type: 'BUY',
+        tradeDate: '2026-08-24T12:00',
+        grossAmount: -50,
+        currency: 'USD',
       }).success,
     ).toBe(false);
   });
