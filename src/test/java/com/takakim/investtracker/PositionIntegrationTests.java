@@ -1,0 +1,175 @@
+package com.takakim.investtracker;
+
+import com.jayway.jsonpath.JsonPath;
+import java.util.UUID;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.web.servlet.MockMvc;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.postgresql.PostgreSQLContainer;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+@SpringBootTest
+@AutoConfigureMockMvc
+@Testcontainers
+class PositionIntegrationTests {
+
+    @Container
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18.4");
+
+    @DynamicPropertySource
+    static void configureProperties(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
+        registry.add("spring.datasource.username", POSTGRES::getUsername);
+        registry.add("spring.datasource.password", POSTGRES::getPassword);
+    }
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Test
+    @DisplayName("Complete CRUD lifecycle and invariants for Position holdings")
+    void positionCrudLifecycle() throws Exception {
+        // 1. Create Portfolio
+        String portfolioJson = """
+            {"name":"Growth Portfolio","baseCurrency":"GBP","costBasisMethod":"FIFO","returnMethod":"XIRR"}
+            """;
+        String pResp = mockMvc.perform(post("/api/v1/portfolios")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(portfolioJson))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String portfolioId = JsonPath.read(pResp, "$.id");
+
+        // 2. Create Account under Portfolio
+        String accountJson = """
+            {"name":"Trading 212 ISA","brokerName":"Trading 212","accountCurrency":"GBP"}
+            """;
+        String aResp = mockMvc.perform(post("/api/v1/portfolios/" + portfolioId + "/accounts")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(accountJson))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String accountId = JsonPath.read(aResp, "$.id");
+
+        // 3. Create Instrument
+        String instJson = """
+            {"name":"Vanguard S&P 500 ETF","assetClass":"ETF","ticker":"VUAG","isin":"IE00BFMXXD85","exchange":"LSE","currency":"GBP"}
+            """;
+        String iResp = mockMvc.perform(post("/api/v1/instruments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(instJson))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String instrumentId = JsonPath.read(iResp, "$.id");
+
+        // 4. Create Position
+        String posJson = String.format("""
+            {"instrumentId":"%s","quantity":100.5,"costBasisAmount":8500.0,"costBasisCurrency":"GBP"}
+            """, instrumentId);
+
+        String posResp = mockMvc.perform(post("/api/v1/portfolios/" + portfolioId + "/accounts/" + accountId + "/positions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(posJson))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.quantity").value(100.5))
+                .andExpect(jsonPath("$.costBasisAmount").value(8500.0))
+                .andExpect(jsonPath("$.costBasisCurrency").value("GBP"))
+                .andExpect(jsonPath("$.instrumentName").value("Vanguard S&P 500 ETF"))
+                .andExpect(jsonPath("$.status").value("ACTIVE"))
+                .andReturn().getResponse().getContentAsString();
+
+        String positionId = JsonPath.read(posResp, "$.id");
+
+        // 5. Attempt duplicate position for same instrument -> 409 Conflict
+        mockMvc.perform(post("/api/v1/portfolios/" + portfolioId + "/accounts/" + accountId + "/positions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(posJson))
+                .andExpect(status().isConflict());
+
+        // 6. List positions for Account
+        mockMvc.perform(get("/api/v1/portfolios/" + portfolioId + "/accounts/" + accountId + "/positions"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].id").value(positionId));
+
+        // 7. List positions for Portfolio
+        mockMvc.perform(get("/api/v1/portfolios/" + portfolioId + "/positions"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].id").value(positionId));
+
+        // 8. Update Position
+        String updateJson = """
+            {"quantity":150.75,"costBasisAmount":12800.5,"costBasisCurrency":"GBP"}
+            """;
+        mockMvc.perform(put("/api/v1/portfolios/" + portfolioId + "/accounts/" + accountId + "/positions/" + positionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateJson))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.quantity").value(150.75))
+                .andExpect(jsonPath("$.costBasisAmount").value(12800.5));
+
+        // 9. Archive Position
+        mockMvc.perform(delete("/api/v1/portfolios/" + portfolioId + "/accounts/" + accountId + "/positions/" + positionId))
+                .andExpect(status().isNoContent());
+
+        // 10. List positions after archive returns empty active list
+        mockMvc.perform(get("/api/v1/portfolios/" + portfolioId + "/accounts/" + accountId + "/positions"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
+    @DisplayName("Position APIs validate input bounds and return 404 for missing resources")
+    void positionErrorPaths() throws Exception {
+        UUID randomId = UUID.randomUUID();
+
+        // 404 for non-existent portfolio
+        mockMvc.perform(get("/api/v1/portfolios/" + randomId + "/accounts/" + randomId + "/positions"))
+                .andExpect(status().isNotFound());
+
+        // 404 for portfolio positions non-existent portfolio
+        mockMvc.perform(get("/api/v1/portfolios/" + randomId + "/positions"))
+                .andExpect(status().isNotFound());
+
+        // 400 for negative quantity
+        String invalidReq = String.format("""
+            {"instrumentId":"%s","quantity":-5.0}
+            """, randomId);
+        mockMvc.perform(post("/api/v1/portfolios/" + randomId + "/accounts/" + randomId + "/positions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(invalidReq))
+                .andExpect(status().isBadRequest());
+
+        // 404 for getPosition with random ID
+        mockMvc.perform(get("/api/v1/portfolios/" + randomId + "/accounts/" + randomId + "/positions/" + randomId))
+                .andExpect(status().isNotFound());
+
+        // 404 for updatePosition with random ID
+        String updateReq = """
+            {"quantity":10.0}
+            """;
+        mockMvc.perform(put("/api/v1/portfolios/" + randomId + "/accounts/" + randomId + "/positions/" + randomId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateReq))
+                .andExpect(status().isNotFound());
+
+        // 404 for archivePosition with random ID
+        mockMvc.perform(delete("/api/v1/portfolios/" + randomId + "/accounts/" + randomId + "/positions/" + randomId))
+                .andExpect(status().isNotFound());
+    }
+}
