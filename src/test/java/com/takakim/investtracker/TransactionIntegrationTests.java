@@ -219,6 +219,7 @@ class TransactionIntegrationTests {
                 .andExpect(jsonPath("$.length()").value(9));
     }
 
+
     @Test
     @DisplayName("Transaction error paths")
     void transactionErrorPaths() throws Exception {
