@@ -97,6 +97,77 @@ export interface PositionUpdateInput {
   costBasisCurrency?: string | null;
 }
 
+export type TransactionType =
+  | 'BUY'
+  | 'SELL'
+  | 'DIVIDEND'
+  | 'FEE'
+  | 'DEPOSIT'
+  | 'WITHDRAWAL'
+  | 'INTEREST'
+  | 'STOCK_SPLIT'
+  | 'REVERSE_STOCK_SPLIT'
+  | 'TRANSFER';
+
+export type TransactionStatus = 'COMPLETED' | 'CORRECTED';
+
+export interface Transaction {
+  id: string;
+  accountId: string;
+  instrumentId?: string | null;
+  instrumentName?: string | null;
+  instrumentTicker?: string | null;
+  type: TransactionType;
+  tradeDate: string;
+  settlementDate?: string | null;
+  quantity?: number | null;
+  price?: number | null;
+  grossAmount: number;
+  feeAmount?: number | null;
+  taxAmount?: number | null;
+  netAmount: number;
+  currency: string;
+  fxRate?: number | null;
+  counterCurrency?: string | null;
+  notes?: string | null;
+  status: TransactionStatus;
+  correctionOfTransactionId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TransactionCreateInput {
+  instrumentId?: string | null;
+  type: TransactionType;
+  tradeDate: string;
+  settlementDate?: string | null;
+  quantity?: number | null;
+  price?: number | null;
+  grossAmount: number;
+  feeAmount?: number | null;
+  taxAmount?: number | null;
+  currency: string;
+  fxRate?: number | null;
+  counterCurrency?: string | null;
+  notes?: string | null;
+}
+
+export interface TransactionCorrectInput {
+  replacementInstrumentId?: string | null;
+  replacementType: TransactionType;
+  replacementTradeDate: string;
+  replacementSettlementDate?: string | null;
+  replacementQuantity?: number | null;
+  replacementPrice?: number | null;
+  replacementGrossAmount: number;
+  replacementFeeAmount?: number | null;
+  replacementTaxAmount?: number | null;
+  replacementCurrency: string;
+  replacementFxRate?: number | null;
+  replacementCounterCurrency?: string | null;
+  replacementNotes?: string | null;
+}
+
 export interface ProblemDetail {
   type?: string;
   title: string;

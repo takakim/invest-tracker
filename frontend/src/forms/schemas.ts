@@ -107,3 +107,54 @@ export const positionSchema = z.object({
 });
 
 export type PositionFormData = z.input<typeof positionSchema>;
+
+export const transactionTypeEnum = z.enum([
+  'BUY',
+  'SELL',
+  'DIVIDEND',
+  'FEE',
+  'DEPOSIT',
+  'WITHDRAWAL',
+  'INTEREST',
+  'STOCK_SPLIT',
+  'REVERSE_STOCK_SPLIT',
+  'TRANSFER',
+]);
+
+export const transactionSchema = z.object({
+  type: transactionTypeEnum,
+  tradeDate: z.string().trim().min(1, 'Trade date is required'),
+  instrumentId: z
+    .string()
+    .trim()
+    .optional()
+    .or(z.literal(''))
+    .transform((v) => (v && v.trim() ? v.trim() : undefined)),
+  quantity: z
+    .union([z.coerce.number().min(0, 'Quantity must be non-negative'), z.literal(''), z.undefined(), z.null()])
+    .optional()
+    .transform((val) => (val === '' || val === null || val === undefined ? undefined : Number(val))),
+  price: z
+    .union([z.coerce.number().min(0, 'Price must be non-negative'), z.literal(''), z.undefined(), z.null()])
+    .optional()
+    .transform((val) => (val === '' || val === null || val === undefined ? undefined : Number(val))),
+  grossAmount: z.coerce.number({ message: 'Gross amount is required' }).min(0, 'Gross amount must be non-negative'),
+  feeAmount: z
+    .union([z.coerce.number().min(0, 'Fee amount must be non-negative'), z.literal(''), z.undefined(), z.null()])
+    .optional()
+    .transform((val) => (val === '' || val === null || val === undefined ? undefined : Number(val))),
+  taxAmount: z
+    .union([z.coerce.number().min(0, 'Tax amount must be non-negative'), z.literal(''), z.undefined(), z.null()])
+    .optional()
+    .transform((val) => (val === '' || val === null || val === undefined ? undefined : Number(val))),
+  currency: currencyCodeSchema,
+  notes: z
+    .string()
+    .trim()
+    .max(255, 'Notes must be at most 255 characters')
+    .optional()
+    .or(z.literal(''))
+    .transform((v) => (v && v.trim() ? v.trim() : undefined)),
+});
+
+export type TransactionFormData = z.input<typeof transactionSchema>;

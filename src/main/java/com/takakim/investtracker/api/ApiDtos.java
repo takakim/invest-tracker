@@ -60,4 +60,45 @@ public final class ApiDtos {
         String instrumentTicker, String instrumentIsin, AssetClass assetClass,
         java.math.BigDecimal quantity, java.math.BigDecimal costBasisAmount,
         String costBasisCurrency, String status, Instant createdAt, Instant updatedAt) { }
+
+    public record TransactionRequest(
+        UUID instrumentId,
+        @NotNull com.takakim.investtracker.domain.TransactionType type,
+        @NotNull Instant tradeDate,
+        Instant settlementDate,
+        java.math.BigDecimal quantity,
+        java.math.BigDecimal price,
+        @NotNull java.math.BigDecimal grossAmount,
+        java.math.BigDecimal feeAmount,
+        java.math.BigDecimal taxAmount,
+        @NotBlank @Pattern(regexp = "[A-Za-z]{3}") String currency,
+        java.math.BigDecimal fxRate,
+        @Pattern(regexp = "[A-Za-z]{3}") String counterCurrency,
+        @Size(max = 255) String notes,
+        UUID correctionOfTransactionId) { }
+
+    public record TransactionCorrectionRequest(
+        UUID replacementInstrumentId,
+        @NotNull com.takakim.investtracker.domain.TransactionType replacementType,
+        @NotNull Instant replacementTradeDate,
+        Instant replacementSettlementDate,
+        java.math.BigDecimal replacementQuantity,
+        java.math.BigDecimal replacementPrice,
+        @NotNull java.math.BigDecimal replacementGrossAmount,
+        java.math.BigDecimal replacementFeeAmount,
+        java.math.BigDecimal replacementTaxAmount,
+        @NotBlank @Pattern(regexp = "[A-Za-z]{3}") String replacementCurrency,
+        java.math.BigDecimal replacementFxRate,
+        @Pattern(regexp = "[A-Za-z]{3}") String replacementCounterCurrency,
+        @Size(max = 255) String replacementNotes) { }
+
+    public record TransactionResponse(
+        UUID id, UUID accountId, UUID instrumentId, String instrumentName,
+        String instrumentTicker, com.takakim.investtracker.domain.TransactionType type,
+        Instant tradeDate, Instant settlementDate, java.math.BigDecimal quantity,
+        java.math.BigDecimal price, java.math.BigDecimal grossAmount,
+        java.math.BigDecimal feeAmount, java.math.BigDecimal taxAmount,
+        java.math.BigDecimal netAmount, String currency, java.math.BigDecimal fxRate,
+        String counterCurrency, String notes, String status,
+        UUID correctionOfTransactionId, Instant createdAt, Instant updatedAt) { }
 }
