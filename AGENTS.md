@@ -50,13 +50,13 @@ invest-tracker/
 │   └── config/                             # Security & Application Configurations
 ├── src/main/resources/
 │   ├── application.yml
-│   └── db/migration/                       # Flyway SQL schema evolution (V1__baseline.sql, V2__core_domain.sql, etc.)
+│   └── db/migration/                       # Flyway SQL schema evolution (V1__baseline.sql, V2__core_domain.sql, V3__investments.sql, V4__transactions.sql)
 ├── src/test/java/com/takakim/investtracker/ # Test suites (Testcontainers PostgreSQL, Unit Tests)
 └── frontend/                               # React + TypeScript Web Frontend
     ├── src/
     │   ├── api/                            # Typed HTTP client & RFC 9457 problem details handler
     │   ├── components/                     # Reusable UI primitives (Layout, LoadingState, ErrorAlert, etc.)
-    │   ├── features/                       # Domain feature modules (dashboard, portfolios, accounts, instruments)
+    │   ├── features/                       # Domain feature modules (dashboard, portfolios, accounts, instruments, positions, transactions)
     │   ├── forms/                          # Zod schemas & form validation
     │   ├── routing/                        # React Router definitions
     │   ├── test/                           # Vitest & React Testing Library suites

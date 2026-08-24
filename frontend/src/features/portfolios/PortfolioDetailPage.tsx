@@ -12,13 +12,17 @@ import {
   IconButton,
   Link,
   Paper,
+  Select,
   Stack,
+  Tab,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
+  Tabs,
+  TextField,
   Tooltip,
   Typography,
 } from '@mui/material';
@@ -27,6 +31,8 @@ import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import ArchiveOutlinedIcon from '@mui/icons-material/ArchiveOutlined';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AccountBalanceOutlinedIcon from '@mui/icons-material/AccountBalanceOutlined';
+import ShowChartOutlinedIcon from '@mui/icons-material/ShowChartOutlined';
+import ReceiptLongOutlinedIcon from '@mui/icons-material/ReceiptLongOutlined';
 
 import { usePortfolio, useUpdatePortfolio, useArchivePortfolio } from './usePortfolios';
 import {
@@ -38,6 +44,7 @@ import {
 import { PortfolioFormModal } from './PortfolioFormModal';
 import { AccountFormModal } from '../accounts/AccountFormModal';
 import { PositionTable } from '../positions/PositionTable';
+import { TransactionTable } from '../transactions/TransactionTable';
 import { ConfirmDialog, EmptyState, ErrorAlert, LoadingState } from '../../components';
 import type { Account, AccountCreateInput, PortfolioCreateInput } from '../../types';
 
@@ -70,6 +77,11 @@ export function PortfolioDetailPage() {
   const [portfolioEditOpen, setPortfolioEditOpen] = useState(false);
   const [portfolioArchiveOpen, setPortfolioArchiveOpen] = useState(false);
 
+  const [accountTabMap, setAccountTabMap] = useState<Record<string, number>>({});
+
+  const handleTabChange = (accountId: string, newValue: number) => {
+    setAccountTabMap((prev) => ({ ...prev, [accountId]: newValue }));
+  };
   const [accountModalOpen, setAccountModalOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [archiveAccountTarget, setArchiveAccountTarget] = useState<Account | null>(null);
@@ -346,12 +358,38 @@ export function PortfolioDetailPage() {
 
                 <Divider sx={{ mb: 2 }} />
 
-                <PositionTable
-                  portfolioId={portfolio.id}
-                  accountId={account.id}
-                  defaultCurrency={account.accountCurrency || portfolio.baseCurrency}
-                  isReadOnly={portfolio.status !== 'ACTIVE' || account.status !== 'ACTIVE'}
-                />
+                <Tabs
+                  value={accountTabMap[account.id] ?? 0}
+                  onChange={(_, val) => handleTabChange(account.id, val)}
+                  sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}
+                >
+                  <Tab
+                    label="Position Holdings"
+                    icon={<ShowChartOutlinedIcon fontSize="small" />}
+                    iconPosition="start"
+                  />
+                  <Tab
+                    label="Transaction Ledger"
+                    icon={<ReceiptLongOutlinedIcon fontSize="small" />}
+                    iconPosition="start"
+                  />
+                </Tabs>
+
+                {(accountTabMap[account.id] ?? 0) === 0 ? (
+                  <PositionTable
+                    portfolioId={portfolio.id}
+                    accountId={account.id}
+                    defaultCurrency={account.accountCurrency || portfolio.baseCurrency}
+                    isReadOnly={portfolio.status !== 'ACTIVE' || account.status !== 'ACTIVE'}
+                  />
+                ) : (
+                  <TransactionTable
+                    portfolioId={portfolio.id}
+                    accountId={account.id}
+                    defaultCurrency={account.accountCurrency || portfolio.baseCurrency}
+                    isReadOnly={portfolio.status !== 'ACTIVE' || account.status !== 'ACTIVE'}
+                  />
+                )}
               </Paper>
             ))}
           </Stack>

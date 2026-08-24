@@ -204,6 +204,84 @@ paths:
                 type: array
                 items: { $ref: '#/components/schemas/Position' }
         '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/accounts/{accountId}/transactions:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+      - { $ref: '#/components/parameters/AccountId' }
+    get:
+      operationId: listTransactions
+      parameters:
+        - name: type
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/TransactionType' }
+      responses:
+        '200':
+          description: Account transactions
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Transaction' }
+        '404': { $ref: '#/components/responses/Problem' }
+    post:
+      operationId: recordTransaction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TransactionCreate' }
+      responses:
+        '201':
+          description: Transaction recorded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transaction' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/accounts/{accountId}/transactions/{transactionId}:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+      - { $ref: '#/components/parameters/AccountId' }
+      - { $ref: '#/components/parameters/TransactionId' }
+    get:
+      operationId: getTransaction
+      responses:
+        '200':
+          description: Transaction detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transaction' }
+        '404': { $ref: '#/components/responses/Problem' }
+    post:
+      operationId: correctTransaction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TransactionCorrect' }
+      responses:
+        '201':
+          description: Replacement transaction recorded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transaction' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/transactions:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+    get:
+      operationId: listPortfolioTransactions
+      responses:
+        '200':
+          description: Portfolio transactions
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Transaction' }
+        '404': { $ref: '#/components/responses/Problem' }
   /instruments:
     get:
       operationId: listInstruments
@@ -262,6 +340,11 @@ components:
     PositionId:
       in: path
       name: positionId
+      required: true
+      schema: { type: string, format: uuid }
+    TransactionId:
+      in: path
+      name: transactionId
       required: true
       schema: { type: string, format: uuid }
   responses:
@@ -371,6 +454,70 @@ components:
         quantity: { type: number, minimum: 0 }
         costBasisAmount: { type: number, minimum: 0, nullable: true }
         costBasisCurrency: { type: string, pattern: '^[A-Za-z]{3}$', nullable: true }
+    TransactionType:
+      type: string
+      enum: [BUY, SELL, DIVIDEND, FEE, DEPOSIT, WITHDRAWAL, INTEREST, STOCK_SPLIT, REVERSE_STOCK_SPLIT, TRANSFER]
+    Transaction:
+      type: object
+      required: [id, accountId, type, tradeDate, grossAmount, netAmount, currency, status, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        accountId: { type: string, format: uuid }
+        instrumentId: { type: string, format: uuid, nullable: true }
+        instrumentName: { type: string, nullable: true }
+        instrumentTicker: { type: string, nullable: true }
+        type: { $ref: '#/components/schemas/TransactionType' }
+        tradeDate: { type: string, format: date-time }
+        settlementDate: { type: string, format: date-time, nullable: true }
+        quantity: { type: number, nullable: true }
+        price: { type: number, nullable: true }
+        grossAmount: { type: number }
+        feeAmount: { type: number, nullable: true }
+        taxAmount: { type: number, nullable: true }
+        netAmount: { type: number }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        fxRate: { type: number, nullable: true }
+        counterCurrency: { type: string, pattern: '^[A-Z]{3}$', nullable: true }
+        notes: { type: string, maxLength: 255, nullable: true }
+        status: { type: string, enum: [COMPLETED, CORRECTED] }
+        correctionOfTransactionId: { type: string, format: uuid, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    TransactionCreate:
+      type: object
+      required: [type, tradeDate, grossAmount, currency]
+      properties:
+        instrumentId: { type: string, format: uuid, nullable: true }
+        type: { $ref: '#/components/schemas/TransactionType' }
+        tradeDate: { type: string, format: date-time }
+        settlementDate: { type: string, format: date-time, nullable: true }
+        quantity: { type: number, nullable: true }
+        price: { type: number, nullable: true }
+        grossAmount: { type: number }
+        feeAmount: { type: number, nullable: true }
+        taxAmount: { type: number, nullable: true }
+        currency: { type: string, pattern: '^[A-Za-z]{3}$' }
+        fxRate: { type: number, nullable: true }
+        counterCurrency: { type: string, pattern: '^[A-Za-z]{3}$', nullable: true }
+        notes: { type: string, maxLength: 255, nullable: true }
+        correctionOfTransactionId: { type: string, format: uuid, nullable: true }
+    TransactionCorrect:
+      type: object
+      required: [replacementType, replacementTradeDate, replacementGrossAmount, replacementCurrency]
+      properties:
+        replacementInstrumentId: { type: string, format: uuid, nullable: true }
+        replacementType: { $ref: '#/components/schemas/TransactionType' }
+        replacementTradeDate: { type: string, format: date-time }
+        replacementSettlementDate: { type: string, format: date-time, nullable: true }
+        replacementQuantity: { type: number, nullable: true }
+        replacementPrice: { type: number, nullable: true }
+        replacementGrossAmount: { type: number }
+        replacementFeeAmount: { type: number, nullable: true }
+        replacementTaxAmount: { type: number, nullable: true }
+        replacementCurrency: { type: string, pattern: '^[A-Za-z]{3}$' }
+        replacementFxRate: { type: number, nullable: true }
+        replacementCounterCurrency: { type: string, pattern: '^[A-Za-z]{3}$', nullable: true }
+        replacementNotes: { type: string, maxLength: 255, nullable: true }
     AssetClass:
       type: string
       enum: [STOCK, ETF, MUTUAL_FUND, BOND, REIT, CRYPTO, CASH, OTHER]

@@ -6,13 +6,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from '@mui/material';
 
 import { theme } from '../theme';
-import { ApiError, portfolioApi, instrumentApi, accountApi, positionApi } from '../api';
+import { ApiError, portfolioApi, instrumentApi, accountApi, positionApi, transactionApi } from '../api';
 import { ErrorAlert, EmptyState, ConfirmDialog, Layout } from '../components';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { PortfolioListPage } from '../features/portfolios/PortfolioListPage';
 import { PortfolioDetailPage } from '../features/portfolios/PortfolioDetailPage';
 import { InstrumentListPage } from '../features/instruments/InstrumentListPage';
-import type { Portfolio, Instrument, Account, Position } from '../types';
+import type { Portfolio, Instrument, Account, Position, Transaction } from '../types';
 
 function createTestQueryClient() {
   return new QueryClient({
@@ -168,6 +168,27 @@ describe('Feature Pages', () => {
     },
   ];
 
+  const mockTransactions: Transaction[] = [
+    {
+      id: 'tx-1',
+      accountId: 'acc-1',
+      instrumentId: 'inst-1',
+      instrumentName: 'Apple Inc',
+      instrumentTicker: 'AAPL',
+      type: 'BUY',
+      tradeDate: '2026-08-20T10:00:00Z',
+      quantity: 50,
+      price: 150,
+      grossAmount: 7500,
+      feeAmount: 5,
+      netAmount: 7505,
+      currency: 'USD',
+      status: 'COMPLETED',
+      createdAt: '2026-08-20T10:00:00Z',
+      updatedAt: '2026-08-20T10:00:00Z',
+    },
+  ];
+
   beforeEach(() => {
     vi.spyOn(portfolioApi, 'list').mockResolvedValue(mockPortfolios);
     vi.spyOn(portfolioApi, 'get').mockResolvedValue(mockPortfolios[0]);
@@ -175,6 +196,8 @@ describe('Feature Pages', () => {
     vi.spyOn(accountApi, 'list').mockResolvedValue(mockAccounts);
     vi.spyOn(positionApi, 'list').mockResolvedValue(mockPositions);
     vi.spyOn(positionApi, 'listPortfolio').mockResolvedValue(mockPositions);
+    vi.spyOn(transactionApi, 'list').mockResolvedValue(mockTransactions);
+    vi.spyOn(transactionApi, 'listPortfolio').mockResolvedValue(mockTransactions);
   });
 
   it('renders DashboardPage with active portfolios and metrics', async () => {
