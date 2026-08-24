@@ -395,7 +395,20 @@ Phase 0.5 decisions explicitly agreed:
 
 ### Phase 1 — Portfolio & Account / Core Domain
 
-Implement portfolio/account persistence and APIs, base currency, per-account cash model, validation, tests and initial React shell. Do not begin until Phase 0.5 design is accepted.
+**Status: Completed and merged.**
+
+Tracking: Issue #21, PR #22. Implemented portfolio/account/instrument domain, value objects, PostgreSQL Flyway V2 migrations, RFC 9457 problem APIs, Spring Security rules, and Testcontainers integration tests.
+
+### Phase 1.5 — React Frontend Foundation
+
+**Status: Completed and tested.**
+
+Tracking: Issue #23, branch `phase-1.5-frontend-foundation`. Deliverables:
+- Modular feature architecture (`src/features/portfolios`, `src/features/accounts`, `src/features/instruments`, `src/features/dashboard`, `src/components`, `src/theme`, `src/api`, `src/forms`, `src/routing`)
+- React Hook Form + Zod validation matching OpenAPI schemas
+- Material UI responsive design system and financial dashboard theme
+- Portfolio, account, and instrument management flows with RFC 9457 error alerts, skeleton loaders, empty states, and confirm dialogs
+- Vitest and React Testing Library test suite (22 unit, client, and UI tests passing)
 
 ### Phase 2 — Investment & Transaction Engine
 
@@ -447,3 +460,8 @@ Before changing the repository:
 - Phase 0 completed and merged as PR #2.
 - Phase 0.5 decisions agreed: ownership model, immutable ledger, transfer/cost-basis preservation, missing-data warnings/manual overrides.
 - Phase 0.5 architecture documentation, ADRs, workflows and OpenAPI design added on `phase-0.5-architecture`.
+
+### 2026-08-22 / 2026-08-24
+
+- Phase 1 core domain merged in PR #22 (Flyway autoconfig, value objects, domain services, REST endpoints, and integration tests).
+- Phase 1.5 React frontend foundation implemented (Issue #23) with modular domain feature layout, Material UI theme, React Hook Form + Zod validation, TanStack Query integration, RFC 9457 error handling, and Vitest testing suite.
