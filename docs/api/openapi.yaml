@@ -125,6 +125,85 @@ paths:
       responses:
         '204': { description: Archived }
         '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/accounts/{accountId}/positions:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+      - { $ref: '#/components/parameters/AccountId' }
+    get:
+      operationId: listPositions
+      responses:
+        '200':
+          description: Account active positions
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Position' }
+        '404': { $ref: '#/components/responses/Problem' }
+    post:
+      operationId: createPosition
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PositionCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Position' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/accounts/{accountId}/positions/{positionId}:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+      - { $ref: '#/components/parameters/AccountId' }
+      - { $ref: '#/components/parameters/PositionId' }
+    get:
+      operationId: getPosition
+      responses:
+        '200':
+          description: Position details
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Position' }
+        '404': { $ref: '#/components/responses/Problem' }
+    put:
+      operationId: updatePosition
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PositionUpdate' }
+      responses:
+        '200':
+          description: Updated position
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Position' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+    delete:
+      operationId: archivePosition
+      responses:
+        '204': { description: Archived }
+        '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/positions:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+    get:
+      operationId: listPortfolioPositions
+      responses:
+        '200':
+          description: Portfolio active positions
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Position' }
+        '404': { $ref: '#/components/responses/Problem' }
   /instruments:
     get:
       operationId: listInstruments
@@ -178,6 +257,11 @@ components:
     InstrumentId:
       in: path
       name: instrumentId
+      required: true
+      schema: { type: string, format: uuid }
+    PositionId:
+      in: path
+      name: positionId
       required: true
       schema: { type: string, format: uuid }
   responses:
@@ -255,6 +339,38 @@ components:
         isin: { type: string, maxLength: 12, nullable: true }
         exchange: { type: string, maxLength: 80, nullable: true }
         currency: { type: string, pattern: '^[A-Za-z]{3}$' }
+    Position:
+      type: object
+      required: [id, accountId, instrumentId, instrumentName, assetClass, quantity, status, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        accountId: { type: string, format: uuid }
+        instrumentId: { type: string, format: uuid }
+        instrumentName: { type: string }
+        instrumentTicker: { type: string, nullable: true }
+        instrumentIsin: { type: string, nullable: true }
+        assetClass: { $ref: '#/components/schemas/AssetClass' }
+        quantity: { type: number, minimum: 0 }
+        costBasisAmount: { type: number, minimum: 0, nullable: true }
+        costBasisCurrency: { type: string, pattern: '^[A-Z]{3}$', nullable: true }
+        status: { type: string, enum: [ACTIVE, ARCHIVED] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    PositionCreate:
+      type: object
+      required: [instrumentId, quantity]
+      properties:
+        instrumentId: { type: string, format: uuid }
+        quantity: { type: number, minimum: 0 }
+        costBasisAmount: { type: number, minimum: 0, nullable: true }
+        costBasisCurrency: { type: string, pattern: '^[A-Za-z]{3}$', nullable: true }
+    PositionUpdate:
+      type: object
+      required: [quantity]
+      properties:
+        quantity: { type: number, minimum: 0 }
+        costBasisAmount: { type: number, minimum: 0, nullable: true }
+        costBasisCurrency: { type: string, pattern: '^[A-Za-z]{3}$', nullable: true }
     AssetClass:
       type: string
       enum: [STOCK, ETF, MUTUAL_FUND, BOND, REIT, CRYPTO, CASH, OTHER]

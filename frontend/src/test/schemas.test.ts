@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { portfolioSchema, accountSchema, instrumentSchema } from '../forms/schemas';
+import { portfolioSchema, accountSchema, instrumentSchema, positionSchema } from '../forms/schemas';
 
 describe('portfolioSchema', () => {
   it('validates a correct portfolio input and normalizes currency', () => {
@@ -194,6 +194,41 @@ describe('instrumentSchema', () => {
         name: 'a'.repeat(161),
         assetClass: 'STOCK',
         currency: 'USD',
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe('positionSchema', () => {
+  it('validates valid position inputs', () => {
+    const result = positionSchema.safeParse({
+      instrumentId: 'inst-123',
+      quantity: 50.5,
+      costBasisAmount: 1500,
+      costBasisCurrency: 'usd',
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.instrumentId).toBe('inst-123');
+      expect(result.data.quantity).toBe(50.5);
+      expect(result.data.costBasisAmount).toBe(1500);
+      expect(result.data.costBasisCurrency).toBe('USD');
+    }
+  });
+
+  it('rejects negative quantity or missing instrument', () => {
+    expect(
+      positionSchema.safeParse({
+        instrumentId: '',
+        quantity: 10,
+      }).success,
+    ).toBe(false);
+
+    expect(
+      positionSchema.safeParse({
+        instrumentId: 'inst-123',
+        quantity: -1,
       }).success,
     ).toBe(false);
   });

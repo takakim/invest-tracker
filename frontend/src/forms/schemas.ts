@@ -82,3 +82,28 @@ export const instrumentSchema = z.object({
 });
 
 export type InstrumentFormData = z.input<typeof instrumentSchema>;
+
+export const positionSchema = z.object({
+  instrumentId: z.string().trim().min(1, 'Please select an instrument'),
+  quantity: z
+    .coerce
+    .number({ message: 'Quantity must be a number' })
+    .min(0, 'Quantity must be non-negative'),
+  costBasisAmount: z
+    .union([
+      z.coerce.number().min(0, 'Cost basis amount must be non-negative'),
+      z.literal(''),
+      z.undefined(),
+      z.null(),
+    ])
+    .optional()
+    .transform((val) => (val === '' || val === null || val === undefined ? undefined : Number(val))),
+  costBasisCurrency: z
+    .string()
+    .trim()
+    .optional()
+    .or(z.literal(''))
+    .transform((val) => (val && val.trim() ? val.trim().toUpperCase() : undefined)),
+});
+
+export type PositionFormData = z.input<typeof positionSchema>;
