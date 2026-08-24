@@ -424,21 +424,48 @@ Tracking: Issue #24, branch `phase-2-investments`. Deliverables:
 - Frontend position holdings UI (`src/features/positions/`): `PositionTable`, `PositionFormModal`, `usePositions` query/mutation hooks, and Zod `positionSchema` validation.
 - Unit and integration tests (22 Spring Boot tests with Testcontainers PostgreSQL and 24 Vitest frontend tests passing with 100% line coverage and >=90% branch coverage).
 
-### Phase 3 — CSV Import & Position Engine
+### Phase 3 — Transaction Engine
 
-Implement generic/broker CSV import adapters, preview/validation/conflict resolution, idempotency, position engine, cost basis and holdings UI. Broker samples must be provided before format-specific assumptions.
+**Status: Completed and merged.**
 
-### Phase 4 — Performance, Market Data & Currency
+Tracking: Issue #25, PR #37. Deliverables:
+- Aggregate root entity `Transaction` with 10 financial transaction types (`BUY`, `SELL`, `DIVIDEND`, `FEE`, `DEPOSIT`, `WITHDRAWAL`, `INTEREST`, `STOCK_SPLIT`, `REVERSE_STOCK_SPLIT`, `TRANSFER`).
+- Flyway migration `V4__transactions.sql` with check constraints and index optimizations.
+- Immutable ledger with audit trail correction flow.
+- Position auto-recalculation upon transaction persistence and corrections.
+- REST endpoints `/api/v1/portfolios/{pId}/accounts/{aId}/transactions` with OpenAPI 3.1.1 synchronization.
+- Frontend transaction ledger table, recording modal, and correction modal with React Hook Form + Zod.
 
-Implement FIFO/LIFO/Average Cost, XIRR/TWR/MWR, market/FX providers, historical valuation, warnings/overrides and performance UI.
+### Phase 4 — CSV Import Engine
 
-### Phase 5 — Reporting, Dashboard & Benchmarking
+**Status: Completed and merged.**
 
-Implement dashboard, allocation/dividend/fee/cash-flow reporting, exports and S&P 500/FTSE 100/MSCI World benchmarking.
+Tracking: Issue #26, PR #38. Deliverables:
+- Pluggable `BrokerCsvParser` strategy interface and `FreetradeCsvParser` with RFC 4180 parsing for all Freetrade activity feed row types.
+- SHA-256 fingerprint generation for idempotent import deduplication.
+- Domain entities `ImportBatch` and `ImportRecord` with Flyway migration `V5__csv_import.sql`.
+- REST endpoints `/api/v1/portfolios/{pId}/accounts/{aId}/imports` (preview, execute, list) with RFC 9457 Problem Details.
+- Frontend `CsvImportModal` with drag-and-drop, preview feedback, and TanStack Query integration.
+- 40 tests passing with >=90% branch/line coverage and 0 security vulnerabilities.
 
-### Phase 6 — Production Readiness & Deployment
+### Phase 5 — Position Engine
 
-Decide and implement deployment target, secrets/configuration, backups/recovery, observability, production migrations, CD gates, release strategy and disaster recovery.
+**Status: Active.**
+
+Tracking: Issue #27. Goals:
+- Derive reproducible positions from the transaction ledger source of truth.
+- Cost basis calculation strategies (FIFO, LIFO, Weighted Average / Average Cost).
+- Corporate action handling (stock splits, reverse stock splits) and cost basis adjustment.
+- Realized gain/loss tracking and unrealized valuation basis.
+- Deterministic recalculation and position verification tests.
+
+### Phase 6 — Performance Engine
+
+Implement XIRR, TWR, MWR, annualized returns, benchmark comparisons, and performance analytics.
+
+### Phase 7 — Market Data & Currency
+
+Implement market data providers (historical/current quotes, FX rates, missing data handling, manual overrides).
 
 ## 16. Future LLM instructions
 
@@ -446,16 +473,17 @@ Before changing the repository:
 
 1. Read this file completely.
 2. Inspect current GitHub branch/issue/PR state.
-3. Identify the active phase and avoid implementing later-phase functionality prematurely.
-4. Ask the user when a material choice is ambiguous.
-5. Verify current stable dependency versions and known vulnerabilities before adding/updating dependencies.
-6. Preserve 90% line and branch coverage.
-7. Add/update tests with production changes.
-8. Keep Flyway migrations immutable after application.
-9. Update OpenAPI and architecture documentation when contracts change.
-10. Update this context whenever a material decision or phase status changes.
-11. Do not silently introduce authentication, paid providers, cloud infrastructure or other major decisions.
-12. Before closing a phase, verify its acceptance criteria and CI/security/coverage gates.
+3. Always branch from fresh `main` (`git checkout main && git pull origin main`) before starting a task.
+4. Identify the active phase and avoid implementing later-phase functionality prematurely.
+5. Ask the user when a material choice is ambiguous.
+6. Verify current stable dependency versions and known vulnerabilities before adding/updating dependencies.
+7. Preserve 90% line and branch coverage.
+8. Add/update tests with production changes.
+9. Keep Flyway migrations immutable after application.
+10. Update OpenAPI and architecture documentation when contracts change.
+11. Update this context whenever a material decision or phase status changes.
+12. Do not silently introduce authentication, paid providers, cloud infrastructure or other major decisions.
+13. Before closing a phase, verify its acceptance criteria and CI/security/coverage gates.
 
 ## 17. Change log
 
@@ -476,4 +504,5 @@ Before changing the repository:
 - Phase 1 core domain merged in PR #22 (Flyway autoconfig, value objects, domain services, REST endpoints, and integration tests).
 - Phase 1.5 React frontend foundation implemented and merged in PR #35 (Issue #23) with modular domain feature layout, Material UI theme, React Hook Form + Zod validation, TanStack Query integration, RFC 9457 error handling, and Vitest testing suite.
 - Phase 2 Investment Holdings & Position Engine implemented (Issue #24) on branch `phase-2-investments` with Flyway migration `V3__investments.sql`, domain value objects, REST APIs, OpenAPI contract update, React position holdings UI, and 100% passing test suites.
-- Phase 3 Transaction Engine implemented (Issue #25) on branch `phase-3-transactions` with Flyway migration `V4__transactions.sql`, aggregate entity & rules for 10 transaction types, audit correction flow, position auto-recalculation, REST endpoints, OpenAPI update, frontend transaction ledger UI, and 100% passing test suites with 100% line / branch coverage.
+- Phase 3 Transaction Engine implemented (Issue #25) and merged in PR #37 with Flyway migration `V4__transactions.sql`, aggregate entity & rules for 10 transaction types, audit correction flow, position auto-recalculation, REST endpoints, OpenAPI update, frontend transaction ledger UI, and 100% passing test suites.
+- Phase 4 CSV Import Engine implemented (Issue #26) and merged in PR #38 with Flyway migration `V5__csv_import.sql`, `FreetradeCsvParser`, `CsvImportService`, idempotency deduplication, REST endpoints, frontend `CsvImportModal`, and full test coverage.

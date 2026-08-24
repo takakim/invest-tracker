@@ -71,18 +71,19 @@ invest-tracker/
 
 ## 3. Strict Development Rules for AI Agents
 
-1. **Check Canonical Context First**: Always inspect `PROJECT_CONTEXT.md` to understand active phase scope. Do not prematurely implement future phase functionality (e.g., transaction engine in Phase 1, CSV import in Phase 2).
-2. **Immutability of Flyway Migrations**: Applied Flyway migration scripts in `src/main/resources/db/migration` must **NEVER** be modified. Always create a new versioned migration script (e.g. `V3__description.sql`) for schema additions.
-3. **Database Schema Enforcement**: Hibernate is configured with `ddl-auto: validate`. Schema evolution is strictly owned by Flyway.
-4. **API & Contract Synchronization**:
+1. **Always Branch from Fresh `main`**: Before starting any new phase, feature, or task, always checkout `main` and pull the latest changes (`git checkout main && git pull origin main`) before creating a feature branch (`git checkout -b <branch-name>`). Never start work from a stale or unmerged feature branch to avoid branch divergence and merge conflicts.
+2. **Check Canonical Context First**: Always inspect `PROJECT_CONTEXT.md` to understand active phase scope. Do not prematurely implement future phase functionality (e.g., transaction engine in Phase 1, CSV import in Phase 2).
+3. **Immutability of Flyway Migrations**: Applied Flyway migration scripts in `src/main/resources/db/migration` must **NEVER** be modified. Always create a new versioned migration script (e.g. `V6__description.sql`) for schema additions.
+4. **Database Schema Enforcement**: Hibernate is configured with `ddl-auto: validate`. Schema evolution is strictly owned by Flyway.
+5. **API & Contract Synchronization**:
    - Endpoints must follow `/api/v1/...`.
    - Responses must use DTOs; never expose domain persistence entities directly.
    - Errors must return RFC 9457 `application/problem+json`.
    - Update `docs/api/openapi.yaml` whenever API contracts change.
-5. **Precision & Financial Rules**:
+6. **Precision & Financial Rules**:
    - Pass monetary amounts and fractional share quantities using `BigDecimal` and explicit domain value objects.
    - Use archive/deactivation status (`status = ARCHIVED`) instead of hard database deletion for financial entities.
-6. **No Superficial Patches**:
+7. **No Superficial Patches**:
    - Identify the root cause when tests fail.
    - Never suppress exceptions with empty fallbacks, comment out assertions, or delete failing tests.
 
