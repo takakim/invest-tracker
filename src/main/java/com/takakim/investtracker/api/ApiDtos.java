@@ -43,4 +43,21 @@ public final class ApiDtos {
     public record InstrumentResponse(
         UUID id, String name, AssetClass assetClass, String ticker, String isin,
         String exchange, String currency, Instant createdAt, Instant updatedAt) { }
+
+    public record PositionRequest(
+        @NotNull UUID instrumentId,
+        @NotNull @jakarta.validation.constraints.DecimalMin("0.0") java.math.BigDecimal quantity,
+        @jakarta.validation.constraints.DecimalMin("0.0") java.math.BigDecimal costBasisAmount,
+        @Pattern(regexp = "[A-Za-z]{3}") String costBasisCurrency) { }
+
+    public record PositionUpdateRequest(
+        @NotNull @jakarta.validation.constraints.DecimalMin("0.0") java.math.BigDecimal quantity,
+        @jakarta.validation.constraints.DecimalMin("0.0") java.math.BigDecimal costBasisAmount,
+        @Pattern(regexp = "[A-Za-z]{3}") String costBasisCurrency) { }
+
+    public record PositionResponse(
+        UUID id, UUID accountId, UUID instrumentId, String instrumentName,
+        String instrumentTicker, String instrumentIsin, AssetClass assetClass,
+        java.math.BigDecimal quantity, java.math.BigDecimal costBasisAmount,
+        String costBasisCurrency, String status, Instant createdAt, Instant updatedAt) { }
 }

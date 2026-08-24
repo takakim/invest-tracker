@@ -68,6 +68,35 @@ export interface InstrumentCreateInput {
   currency: string;
 }
 
+export interface Position {
+  id: string;
+  accountId: string;
+  instrumentId: string;
+  instrumentName: string;
+  instrumentTicker?: string | null;
+  instrumentIsin?: string | null;
+  assetClass: AssetClass;
+  quantity: number;
+  costBasisAmount?: number | null;
+  costBasisCurrency?: string | null;
+  status: EntityStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PositionCreateInput {
+  instrumentId: string;
+  quantity: number;
+  costBasisAmount?: number | null;
+  costBasisCurrency?: string | null;
+}
+
+export interface PositionUpdateInput {
+  quantity: number;
+  costBasisAmount?: number | null;
+  costBasisCurrency?: string | null;
+}
+
 export interface ProblemDetail {
   type?: string;
   title: string;

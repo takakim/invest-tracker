@@ -410,9 +410,19 @@ Tracking: Issue #23, branch `phase-1.5-frontend-foundation`. Deliverables:
 - Portfolio, account, and instrument management flows with RFC 9457 error alerts, skeleton loaders, empty states, and confirm dialogs
 - Vitest and React Testing Library test suite (22 unit, client, and UI tests passing)
 
-### Phase 2 — Investment & Transaction Engine
+### Phase 2 — Investment Holdings & Position Engine
 
-Implement instrument catalogue, transaction ledger, fees/taxes, multi-currency, fractional quantities, manual transaction UI and financial correctness tests.
+**Status: Completed and tested.**
+
+Tracking: Issue #24, branch `phase-2-investments`. Deliverables:
+- Position/holding domain model (`Position`, `PositionStatus`) enforcing fractional decimal quantity precision (`BigDecimal`), account/instrument ownership invariants, non-negative quantities, and cost basis value objects (`Money`).
+- Database schema evolution managed via Flyway migration `V3__investments.sql` creating table `positions` with foreign key references to `accounts` and `instruments`, unique constraints, and indexes.
+- JPA persistence with `PositionRepository` supporting eager fetch graphs (`@EntityGraph`) for account and instrument.
+- `PositionService` business logic layer enforcing portfolio/account validation, duplicate prevention, and position lifecycle management.
+- REST endpoints `/api/v1/portfolios/{portfolioId}/accounts/{accountId}/positions` and `/api/v1/portfolios/{portfolioId}/positions` with RFC 9457 Problem Details error handling.
+- OpenAPI contract updated (`docs/api/openapi.yaml`).
+- Frontend position holdings UI (`src/features/positions/`): `PositionTable`, `PositionFormModal`, `usePositions` query/mutation hooks, and Zod `positionSchema` validation.
+- Unit and integration tests (22 Spring Boot tests with Testcontainers PostgreSQL and 24 Vitest frontend tests passing with 100% line coverage and >=90% branch coverage).
 
 ### Phase 3 — CSV Import & Position Engine
 
@@ -464,4 +474,5 @@ Before changing the repository:
 ### 2026-08-22 / 2026-08-24
 
 - Phase 1 core domain merged in PR #22 (Flyway autoconfig, value objects, domain services, REST endpoints, and integration tests).
-- Phase 1.5 React frontend foundation implemented (Issue #23) with modular domain feature layout, Material UI theme, React Hook Form + Zod validation, TanStack Query integration, RFC 9457 error handling, and Vitest testing suite.
+- Phase 1.5 React frontend foundation implemented and merged in PR #35 (Issue #23) with modular domain feature layout, Material UI theme, React Hook Form + Zod validation, TanStack Query integration, RFC 9457 error handling, and Vitest testing suite.
+- Phase 2 Investment Holdings & Position Engine implemented (Issue #24) on branch `phase-2-investments` with Flyway migration `V3__investments.sql`, domain value objects, REST APIs, OpenAPI contract update, React position holdings UI, and 100% passing test suites.

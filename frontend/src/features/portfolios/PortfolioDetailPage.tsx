@@ -37,6 +37,7 @@ import {
 } from '../accounts/useAccounts';
 import { PortfolioFormModal } from './PortfolioFormModal';
 import { AccountFormModal } from '../accounts/AccountFormModal';
+import { PositionTable } from '../positions/PositionTable';
 import { ConfirmDialog, EmptyState, ErrorAlert, LoadingState } from '../../components';
 import type { Account, AccountCreateInput, PortfolioCreateInput } from '../../types';
 
@@ -290,60 +291,70 @@ export function PortfolioDetailPage() {
             icon={<AccountBalanceOutlinedIcon sx={{ fontSize: 52, opacity: 0.7 }} />}
           />
         ) : (
-          <TableContainer component={Paper} sx={{ borderRadius: 2 }}>
-            <Table aria-label="accounts table">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Account Name</TableCell>
-                  <TableCell>Broker / Custodian</TableCell>
-                  <TableCell>Currency</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell align="right">Actions</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {accounts.map((account) => (
-                  <TableRow key={account.id} hover>
-                    <TableCell sx={{ fontWeight: 600 }}>{account.name}</TableCell>
-                    <TableCell>{account.brokerName}</TableCell>
-                    <TableCell>
-                      <Chip label={account.accountCurrency} size="small" variant="outlined" />
-                    </TableCell>
-                    <TableCell>
+          <Stack spacing={3}>
+            {accounts.map((account) => (
+              <Paper key={account.id} sx={{ p: 3, borderRadius: 3 }}>
+                <Stack
+                  direction={{ xs: 'column', sm: 'row' }}
+                  sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, gap: 2, mb: 2 }}
+                >
+                  <Box>
+                    <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 0.5 }}>
+                      <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                        {account.name}
+                      </Typography>
+                      <Chip label={account.brokerName} size="small" variant="outlined" />
+                      <Chip
+                        label={account.accountCurrency}
+                        size="small"
+                        color="primary"
+                        variant="outlined"
+                      />
                       <Chip
                         label={account.status}
                         size="small"
                         color={account.status === 'ACTIVE' ? 'success' : 'default'}
                       />
-                    </TableCell>
-                    <TableCell align="right">
-                      <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}>
-                        <Tooltip title="Edit account">
-                          <IconButton
-                            size="small"
-                            onClick={() => handleOpenEditAccount(account)}
-                            aria-label={`edit ${account.name}`}
-                          >
-                            <EditOutlinedIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Archive account">
-                          <IconButton
-                            size="small"
-                            color="error"
-                            onClick={() => setArchiveAccountTarget(account)}
-                            aria-label={`archive ${account.name}`}
-                          >
-                            <ArchiveOutlinedIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      </Stack>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
+                    </Stack>
+                    <Typography variant="caption" color="text.secondary">
+                      ID: {account.id}
+                    </Typography>
+                  </Box>
+
+                  <Stack direction="row" spacing={0.5}>
+                    <Tooltip title="Edit account">
+                      <IconButton
+                        size="small"
+                        onClick={() => handleOpenEditAccount(account)}
+                        aria-label={`edit ${account.name}`}
+                      >
+                        <EditOutlinedIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Archive account">
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={() => setArchiveAccountTarget(account)}
+                        aria-label={`archive ${account.name}`}
+                      >
+                        <ArchiveOutlinedIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </Stack>
+                </Stack>
+
+                <Divider sx={{ mb: 2 }} />
+
+                <PositionTable
+                  portfolioId={portfolio.id}
+                  accountId={account.id}
+                  defaultCurrency={account.accountCurrency || portfolio.baseCurrency}
+                  isReadOnly={portfolio.status !== 'ACTIVE' || account.status !== 'ACTIVE'}
+                />
+              </Paper>
+            ))}
+          </Stack>
         )}
       </Box>
 

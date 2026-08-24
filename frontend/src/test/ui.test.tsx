@@ -6,13 +6,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from '@mui/material';
 
 import { theme } from '../theme';
-import { ApiError, portfolioApi, instrumentApi, accountApi } from '../api';
+import { ApiError, portfolioApi, instrumentApi, accountApi, positionApi } from '../api';
 import { ErrorAlert, EmptyState, ConfirmDialog, Layout } from '../components';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { PortfolioListPage } from '../features/portfolios/PortfolioListPage';
 import { PortfolioDetailPage } from '../features/portfolios/PortfolioDetailPage';
 import { InstrumentListPage } from '../features/instruments/InstrumentListPage';
-import type { Portfolio, Instrument, Account } from '../types';
+import type { Portfolio, Instrument, Account, Position } from '../types';
 
 function createTestQueryClient() {
   return new QueryClient({
@@ -150,11 +150,31 @@ describe('Feature Pages', () => {
     },
   ];
 
+  const mockPositions: Position[] = [
+    {
+      id: 'pos-1',
+      accountId: 'acc-1',
+      instrumentId: 'inst-1',
+      instrumentName: 'Apple Inc',
+      instrumentTicker: 'AAPL',
+      instrumentIsin: 'US0378331005',
+      assetClass: 'STOCK',
+      quantity: 50,
+      costBasisAmount: 7500,
+      costBasisCurrency: 'USD',
+      status: 'ACTIVE',
+      createdAt: '2026-08-20T10:00:00Z',
+      updatedAt: '2026-08-20T10:00:00Z',
+    },
+  ];
+
   beforeEach(() => {
     vi.spyOn(portfolioApi, 'list').mockResolvedValue(mockPortfolios);
     vi.spyOn(portfolioApi, 'get').mockResolvedValue(mockPortfolios[0]);
     vi.spyOn(instrumentApi, 'list').mockResolvedValue(mockInstruments);
     vi.spyOn(accountApi, 'list').mockResolvedValue(mockAccounts);
+    vi.spyOn(positionApi, 'list').mockResolvedValue(mockPositions);
+    vi.spyOn(positionApi, 'listPortfolio').mockResolvedValue(mockPositions);
   });
 
   it('renders DashboardPage with active portfolios and metrics', async () => {
