@@ -192,10 +192,31 @@ class TransactionIntegrationTests {
                         .content(sellExcessJson))
                 .andExpect(status().isCreated());
 
-        // 14. List all transactions for account without type filter
+        // 14. Record and correct a DIVIDEND non-trade transaction
+        String divJson = String.format("""
+            {"instrumentId":"%s","type":"DIVIDEND","tradeDate":"%s","grossAmount":50.0,"currency":"USD"}
+            """, instrumentId, Instant.now().toString());
+
+        String divResp = mockMvc.perform(post("/api/v1/portfolios/" + portfolioId + "/accounts/" + accountId + "/transactions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(divJson))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String divTxId = JsonPath.read(divResp, "$.id");
+
+        String divCorrectionJson = String.format("""
+            {"replacementInstrumentId":"%s","replacementType":"DIVIDEND","replacementTradeDate":"%s","replacementGrossAmount":60.0,"replacementCurrency":"USD"}
+            """, instrumentId, Instant.now().toString());
+
+        mockMvc.perform(post("/api/v1/portfolios/" + portfolioId + "/accounts/" + accountId + "/transactions/" + divTxId + "/correct")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(divCorrectionJson))
+                .andExpect(status().isCreated());
+
+        // 15. List all transactions for account
         mockMvc.perform(get("/api/v1/portfolios/" + portfolioId + "/accounts/" + accountId + "/transactions"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(7));
+                .andExpect(jsonPath("$.length()").value(9));
     }
 
     @Test

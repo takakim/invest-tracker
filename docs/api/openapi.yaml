@@ -282,6 +282,55 @@ paths:
                 type: array
                 items: { $ref: '#/components/schemas/Transaction' }
         '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/accounts/{accountId}/imports/preview:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+      - { $ref: '#/components/parameters/AccountId' }
+    post:
+      operationId: previewCsvImport
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CsvImportRequest' }
+      responses:
+        '200':
+          description: CSV import preview result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CsvImportPreview' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/accounts/{accountId}/imports:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+      - { $ref: '#/components/parameters/AccountId' }
+    get:
+      operationId: listImportBatches
+      responses:
+        '200':
+          description: Import history batches
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ImportBatch' }
+        '404': { $ref: '#/components/responses/Problem' }
+    post:
+      operationId: executeCsvImport
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CsvImportRequest' }
+      responses:
+        '201':
+          description: CSV import batch executed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportBatch' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
   /instruments:
     get:
       operationId: listInstruments
@@ -518,6 +567,57 @@ components:
         replacementFxRate: { type: number, nullable: true }
         replacementCounterCurrency: { type: string, pattern: '^[A-Za-z]{3}$', nullable: true }
         replacementNotes: { type: string, maxLength: 255, nullable: true }
+    CsvImportRequest:
+      type: object
+      required: [fileName, csvContent]
+      properties:
+        fileName: { type: string }
+        csvContent: { type: string }
+    PreviewRow:
+      type: object
+      required: [rowNumber, isDuplicate, isIgnored]
+      properties:
+        rowNumber: { type: integer }
+        rawType: { type: string, nullable: true }
+        mappedType: { type: string, nullable: true }
+        instrumentTitle: { type: string, nullable: true }
+        ticker: { type: string, nullable: true }
+        isin: { type: string, nullable: true }
+        quantity: { type: number, nullable: true }
+        price: { type: number, nullable: true }
+        grossAmount: { type: number, nullable: true }
+        feeAmount: { type: number, nullable: true }
+        taxAmount: { type: number, nullable: true }
+        currency: { type: string, nullable: true }
+        isDuplicate: { type: boolean }
+        isIgnored: { type: boolean }
+        diagnosticMessage: { type: string, nullable: true }
+    CsvImportPreview:
+      type: object
+      required: [brokerName, fileName, totalRows, importableRows, duplicateRows, ignoredRows, rows]
+      properties:
+        brokerName: { type: string }
+        fileName: { type: string }
+        totalRows: { type: integer }
+        importableRows: { type: integer }
+        duplicateRows: { type: integer }
+        ignoredRows: { type: integer }
+        rows:
+          type: array
+          items: { $ref: '#/components/schemas/PreviewRow' }
+    ImportBatch:
+      type: object
+      required: [id, accountId, fileName, brokerType, status, totalRows, importedRows, skippedRows, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        accountId: { type: string, format: uuid }
+        fileName: { type: string }
+        brokerType: { type: string }
+        status: { type: string, enum: [PENDING, COMPLETED, FAILED] }
+        totalRows: { type: integer }
+        importedRows: { type: integer }
+        skippedRows: { type: integer }
+        createdAt: { type: string, format: date-time }
     AssetClass:
       type: string
       enum: [STOCK, ETF, MUTUAL_FUND, BOND, REIT, CRYPTO, CASH, OTHER]
