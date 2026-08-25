@@ -170,5 +170,33 @@ public final class ApiDtos {
         UUID portfolioId,
         int recalculatedPositionsCount,
         String message) { }
-}
 
+    public record AccountPerformanceSummaryResponse(
+        UUID accountId,
+        String accountName,
+        java.math.BigDecimal realizedGainLoss,
+        java.math.BigDecimal dividendIncome,
+        java.math.BigDecimal interestIncome,
+        java.math.BigDecimal fees,
+        java.math.BigDecimal taxes,
+        java.math.BigDecimal costBasis,
+        String currency) { }
+
+    public record PerformanceResultResponse(
+        UUID portfolioId,
+        Instant asOf,
+        String returnMethod,
+        java.math.BigDecimal twrReturn,
+        java.math.BigDecimal twrAnnualized,
+        java.math.BigDecimal mwrReturn,
+        java.math.BigDecimal totalRealizedGainLoss,
+        java.math.BigDecimal totalDividendIncome,
+        java.math.BigDecimal totalInterestIncome,
+        java.math.BigDecimal totalFees,
+        java.math.BigDecimal totalTaxes,
+        java.math.BigDecimal totalNetIncome,
+        java.math.BigDecimal totalCostBasis,
+        String currency,
+        String valuationBasis,
+        List<AccountPerformanceSummaryResponse> byAccount) { }
+}

@@ -469,7 +469,24 @@ Tracking: Issue #27, PR #39. Deliverables:
 
 ### Phase 6 — Performance Engine
 
-Implement XIRR, TWR, MWR, annualized returns, benchmark comparisons, and performance analytics.
+**Status: Completed and merged.**
+
+Tracking: Issue #28, branch `phase-6-performance-engine`.
+
+Key deliverables:
+- Domain performance records: `PerformancePeriod`, `AccountPerformanceSummary`, `PerformanceResult`.
+- `PerformanceEngine`:
+  - Time-Weighted Return (TWR) via sub-period chain-linking across external cash flow boundaries (deposits, withdrawals).
+  - Annualized TWR return calculation.
+  - Money-Weighted Return (MWR) calculation.
+  - Realized gains/losses aggregation from `PositionEngine` tax lot disposals.
+  - Income and cost aggregation (dividends, interest, fees, taxes) from ledger transactions.
+  - Valuation proxy explicit declaration (`valuationBasis = COST_BASIS`).
+  - RFC 9457 HTTP 501 Not Implemented handling for XIRR portfolios until Phase 7 introduces market data.
+- REST endpoint: `GET /api/v1/portfolios/{portfolioId}/performance` (`PerformanceController`).
+- OpenAPI contract updated (`docs/api/openapi.yaml`).
+- Frontend UI: `PerformanceSummaryCard` dashboard card with color-coded returns, return badge, realized gains, net income, and income/cost breakdown; wired into `PortfolioDetailPage`.
+- 91 backend tests (unit + Testcontainers PostgreSQL) and 27 frontend tests passing with >=90% branch/line coverage and 0 vulnerabilities.
 
 ### Phase 7 — Market Data & Currency
 
@@ -490,7 +507,7 @@ Before changing the repository:
 9. Keep Flyway migrations immutable after application.
 10. Update OpenAPI and architecture documentation when contracts change.
 11. Update this context whenever a material decision or phase status changes.
-12. Do not silently introduce authentication, paid providers, cloud infrastructure or other major decisions.
+12. Do not silently introduce authentication, paid providers, cloud infrastructure or major decisions.
 13. Before closing a phase, verify its acceptance criteria and CI/security/coverage gates.
 
 ## 17. Change log
@@ -507,7 +524,7 @@ Before changing the repository:
 - Phase 0.5 decisions agreed: ownership model, immutable ledger, transfer/cost-basis preservation, missing-data warnings/manual overrides.
 - Phase 0.5 architecture documentation, ADRs, workflows and OpenAPI design added on `phase-0.5-architecture`.
 
-### 2026-08-22 / 2026-08-24
+### 2026-08-22 / 2026-08-25
 
 - Phase 1 core domain merged in PR #22 (Flyway autoconfig, value objects, domain services, REST endpoints, and integration tests).
 - Phase 1.5 React frontend foundation implemented and merged in PR #35 (Issue #23) with modular domain feature layout, Material UI theme, React Hook Form + Zod validation, TanStack Query integration, RFC 9457 error handling, and Vitest testing suite.
@@ -515,3 +532,4 @@ Before changing the repository:
 - Phase 3 Transaction Engine implemented (Issue #25) and merged in PR #37 with Flyway migration `V4__transactions.sql`, aggregate entity & rules for 10 transaction types, audit correction flow, position auto-recalculation, REST endpoints, OpenAPI update, frontend transaction ledger UI, and 100% passing test suites.
 - Phase 4 CSV Import Engine implemented (Issue #26) and merged in PR #38 with Flyway migration `V5__csv_import.sql`, `FreetradeCsvParser`, `CsvImportService`, idempotency deduplication, REST endpoints, frontend `CsvImportModal`, and full test coverage.
 - Phase 5 Position Engine implemented (Issue #27) and merged in PR #39 with `PositionEngine`, FIFO / LIFO / Weighted Average cost basis strategies, tax lot tracking (`PositionLot`, `LotDisposal`), stock split adjustments, `GET /lots` & `POST /recalculate` endpoints, frontend `PositionLotsModal`, and 100% passing test suites.
+- Phase 6 Performance Engine implemented (Issue #28) on branch `phase-6-performance-engine` with `PerformanceEngine` (TWR chain-linking, MWR, annualized return, realized gain & income aggregation), `GET /portfolios/{id}/performance` endpoint, `PerformanceSummaryCard` UI component, updated OpenAPI contract, and 91 backend + 27 frontend tests passing with >=90% coverage and 0 vulnerabilities.
