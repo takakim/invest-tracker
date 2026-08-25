@@ -210,4 +210,62 @@ class PositionIntegrationTests {
                         .content(badInstrumentJson))
                 .andExpect(status().isNotFound());
     }
+
+    @Test
+    @DisplayName("Query position lots and recalculate portfolio positions")
+    void positionLotsAndRecalculateFlow() throws Exception {
+        // 1. Create Portfolio with FIFO
+        String pResp = mockMvc.perform(post("/api/v1/portfolios")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Lot Portfolio\",\"baseCurrency\":\"USD\",\"costBasisMethod\":\"FIFO\",\"returnMethod\":\"TWR\"}"))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String pId = JsonPath.read(pResp, "$.id");
+
+        // 2. Create Account
+        String aResp = mockMvc.perform(post("/api/v1/portfolios/" + pId + "/accounts")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Lot Account\",\"brokerName\":\"Broker\",\"accountCurrency\":\"USD\"}"))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String aId = JsonPath.read(aResp, "$.id");
+
+        // 3. Create Instrument
+        String iResp = mockMvc.perform(post("/api/v1/instruments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Microsoft\",\"assetClass\":\"STOCK\",\"ticker\":\"MSFT\",\"currency\":\"USD\"}"))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String instId = JsonPath.read(iResp, "$.id");
+
+        // 4. Record Buy Transaction
+        String buyJson = String.format("""
+            {"instrumentId":"%s","type":"BUY","tradeDate":"2026-01-01T10:00:00Z","quantity":10.0,"price":200.0,"grossAmount":2000.0,"currency":"USD"}
+            """, instId);
+        mockMvc.perform(post("/api/v1/portfolios/" + pId + "/accounts/" + aId + "/transactions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(buyJson))
+                .andExpect(status().isCreated());
+
+        // 5. Query Active Positions to get Position ID
+        String posResp = mockMvc.perform(get("/api/v1/portfolios/" + pId + "/accounts/" + aId + "/positions"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andReturn().getResponse().getContentAsString();
+        String posId = JsonPath.read(posResp, "$[0].id");
+
+        // 6. Query Lots Detail
+        mockMvc.perform(get("/api/v1/portfolios/" + pId + "/accounts/" + aId + "/positions/" + posId + "/lots"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.positionId").value(posId))
+                .andExpect(jsonPath("$.totalQuantity").value(10.0))
+                .andExpect(jsonPath("$.totalCostBasisAmount").value(2000.0))
+                .andExpect(jsonPath("$.openLots.length()").value(1));
+
+        // 7. Recalculate Portfolio Positions
+        mockMvc.perform(post("/api/v1/portfolios/" + pId + "/positions/recalculate"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.portfolioId").value(pId))
+                .andExpect(jsonPath("$.recalculatedPositionsCount").value(1));
+    }
 }

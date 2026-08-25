@@ -19,14 +19,18 @@ import AddIcon from '@mui/icons-material/Add';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import ArchiveOutlinedIcon from '@mui/icons-material/ArchiveOutlined';
 import ShowChartOutlinedIcon from '@mui/icons-material/ShowChartOutlined';
+import LayersOutlinedIcon from '@mui/icons-material/LayersOutlined';
+import RefreshIcon from '@mui/icons-material/Refresh';
 
 import {
   usePositionsList,
   useCreatePosition,
   useUpdatePosition,
   useArchivePosition,
+  useRecalculatePositions,
 } from './usePositions';
 import { PositionFormModal } from './PositionFormModal';
+import { PositionLotsModal } from './PositionLotsModal';
 import { ConfirmDialog, EmptyState, ErrorAlert, LoadingState } from '../../components';
 import type { Position, PositionCreateInput, PositionUpdateInput } from '../../types';
 import type { PositionFormData } from '../../forms/schemas';
@@ -54,10 +58,12 @@ export function PositionTable({
   const createMutation = useCreatePosition(portfolioId, accountId);
   const updateMutation = useUpdatePosition(portfolioId, accountId);
   const archiveMutation = useArchivePosition(portfolioId, accountId);
+  const recalculateMutation = useRecalculatePositions(portfolioId);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingPosition, setEditingPosition] = useState<Position | null>(null);
   const [archiveTarget, setArchiveTarget] = useState<Position | null>(null);
+  const [selectedLotsPosition, setSelectedLotsPosition] = useState<Position | null>(null);
 
   const handleOpenCreate = () => {
     setEditingPosition(null);
@@ -119,14 +125,25 @@ export function PositionTable({
           </Typography>
         </Box>
         {!isReadOnly && (
-          <Button
-            variant="contained"
-            size="small"
-            startIcon={<AddIcon />}
-            onClick={handleOpenCreate}
-          >
-            Add Holding
-          </Button>
+          <Stack direction="row" spacing={1}>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<RefreshIcon />}
+              onClick={() => recalculateMutation.mutate()}
+              disabled={recalculateMutation.isPending}
+            >
+              Recalculate
+            </Button>
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<AddIcon />}
+              onClick={handleOpenCreate}
+            >
+              Add Holding
+            </Button>
+          </Stack>
         )}
       </Stack>
 
@@ -152,7 +169,7 @@ export function PositionTable({
                 <TableCell>Ticker / ISIN</TableCell>
                 <TableCell align="right">Quantity</TableCell>
                 <TableCell align="right">Cost Basis</TableCell>
-                {!isReadOnly && <TableCell align="right">Actions</TableCell>}
+                <TableCell align="right">Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -189,31 +206,43 @@ export function PositionTable({
                       </Typography>
                     )}
                   </TableCell>
-                  {!isReadOnly && (
-                    <TableCell align="right">
-                      <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}>
-                        <Tooltip title="Edit position">
-                          <IconButton
-                            size="small"
-                            onClick={() => handleOpenEdit(pos)}
-                            aria-label={`edit position ${pos.instrumentName}`}
-                          >
-                            <EditOutlinedIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Archive position">
-                          <IconButton
-                            size="small"
-                            color="error"
-                            onClick={() => setArchiveTarget(pos)}
-                            aria-label={`archive position ${pos.instrumentName}`}
-                          >
-                            <ArchiveOutlinedIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      </Stack>
-                    </TableCell>
-                  )}
+                  <TableCell align="right">
+                    <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}>
+                      <Tooltip title="View tax lots">
+                        <IconButton
+                          size="small"
+                          color="primary"
+                          onClick={() => setSelectedLotsPosition(pos)}
+                          aria-label={`view tax lots for ${pos.instrumentName}`}
+                        >
+                          <LayersOutlinedIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      {!isReadOnly && (
+                        <>
+                          <Tooltip title="Edit position">
+                            <IconButton
+                              size="small"
+                              onClick={() => handleOpenEdit(pos)}
+                              aria-label={`edit position ${pos.instrumentName}`}
+                            >
+                              <EditOutlinedIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Archive position">
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => setArchiveTarget(pos)}
+                              aria-label={`archive position ${pos.instrumentName}`}
+                            >
+                              <ArchiveOutlinedIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </>
+                      )}
+                    </Stack>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -232,6 +261,15 @@ export function PositionTable({
         onSubmit={handleFormSubmit}
       />
 
+      {/* Tax Lots Detail Modal */}
+      <PositionLotsModal
+        open={Boolean(selectedLotsPosition)}
+        portfolioId={portfolioId}
+        accountId={accountId}
+        position={selectedLotsPosition}
+        onClose={() => setSelectedLotsPosition(null)}
+      />
+
       {/* Archive Confirm Modal */}
       <ConfirmDialog
         open={Boolean(archiveTarget)}
@@ -246,3 +284,4 @@ export function PositionTable({
     </Box>
   );
 }
+

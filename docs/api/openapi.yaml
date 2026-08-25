@@ -190,6 +190,20 @@ paths:
       responses:
         '204': { description: Archived }
         '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/accounts/{accountId}/positions/{positionId}/lots:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+      - { $ref: '#/components/parameters/AccountId' }
+      - { $ref: '#/components/parameters/PositionId' }
+    get:
+      operationId: getPositionLots
+      responses:
+        '200':
+          description: Position tax lots and cost basis details
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PositionLotsDetail' }
+        '404': { $ref: '#/components/responses/Problem' }
   /portfolios/{portfolioId}/positions:
     parameters:
       - { $ref: '#/components/parameters/PortfolioId' }
@@ -203,6 +217,18 @@ paths:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/Position' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/positions/recalculate:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+    post:
+      operationId: recalculatePortfolioPositions
+      responses:
+        '200':
+          description: Portfolio positions recalculation result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PositionRecalculateResponse' }
         '404': { $ref: '#/components/responses/Problem' }
   /portfolios/{portfolioId}/accounts/{accountId}/transactions:
     parameters:
@@ -503,6 +529,41 @@ components:
         quantity: { type: number, minimum: 0 }
         costBasisAmount: { type: number, minimum: 0, nullable: true }
         costBasisCurrency: { type: string, pattern: '^[A-Za-z]{3}$', nullable: true }
+    PositionLot:
+      type: object
+      required: [lotId, acquisitionDate, originalQuantity, remainingQuantity, unitCostAmount, totalCostAmount, currency]
+      properties:
+        lotId: { type: string, format: uuid }
+        transactionId: { type: string, format: uuid, nullable: true }
+        acquisitionDate: { type: string, format: date-time }
+        originalQuantity: { type: number, minimum: 0 }
+        remainingQuantity: { type: number, minimum: 0 }
+        unitCostAmount: { type: number }
+        totalCostAmount: { type: number }
+        currency: { type: string, pattern: '^[A-Za-z]{3}$' }
+    PositionLotsDetail:
+      type: object
+      required: [positionId, accountId, instrumentId, costBasisMethod, totalQuantity, totalCostBasisAmount, currency, averageUnitCostAmount, realizedGainLossAmount, openLots]
+      properties:
+        positionId: { type: string, format: uuid }
+        accountId: { type: string, format: uuid }
+        instrumentId: { type: string, format: uuid }
+        costBasisMethod: { type: string, enum: [FIFO, LIFO, AVERAGE_COST] }
+        totalQuantity: { type: number }
+        totalCostBasisAmount: { type: number }
+        currency: { type: string, pattern: '^[A-Za-z]{3}$' }
+        averageUnitCostAmount: { type: number }
+        realizedGainLossAmount: { type: number }
+        openLots:
+          type: array
+          items: { $ref: '#/components/schemas/PositionLot' }
+    PositionRecalculateResponse:
+      type: object
+      required: [portfolioId, recalculatedPositionsCount, message]
+      properties:
+        portfolioId: { type: string, format: uuid }
+        recalculatedPositionsCount: { type: integer }
+        message: { type: string }
     TransactionType:
       type: string
       enum: [BUY, SELL, DIVIDEND, FEE, DEPOSIT, WITHDRAWAL, INTEREST, STOCK_SPLIT, REVERSE_STOCK_SPLIT, TRANSFER]

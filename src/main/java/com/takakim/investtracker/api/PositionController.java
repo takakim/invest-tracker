@@ -56,6 +56,49 @@ public class PositionController {
         return toResponse(positionService.getPosition(portfolioId, accountId, positionId));
     }
 
+    @GetMapping("/api/v1/portfolios/{portfolioId}/accounts/{accountId}/positions/{positionId}/lots")
+    public ApiDtos.PositionLotsDetailResponse getPositionLots(
+            @PathVariable UUID portfolioId,
+            @PathVariable UUID accountId,
+            @PathVariable UUID positionId) {
+        var result = positionService.getPositionLots(portfolioId, accountId, positionId);
+        List<ApiDtos.PositionLotResponse> lotResponses = result.openLots().stream()
+                .map(lot -> new ApiDtos.PositionLotResponse(
+                        lot.getId(),
+                        lot.getTransactionId(),
+                        lot.getAcquisitionDate(),
+                        lot.getOriginalQuantity(),
+                        lot.getRemainingQuantity(),
+                        lot.getUnitCost(),
+                        lot.getTotalCost(),
+                        lot.getCurrency()
+                ))
+                .toList();
+
+        return new ApiDtos.PositionLotsDetailResponse(
+                positionId,
+                accountId,
+                result.instrumentId(),
+                result.costBasisMethod().name(),
+                result.quantity(),
+                result.costBasisAmount(),
+                result.costBasisCurrency(),
+                result.averageUnitCost(),
+                result.realizedGainLossAmount(),
+                lotResponses
+        );
+    }
+
+    @PostMapping("/api/v1/portfolios/{portfolioId}/positions/recalculate")
+    public ApiDtos.PositionRecalculateResponse recalculatePositions(@PathVariable UUID portfolioId) {
+        var results = positionService.recalculatePortfolio(portfolioId);
+        return new ApiDtos.PositionRecalculateResponse(
+                portfolioId,
+                results.size(),
+                "Successfully recalculated " + results.size() + " position(s) across portfolio."
+        );
+    }
+
     @PostMapping("/api/v1/portfolios/{portfolioId}/accounts/{accountId}/positions")
     public ResponseEntity<PositionResponse> createPosition(
             @PathVariable UUID portfolioId,
