@@ -450,14 +450,22 @@ Tracking: Issue #26, PR #38. Deliverables:
 
 ### Phase 5 — Position Engine
 
-**Status: Active.**
+**Status: Completed and merged.**
 
-Tracking: Issue #27. Goals:
-- Derive reproducible positions from the transaction ledger source of truth.
-- Cost basis calculation strategies (FIFO, LIFO, Weighted Average / Average Cost).
-- Corporate action handling (stock splits, reverse stock splits) and cost basis adjustment.
-- Realized gain/loss tracking and unrealized valuation basis.
-- Deterministic recalculation and position verification tests.
+Tracking: Issue #27, PR #39. Deliverables:
+- Deterministic calculation engine `PositionEngine` deriving positions, cost basis, open tax lots, and realized gain/loss directly from the transaction ledger.
+- Strategy pattern for cost basis calculation (`CostBasisStrategy`):
+  - `FifoCostBasisStrategy`: First-In, First-Out lot matching.
+  - `LifoCostBasisStrategy`: Last-In, First-Out lot matching.
+  - `AverageCostBasisStrategy`: Weighted Average Cost calculation on acquisition and proportional disposal.
+- Corporate action handling (stock splits and reverse stock splits) with proportional lot quantity/unit cost adjustments preserving total cost basis.
+- Domain calculation and tax lot records: `PositionLot`, `LotDisposal`, `PositionCalculationResult`.
+- REST endpoints on `PositionController`:
+  - `GET /api/v1/portfolios/{pId}/accounts/{aId}/positions/{posId}/lots` (open tax lots detail)
+  - `POST /api/v1/portfolios/{pId}/positions/recalculate` (portfolio-wide position synchronization)
+- OpenAPI contract synchronized (`docs/api/openapi.yaml`).
+- Frontend UI: `PositionLotsModal` (view tax lots with acquisition dates, quantities, and cost basis), recalculate positions action button on `PositionTable`, and TanStack Query hooks (`usePositionLots`, `useRecalculatePositions`).
+- 69 unit/integration tests with Testcontainers PostgreSQL and 26 Vitest tests passing with >=90% branch/line coverage and 0 vulnerabilities.
 
 ### Phase 6 — Performance Engine
 
@@ -506,3 +514,4 @@ Before changing the repository:
 - Phase 2 Investment Holdings & Position Engine implemented (Issue #24) on branch `phase-2-investments` with Flyway migration `V3__investments.sql`, domain value objects, REST APIs, OpenAPI contract update, React position holdings UI, and 100% passing test suites.
 - Phase 3 Transaction Engine implemented (Issue #25) and merged in PR #37 with Flyway migration `V4__transactions.sql`, aggregate entity & rules for 10 transaction types, audit correction flow, position auto-recalculation, REST endpoints, OpenAPI update, frontend transaction ledger UI, and 100% passing test suites.
 - Phase 4 CSV Import Engine implemented (Issue #26) and merged in PR #38 with Flyway migration `V5__csv_import.sql`, `FreetradeCsvParser`, `CsvImportService`, idempotency deduplication, REST endpoints, frontend `CsvImportModal`, and full test coverage.
+- Phase 5 Position Engine implemented (Issue #27) and merged in PR #39 with `PositionEngine`, FIFO / LIFO / Weighted Average cost basis strategies, tax lot tracking (`PositionLot`, `LotDisposal`), stock split adjustments, `GET /lots` & `POST /recalculate` endpoints, frontend `PositionLotsModal`, and 100% passing test suites.
