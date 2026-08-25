@@ -38,22 +38,73 @@ Spring Boot 4.1.1 is the current stable Spring Boot release selected for this pr
 
 ## Local development
 
-1. Install Java 25 and Maven 3.9.16 or newer within the supported Maven 3.x line.
-2. Copy `.env.example` to `.env` and replace the example password with a strong local-only password.
-3. Export the variables from `.env` into your shell, or configure them in your IDE.
-4. Start PostgreSQL:
+### Prerequisites
 
+- **Java 25** (JDK 25)
+- **Maven 3.9.x** (or use the configured Maven build tool)
+- **Node.js >= 24** & **npm**
+- **Docker** & **Docker Compose**
+
+### Step 1: Environment Setup
+
+1. Copy `.env.example` to `.env`:
 ```bash
-docker compose up -d postgres
+cp .env.example .env
+```
+2. Export the environment variables in your shell (or let your IDE source `.env`):
+```bash
+export $(grep -v '^#' .env | xargs)
 ```
 
-5. Run the test suite:
+### Step 2: Start PostgreSQL Database
 
+Start the local PostgreSQL 18 container (bound to `127.0.0.1:5432`):
 ```bash
-mvn verify
+docker compose -f compose.yaml up -d postgres
 ```
 
-The application will use Flyway migrations and will refuse to start if the JPA model and database schema are inconsistent.
+> **Note:** Flyway automatically creates and runs all schema migrations (`V1` through `V5`) when the backend application starts.
+
+### Step 3: Run the Backend Application (Spring Boot)
+
+Run the Spring Boot application locally on port `8080`:
+```bash
+mvn spring-boot:run
+```
+
+The REST API will be accessible at `http://localhost:8080/api/v1/...` and Actuator health check at `http://localhost:8080/actuator/health`.
+
+### Step 4: Run the Frontend (React + Vite)
+
+In a separate terminal, start the Vite development server on port `5173`:
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173` in your browser. The Vite dev server proxies `/api` requests to the backend at `http://localhost:8080`.
+
+---
+
+## Running Verification & Tests
+
+### Full Repository Verification
+Runs backend unit/integration tests (using Testcontainers PostgreSQL), JaCoCo coverage (>=90%), OWASP Dependency-Check, SBOM, frontend typecheck, and Vitest suite:
+```bash
+mvn -B verify && npm --prefix frontend run build && npm --prefix frontend test && npm --prefix frontend audit --audit-level=high
+```
+
+### Backend-Only Tests
+```bash
+mvn clean verify
+```
+
+### Frontend-Only Tests & Build
+```bash
+npm --prefix frontend run build
+npm --prefix frontend test
+```
 
 ## Roadmap
 
