@@ -490,7 +490,30 @@ Key deliverables:
 
 ### Phase 7 — Market Data & Currency
 
-Implement market data providers (historical/current quotes, FX rates, missing data handling, manual overrides).
+**Status: Completed and ready for merge.**
+
+Tracking: Issue #29, branch `phase-7-market-data`.
+
+Key deliverables:
+- Flyway schema migration `V6__market_data_and_fx.sql` (`market_observations` and `fx_observations` tables with provenance tracking).
+- Domain entities and records: `ObservationSourceType` (`PROVIDER`, `MANUAL`), `MarketObservation`, `FxObservation`, `PriceQuote`, `FxRateQuote`.
+- Provider interfaces and implementations: `MarketDataProvider`, `FxRateProvider`, `DefaultMarketDataProvider`, `DefaultFxRateProvider`.
+- `MarketDataService`: live price quote retrieval, fallback to persisted observations with stale warnings, manual override persistence, and historical price queries.
+- `FxRateService`: FX rate resolution, direct and inverse manual overrides, direct and inverse provider rates, USD triangulation ($Rate_{A \to B} = Rate_{A \to USD} / Rate_{B \to USD}$), fallback with stale warnings, and `Money` multi-currency conversion.
+- REST endpoints:
+  - `GET /api/v1/instruments/{instrumentId}/quotes/latest`
+  - `POST /api/v1/instruments/{instrumentId}/quotes/override`
+  - `GET /api/v1/instruments/{instrumentId}/quotes/history`
+  - `GET /api/v1/currencies/rates`
+  - `POST /api/v1/currencies/rates/override`
+  - `GET /api/v1/currencies/rates/history`
+- OpenAPI 3.1.1 contract updated (`docs/api/openapi.yaml`).
+- Frontend UI: `ManualPriceModal`, `ManualFxModal`, `MarketRatesCard` exchange rate widget on `InstrumentListPage`, "Set Price" actions on instruments table, and React Query hooks (`useLatestQuote`, `useRecordPriceOverride`, `useFxRate`, `useRecordFxOverride`).
+- 125 backend tests (unit + Testcontainers PostgreSQL) and 29 frontend tests passing with >=90% branch/line coverage and 0 vulnerabilities.
+
+### Phase 8 — Advanced Analytics & Reporting
+
+Implement asset allocation, geographic/sector exposure, benchmark comparisons, and export reports (PDF/CSV).
 
 ## 16. Future LLM instructions
 
@@ -532,4 +555,6 @@ Before changing the repository:
 - Phase 3 Transaction Engine implemented (Issue #25) and merged in PR #37 with Flyway migration `V4__transactions.sql`, aggregate entity & rules for 10 transaction types, audit correction flow, position auto-recalculation, REST endpoints, OpenAPI update, frontend transaction ledger UI, and 100% passing test suites.
 - Phase 4 CSV Import Engine implemented (Issue #26) and merged in PR #38 with Flyway migration `V5__csv_import.sql`, `FreetradeCsvParser`, `CsvImportService`, idempotency deduplication, REST endpoints, frontend `CsvImportModal`, and full test coverage.
 - Phase 5 Position Engine implemented (Issue #27) and merged in PR #39 with `PositionEngine`, FIFO / LIFO / Weighted Average cost basis strategies, tax lot tracking (`PositionLot`, `LotDisposal`), stock split adjustments, `GET /lots` & `POST /recalculate` endpoints, frontend `PositionLotsModal`, and 100% passing test suites.
-- Phase 6 Performance Engine implemented (Issue #28) on branch `phase-6-performance-engine` with `PerformanceEngine` (TWR chain-linking, MWR, annualized return, realized gain & income aggregation), `GET /portfolios/{id}/performance` endpoint, `PerformanceSummaryCard` UI component, updated OpenAPI contract, and 91 backend + 27 frontend tests passing with >=90% coverage and 0 vulnerabilities.
+- Phase 6 Performance Engine implemented (Issue #28) and merged in PR #40 with `PerformanceEngine` (TWR chain-linking, MWR, annualized return, realized gain & income aggregation), `GET /portfolios/{id}/performance` endpoint, `PerformanceSummaryCard` UI component, updated OpenAPI contract, and 91 backend + 27 frontend tests passing with >=90% coverage and 0 vulnerabilities.
+- Phase 7 Market Data & Currency implemented (Issue #29) on branch `phase-7-market-data` with Flyway migration `V6__market_data_and_fx.sql`, `MarketDataService`, `FxRateService` (triangulation, inverted rates, multi-currency conversion), manual override modals, `MarketRatesCard` UI, OpenAPI synchronization, and 125 backend + 29 frontend tests passing with >=90% coverage and 0 vulnerabilities.
+

@@ -283,3 +283,65 @@ export interface PerformanceResult {
   valuationBasis: string;
   byAccount: AccountPerformanceSummary[];
 }
+
+export type ObservationSourceType = 'PROVIDER' | 'MANUAL';
+
+export interface PriceQuote {
+  instrumentId: string;
+  price: number;
+  currency: string;
+  asOf: string;
+  sourceType: ObservationSourceType;
+  sourceReference?: string | null;
+  isStale: boolean;
+  warning?: string | null;
+}
+
+export interface MarketPriceOverrideRequest {
+  price: number;
+  currency?: string | null;
+  observedAt?: string | null;
+  reason?: string | null;
+}
+
+export interface MarketObservation {
+  id: string;
+  instrumentId: string;
+  price: number;
+  currency: string;
+  observedAt: string;
+  sourceType: ObservationSourceType;
+  sourceReference?: string | null;
+  createdAt: string;
+}
+
+export interface FxRateQuote {
+  baseCurrency: string;
+  quoteCurrency: string;
+  rate: number;
+  asOf: string;
+  sourceType: ObservationSourceType;
+  sourceReference?: string | null;
+  isDerived: boolean;
+  warning?: string | null;
+}
+
+export interface FxRateOverrideRequest {
+  baseCurrency: string;
+  quoteCurrency: string;
+  rate: number;
+  observedAt?: string | null;
+  reason?: string | null;
+}
+
+export interface FxObservation {
+  id: string;
+  baseCurrency: string;
+  quoteCurrency: string;
+  rate: number;
+  observedAt: string;
+  sourceType: ObservationSourceType;
+  sourceReference?: string | null;
+  createdAt: string;
+}
+

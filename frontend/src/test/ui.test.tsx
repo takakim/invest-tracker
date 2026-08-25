@@ -6,13 +6,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from '@mui/material';
 
 import { theme } from '../theme';
-import { ApiError, portfolioApi, instrumentApi, accountApi, positionApi, transactionApi, importApi, performanceApi } from '../api';
+import { ApiError, portfolioApi, instrumentApi, accountApi, positionApi, transactionApi, importApi, performanceApi, marketApi, fxApi } from '../api';
 import { ErrorAlert, EmptyState, ConfirmDialog, Layout } from '../components';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { PortfolioListPage } from '../features/portfolios/PortfolioListPage';
 import { PortfolioDetailPage } from '../features/portfolios/PortfolioDetailPage';
 import { InstrumentListPage } from '../features/instruments/InstrumentListPage';
 import PerformanceSummaryCard from '../features/performance/PerformanceSummaryCard';
+import { MarketRatesCard } from '../features/market/MarketRatesCard';
+import { ManualPriceModal } from '../features/market/ManualPriceModal';
 import type { Portfolio, Instrument, Account, Position, Transaction, PerformanceResult } from '../types';
 
 function createTestQueryClient() {
@@ -234,6 +236,31 @@ describe('Feature Pages', () => {
       valuationBasis: 'COST_BASIS',
       byAccount: [],
     });
+    vi.spyOn(fxApi, 'getRate').mockResolvedValue({
+      baseCurrency: 'GBP',
+      quoteCurrency: 'USD',
+      rate: 1.28,
+      asOf: '2026-08-20T10:00:00Z',
+      sourceType: 'PROVIDER',
+      isDerived: false,
+    });
+    vi.spyOn(marketApi, 'getLatestQuote').mockResolvedValue({
+      instrumentId: 'inst-1',
+      price: 185.5,
+      currency: 'USD',
+      asOf: '2026-08-20T10:00:00Z',
+      sourceType: 'PROVIDER',
+      isStale: false,
+    });
+    vi.spyOn(marketApi, 'recordPriceOverride').mockResolvedValue({
+      id: 'obs-1',
+      instrumentId: 'inst-1',
+      price: 190.0,
+      currency: 'USD',
+      observedAt: '2026-08-20T10:00:00Z',
+      sourceType: 'MANUAL',
+      createdAt: '2026-08-20T10:00:00Z',
+    });
   });
 
   it('renders DashboardPage with active portfolios and metrics', async () => {
@@ -298,6 +325,41 @@ describe('Feature Pages', () => {
     });
   });
 
+  it('renders MarketRatesCard and displays exchange rates', async () => {
+    renderWithProviders(<MarketRatesCard />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Exchange Rates (FX)')).toBeInTheDocument();
+      expect(screen.getByText('GBP/USD')).toBeInTheDocument();
+      expect(screen.getAllByText('1.2800').length).toBeGreaterThan(0);
+    });
+  });
+
+  it('renders ManualPriceModal and submits price override', async () => {
+    const handleClose = vi.fn();
+    renderWithProviders(
+      <ManualPriceModal open={true} instrument={mockInstruments[0]} onClose={handleClose} />
+    );
+
+    expect(screen.getByText('Manual Price Override')).toBeInTheDocument();
+    expect(screen.getByText(/Apple Inc/)).toBeInTheDocument();
+
+    const priceInput = screen.getByLabelText(/Override Price/i);
+    fireEvent.change(priceInput, { target: { value: '190.0' } });
+
+    const submitBtn = screen.getByRole('button', { name: 'Record Override' });
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(marketApi.recordPriceOverride).toHaveBeenCalledWith('inst-1', {
+        price: 190.0,
+        currency: 'USD',
+        reason: undefined,
+      });
+      expect(handleClose).toHaveBeenCalled();
+    });
+  });
+
   it('renders InstrumentListPage and filters instruments', async () => {
     renderWithProviders(<InstrumentListPage />);
 
@@ -316,3 +378,4 @@ describe('Feature Pages', () => {
     });
   });
 });
+
