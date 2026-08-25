@@ -11,6 +11,8 @@ import com.takakim.investtracker.repository.AccountRepository;
 import com.takakim.investtracker.repository.InstrumentRepository;
 import com.takakim.investtracker.repository.PortfolioRepository;
 import com.takakim.investtracker.repository.PositionRepository;
+import com.takakim.investtracker.service.position.PositionCalculationResult;
+import com.takakim.investtracker.service.position.PositionEngine;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -24,16 +26,19 @@ public class PositionService {
     private final AccountRepository accountRepository;
     private final InstrumentRepository instrumentRepository;
     private final PositionRepository positionRepository;
+    private final PositionEngine positionEngine;
 
     public PositionService(
             PortfolioRepository portfolioRepository,
             AccountRepository accountRepository,
             InstrumentRepository instrumentRepository,
-            PositionRepository positionRepository) {
+            PositionRepository positionRepository,
+            PositionEngine positionEngine) {
         this.portfolioRepository = portfolioRepository;
         this.accountRepository = accountRepository;
         this.instrumentRepository = instrumentRepository;
         this.positionRepository = positionRepository;
+        this.positionEngine = positionEngine;
     }
 
     @Transactional(readOnly = true)
@@ -59,6 +64,15 @@ public class PositionService {
             throw new ResourceNotFoundException("Position " + positionId + " does not belong to account " + accountId);
         }
         return position;
+    }
+
+    @Transactional(readOnly = true)
+    public PositionCalculationResult getPositionLots(UUID portfolioId, UUID accountId, UUID positionId) {
+        return positionEngine.getPositionLots(portfolioId, accountId, positionId);
+    }
+
+    public List<PositionCalculationResult> recalculatePortfolio(UUID portfolioId) {
+        return positionEngine.recalculatePortfolio(portfolioId);
     }
 
     public Position createPosition(
@@ -108,3 +122,4 @@ public class PositionService {
         return account;
     }
 }
+

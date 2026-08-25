@@ -1,5 +1,5 @@
 import { request } from './client';
-import type { Position, PositionCreateInput, PositionUpdateInput } from '../types';
+import type { Position, PositionCreateInput, PositionLotsDetail, PositionRecalculateResponse, PositionUpdateInput } from '../types';
 
 export const positionApi = {
   list: (portfolioId: string, accountId: string): Promise<Position[]> =>
@@ -10,6 +10,16 @@ export const positionApi = {
 
   get: (portfolioId: string, accountId: string, positionId: string): Promise<Position> =>
     request<Position>(`/api/v1/portfolios/${portfolioId}/accounts/${accountId}/positions/${positionId}`),
+
+  getLots: (portfolioId: string, accountId: string, positionId: string): Promise<PositionLotsDetail> =>
+    request<PositionLotsDetail>(
+      `/api/v1/portfolios/${portfolioId}/accounts/${accountId}/positions/${positionId}/lots`,
+    ),
+
+  recalculate: (portfolioId: string): Promise<PositionRecalculateResponse> =>
+    request<PositionRecalculateResponse>(`/api/v1/portfolios/${portfolioId}/positions/recalculate`, {
+      method: 'POST',
+    }),
 
   create: (
     portfolioId: string,
@@ -43,3 +53,4 @@ export const positionApi = {
       },
     ),
 };
+

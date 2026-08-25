@@ -195,10 +195,26 @@ describe('Feature Pages', () => {
     vi.spyOn(instrumentApi, 'list').mockResolvedValue(mockInstruments);
     vi.spyOn(accountApi, 'list').mockResolvedValue(mockAccounts);
     vi.spyOn(positionApi, 'list').mockResolvedValue(mockPositions);
-    vi.spyOn(positionApi, 'listPortfolio').mockResolvedValue(mockPositions);
     vi.spyOn(transactionApi, 'list').mockResolvedValue(mockTransactions);
     vi.spyOn(transactionApi, 'listPortfolio').mockResolvedValue(mockTransactions);
     vi.spyOn(importApi, 'list').mockResolvedValue([]);
+    vi.spyOn(positionApi, 'getLots').mockResolvedValue({
+      positionId: 'pos-1',
+      accountId: 'acc-1',
+      instrumentId: 'inst-1',
+      costBasisMethod: 'FIFO',
+      totalQuantity: 10,
+      totalCostBasisAmount: 1500,
+      currency: 'USD',
+      averageUnitCostAmount: 150,
+      realizedGainLossAmount: 0,
+      openLots: [],
+    });
+    vi.spyOn(positionApi, 'recalculate').mockResolvedValue({
+      portfolioId: 'p-1',
+      recalculatedPositionsCount: 1,
+      message: 'Recalculated',
+    });
   });
 
   it('renders DashboardPage with active portfolios and metrics', async () => {
