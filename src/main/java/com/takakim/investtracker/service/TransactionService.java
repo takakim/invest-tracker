@@ -20,6 +20,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import com.takakim.investtracker.service.position.PositionEngine;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,19 +32,19 @@ public class TransactionService {
     private final AccountRepository accountRepository;
     private final InstrumentRepository instrumentRepository;
     private final TransactionRepository transactionRepository;
-    private final PositionRepository positionRepository;
+    private final PositionEngine positionEngine;
 
     public TransactionService(
             PortfolioRepository portfolioRepository,
             AccountRepository accountRepository,
             InstrumentRepository instrumentRepository,
             TransactionRepository transactionRepository,
-            PositionRepository positionRepository) {
+            PositionEngine positionEngine) {
         this.portfolioRepository = portfolioRepository;
         this.accountRepository = accountRepository;
         this.instrumentRepository = instrumentRepository;
         this.transactionRepository = transactionRepository;
-        this.positionRepository = positionRepository;
+        this.positionEngine = positionEngine;
     }
 
     @Transactional(readOnly = true)
@@ -174,52 +175,7 @@ public class TransactionService {
         if (instrument == null) {
             return;
         }
-
-        List<Transaction> history = transactionRepository.findByAccountIdAndInstrumentIdOrderByTradeDateAsc(
-                account.getId(), instrument.getId());
-
-        BigDecimal totalQuantity = BigDecimal.ZERO;
-        BigDecimal totalCostBasis = BigDecimal.ZERO;
-
-        for (Transaction tx : history) {
-            if (tx.getStatus() != TransactionStatus.COMPLETED) {
-                continue;
-            }
-            if (tx.getType() == TransactionType.BUY) {
-                if (tx.getQuantity() != null) {
-                    totalQuantity = totalQuantity.add(tx.getQuantity());
-                }
-                totalCostBasis = totalCostBasis.add(tx.getNetAmount());
-            } else if (tx.getType() == TransactionType.SELL) {
-                if (tx.getQuantity() != null) {
-                    totalQuantity = totalQuantity.subtract(tx.getQuantity());
-                }
-            } else if (tx.getType() == TransactionType.STOCK_SPLIT && tx.getQuantity() != null) {
-                totalQuantity = totalQuantity.add(tx.getQuantity());
-            } else if (tx.getType() == TransactionType.REVERSE_STOCK_SPLIT && tx.getQuantity() != null) {
-                totalQuantity = totalQuantity.subtract(tx.getQuantity());
-            }
-        }
-
-        if (totalQuantity.compareTo(BigDecimal.ZERO) < 0) {
-            totalQuantity = BigDecimal.ZERO;
-        }
-
-        Optional<Position> existingOpt = positionRepository.findByAccountIdAndInstrumentId(
-                account.getId(), instrument.getId());
-
-        if (existingOpt.isPresent()) {
-            Position position = existingOpt.get();
-            Money costBasis = totalCostBasis.compareTo(BigDecimal.ZERO) > 0
-                    ? new Money(totalCostBasis, instrument.getCurrency())
-                    : null;
-            position.update(new Quantity(totalQuantity), costBasis);
-            positionRepository.save(position);
-        } else if (totalQuantity.compareTo(BigDecimal.ZERO) > 0) {
-            Money costBasis = new Money(totalCostBasis, instrument.getCurrency());
-            Position position = new Position(account, instrument, new Quantity(totalQuantity), costBasis);
-            positionRepository.save(position);
-        }
+        positionEngine.recalculateAndSync(account, instrument);
     }
 
     private Account getValidatedAccount(UUID portfolioId, UUID accountId) {

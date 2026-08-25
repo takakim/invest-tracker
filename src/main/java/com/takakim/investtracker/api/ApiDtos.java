@@ -143,5 +143,32 @@ public final class ApiDtos {
         int importedRows,
         int skippedRows,
         Instant createdAt) { }
+
+    public record PositionLotResponse(
+        UUID lotId,
+        UUID transactionId,
+        Instant acquisitionDate,
+        java.math.BigDecimal originalQuantity,
+        java.math.BigDecimal remainingQuantity,
+        java.math.BigDecimal unitCostAmount,
+        java.math.BigDecimal totalCostAmount,
+        String currency) { }
+
+    public record PositionLotsDetailResponse(
+        UUID positionId,
+        UUID accountId,
+        UUID instrumentId,
+        String costBasisMethod,
+        java.math.BigDecimal totalQuantity,
+        java.math.BigDecimal totalCostBasisAmount,
+        String currency,
+        java.math.BigDecimal averageUnitCostAmount,
+        java.math.BigDecimal realizedGainLossAmount,
+        List<PositionLotResponse> openLots) { }
+
+    public record PositionRecalculateResponse(
+        UUID portfolioId,
+        int recalculatedPositionsCount,
+        String message) { }
 }
 

@@ -97,6 +97,36 @@ export interface PositionUpdateInput {
   costBasisCurrency?: string | null;
 }
 
+export interface PositionLot {
+  lotId: string;
+  transactionId?: string | null;
+  acquisitionDate: string;
+  originalQuantity: number;
+  remainingQuantity: number;
+  unitCostAmount: number;
+  totalCostAmount: number;
+  currency: string;
+}
+
+export interface PositionLotsDetail {
+  positionId: string;
+  accountId: string;
+  instrumentId: string;
+  costBasisMethod: CostBasisMethod;
+  totalQuantity: number;
+  totalCostBasisAmount: number;
+  currency: string;
+  averageUnitCostAmount: number;
+  realizedGainLossAmount: number;
+  openLots: PositionLot[];
+}
+
+export interface PositionRecalculateResponse {
+  portfolioId: string;
+  recalculatedPositionsCount: number;
+  message: string;
+}
+
 export type TransactionType =
   | 'BUY'
   | 'SELL'

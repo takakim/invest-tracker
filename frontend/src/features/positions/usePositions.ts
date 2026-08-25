@@ -8,7 +8,29 @@ export const POSITION_QUERY_KEYS = {
   portfolioList: (portfolioId: string) => ['positions', 'portfolio', portfolioId] as const,
   detail: (portfolioId: string, accountId: string, positionId: string) =>
     ['positions', portfolioId, accountId, positionId] as const,
+  lots: (portfolioId: string, accountId: string, positionId: string) =>
+    ['positions', portfolioId, accountId, positionId, 'lots'] as const,
 };
+
+export function usePositionLots(portfolioId: string, accountId: string, positionId: string) {
+  return useQuery({
+    queryKey: POSITION_QUERY_KEYS.lots(portfolioId, accountId, positionId),
+    queryFn: () => positionApi.getLots(portfolioId, accountId, positionId),
+    enabled: Boolean(portfolioId && accountId && positionId),
+  });
+}
+
+export function useRecalculatePositions(portfolioId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => positionApi.recalculate(portfolioId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['positions'],
+      });
+    },
+  });
+}
 
 export function usePositionsList(portfolioId: string, accountId: string) {
   return useQuery({
@@ -82,3 +104,4 @@ export function useArchivePosition(portfolioId: string, accountId: string) {
     },
   });
 }
+
