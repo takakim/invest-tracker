@@ -230,6 +230,24 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/PositionRecalculateResponse' }
         '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/performance:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+    get:
+      operationId: getPortfolioPerformance
+      summary: Get portfolio performance (TWR / MWR)
+      description: |
+        Returns time-weighted (TWR) or money-weighted (MWR) return analytics for the portfolio
+        based on transaction cash flows and cost-basis valuations. XIRR is not yet supported
+        and returns HTTP 501.
+      responses:
+        '200':
+          description: Portfolio performance result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PerformanceResult' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '501': { $ref: '#/components/responses/Problem' }
   /portfolios/{portfolioId}/accounts/{accountId}/transactions:
     parameters:
       - { $ref: '#/components/parameters/PortfolioId' }
@@ -694,3 +712,38 @@ components:
         errors:
           type: array
           items: { type: string }
+    AccountPerformanceSummary:
+      type: object
+      required: [accountId, accountName, realizedGainLoss, dividendIncome, interestIncome, fees, taxes, costBasis, currency]
+      properties:
+        accountId: { type: string, format: uuid }
+        accountName: { type: string }
+        realizedGainLoss: { type: number }
+        dividendIncome: { type: number }
+        interestIncome: { type: number }
+        fees: { type: number }
+        taxes: { type: number }
+        costBasis: { type: number }
+        currency: { type: string }
+    PerformanceResult:
+      type: object
+      required: [portfolioId, asOf, returnMethod, totalRealizedGainLoss, totalDividendIncome, totalInterestIncome, totalFees, totalTaxes, totalNetIncome, totalCostBasis, currency, valuationBasis, byAccount]
+      properties:
+        portfolioId: { type: string, format: uuid }
+        asOf: { type: string, format: date-time }
+        returnMethod: { type: string, enum: [TWR, MWR, XIRR] }
+        twrReturn: { type: number, nullable: true }
+        twrAnnualized: { type: number, nullable: true }
+        mwrReturn: { type: number, nullable: true }
+        totalRealizedGainLoss: { type: number }
+        totalDividendIncome: { type: number }
+        totalInterestIncome: { type: number }
+        totalFees: { type: number }
+        totalTaxes: { type: number }
+        totalNetIncome: { type: number }
+        totalCostBasis: { type: number }
+        currency: { type: string }
+        valuationBasis: { type: string, description: "COST_BASIS until market prices are available" }
+        byAccount:
+          type: array
+          items: { $ref: '#/components/schemas/AccountPerformanceSummary' }

@@ -45,6 +45,7 @@ import { PortfolioFormModal } from './PortfolioFormModal';
 import { AccountFormModal } from '../accounts/AccountFormModal';
 import { PositionTable } from '../positions/PositionTable';
 import { TransactionTable } from '../transactions/TransactionTable';
+import PerformanceSummaryCard from '../performance/PerformanceSummaryCard';
 import { ConfirmDialog, EmptyState, ErrorAlert, LoadingState } from '../../components';
 import type { Account, AccountCreateInput, PortfolioCreateInput } from '../../types';
 
@@ -265,6 +266,11 @@ export function PortfolioDetailPage() {
           </Grid>
         </Grid>
       </Paper>
+
+      {/* Portfolio Performance */}
+      <Box sx={{ mb: 4 }}>
+        <PerformanceSummaryCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
+      </Box>
 
       {/* Accounts Section */}
       <Box sx={{ mb: 4 }}>

@@ -26,6 +26,9 @@ public class ApiExceptionHandler {
         return detail;
     }
 
+    @ExceptionHandler(UnsupportedOperationException.class)
+    ProblemDetail notImplemented(UnsupportedOperationException ex) { return problem(HttpStatus.NOT_IMPLEMENTED, "Not implemented", ex.getMessage()); }
+
     private ProblemDetail problem(HttpStatus status, String title, String detail) {
         ProblemDetail result = ProblemDetail.forStatusAndDetail(status, detail == null ? title : detail);
         result.setTitle(title);

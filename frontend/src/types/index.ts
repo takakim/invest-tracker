@@ -252,3 +252,34 @@ export interface ProblemDetail {
   instance?: string;
   errors?: string[];
 }
+
+export interface AccountPerformanceSummary {
+  accountId: string;
+  accountName: string;
+  realizedGainLoss: number;
+  dividendIncome: number;
+  interestIncome: number;
+  fees: number;
+  taxes: number;
+  costBasis: number;
+  currency: string;
+}
+
+export interface PerformanceResult {
+  portfolioId: string;
+  asOf: string;
+  returnMethod: ReturnMethod;
+  twrReturn: number | null;
+  twrAnnualized: number | null;
+  mwrReturn: number | null;
+  totalRealizedGainLoss: number;
+  totalDividendIncome: number;
+  totalInterestIncome: number;
+  totalFees: number;
+  totalTaxes: number;
+  totalNetIncome: number;
+  totalCostBasis: number;
+  currency: string;
+  valuationBasis: string;
+  byAccount: AccountPerformanceSummary[];
+}
