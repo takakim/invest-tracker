@@ -123,6 +123,16 @@ class PositionIntegrationTests {
                 .andExpect(jsonPath("$.quantity").value(150.75))
                 .andExpect(jsonPath("$.costBasisAmount").value(12800.5));
 
+        // 8b. Update Position with null cost basis
+        String updateNullCostJson = """
+            {"quantity":200.0}
+            """;
+        mockMvc.perform(put("/api/v1/portfolios/" + portfolioId + "/accounts/" + accountId + "/positions/" + positionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateNullCostJson))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.quantity").value(200.0));
+
         // 9. Archive Position
         mockMvc.perform(delete("/api/v1/portfolios/" + portfolioId + "/accounts/" + accountId + "/positions/" + positionId))
                 .andExpect(status().isNoContent());

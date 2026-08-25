@@ -6,13 +6,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from '@mui/material';
 
 import { theme } from '../theme';
-import { ApiError, portfolioApi, instrumentApi, accountApi, positionApi, transactionApi, importApi } from '../api';
+import { ApiError, portfolioApi, instrumentApi, accountApi, positionApi, transactionApi, importApi, performanceApi } from '../api';
 import { ErrorAlert, EmptyState, ConfirmDialog, Layout } from '../components';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { PortfolioListPage } from '../features/portfolios/PortfolioListPage';
 import { PortfolioDetailPage } from '../features/portfolios/PortfolioDetailPage';
 import { InstrumentListPage } from '../features/instruments/InstrumentListPage';
-import type { Portfolio, Instrument, Account, Position, Transaction } from '../types';
+import PerformanceSummaryCard from '../features/performance/PerformanceSummaryCard';
+import type { Portfolio, Instrument, Account, Position, Transaction, PerformanceResult } from '../types';
 
 function createTestQueryClient() {
   return new QueryClient({
@@ -215,6 +216,24 @@ describe('Feature Pages', () => {
       recalculatedPositionsCount: 1,
       message: 'Recalculated',
     });
+    vi.spyOn(performanceApi, 'get').mockResolvedValue({
+      portfolioId: 'p-1',
+      asOf: '2026-08-20T10:00:00Z',
+      returnMethod: 'TWR',
+      twrReturn: 0.125,
+      twrAnnualized: 0.15,
+      mwrReturn: null,
+      totalRealizedGainLoss: 250,
+      totalDividendIncome: 50,
+      totalInterestIncome: 10,
+      totalFees: 5,
+      totalTaxes: 8,
+      totalNetIncome: 47,
+      totalCostBasis: 1500,
+      currency: 'GBP',
+      valuationBasis: 'COST_BASIS',
+      byAccount: [],
+    });
   });
 
   it('renders DashboardPage with active portfolios and metrics', async () => {
@@ -242,7 +261,7 @@ describe('Feature Pages', () => {
     expect(screen.getByLabelText(/Portfolio Name/i)).toBeInTheDocument();
   });
 
-  it('renders PortfolioDetailPage with account list', async () => {
+  it('renders PortfolioDetailPage with account list and performance card', async () => {
     const testQueryClient = createTestQueryClient();
 
     render(
@@ -262,6 +281,20 @@ describe('Feature Pages', () => {
       expect(screen.getByRole('heading', { level: 5, name: 'Accounts' })).toBeInTheDocument();
       expect(screen.getByText('Interactive Brokers SIPP')).toBeInTheDocument();
       expect(screen.getByText('Interactive Brokers')).toBeInTheDocument();
+      expect(screen.getByText('Portfolio Performance')).toBeInTheDocument();
+      expect(screen.getByText('12.50%')).toBeInTheDocument();
+    });
+  });
+
+  it('renders PerformanceSummaryCard component with metrics', async () => {
+    renderWithProviders(<PerformanceSummaryCard portfolioId="p-1" currency="GBP" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Portfolio Performance')).toBeInTheDocument();
+      expect(screen.getByText('12.50%')).toBeInTheDocument();
+      expect(screen.getByText('Realized Gain/Loss')).toBeInTheDocument();
+      expect(screen.getByText('Net Income')).toBeInTheDocument();
+      expect(screen.getByText('Cost Basis')).toBeInTheDocument();
     });
   });
 
