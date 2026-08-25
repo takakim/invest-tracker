@@ -6,3 +6,5 @@ export * from './positions';
 export * from './transactions';
 export * from './imports';
 export * from './performance';
+export * from './market';
+export * from './fx';

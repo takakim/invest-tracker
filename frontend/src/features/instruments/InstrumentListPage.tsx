@@ -22,11 +22,14 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import SearchIcon from '@mui/icons-material/Search';
 import ShowChartOutlinedIcon from '@mui/icons-material/ShowChartOutlined';
+import PriceChangeOutlinedIcon from '@mui/icons-material/PriceChangeOutlined';
 
 import { useInstrumentsList, useCreateInstrument } from './useInstruments';
 import { InstrumentFormModal } from './InstrumentFormModal';
+import { ManualPriceModal } from '../market/ManualPriceModal';
+import { MarketRatesCard } from '../market/MarketRatesCard';
 import { EmptyState, ErrorAlert, LoadingState } from '../../components';
-import type { AssetClass, InstrumentCreateInput } from '../../types';
+import type { AssetClass, Instrument, InstrumentCreateInput } from '../../types';
 
 const ASSET_CLASS_LABELS: Record<AssetClass, string> = {
   STOCK: 'Stock',
@@ -46,6 +49,8 @@ export function InstrumentListPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAssetClass, setSelectedAssetClass] = useState<string>('ALL');
+  const [priceModalOpen, setPriceModalOpen] = useState(false);
+  const [selectedInstrument, setSelectedInstrument] = useState<Instrument | null>(null);
 
   const filteredInstruments = useMemo(() => {
     return instruments.filter((inst) => {
@@ -70,12 +75,17 @@ export function InstrumentListPage() {
     });
   };
 
+  const handleOpenPriceModal = (inst: Instrument) => {
+    setSelectedInstrument(inst);
+    setPriceModalOpen(true);
+  };
+
   return (
     <Box>
       {/* Header */}
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
-        sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 4, gap: 2 }}
+        sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 3, gap: 2 }}
       >
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 700 }}>
@@ -95,39 +105,43 @@ export function InstrumentListPage() {
         </Button>
       </Stack>
 
+      {/* Market FX Rates Card */}
+      <Box sx={{ mb: 3 }}>
+        <MarketRatesCard />
+      </Box>
+
       <ErrorAlert error={error} onClose={() => refetch()} />
 
       {/* Filter and Search Bar */}
       <Paper sx={{ p: 2, mb: 3, borderRadius: 2 }}>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ alignItems: 'center' }}>
           <TextField
-            placeholder="Search by name, ticker, or ISIN..."
+            placeholder="Search by name, ticker, ISIN, exchange..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            fullWidth
             size="small"
+            fullWidth
             slotProps={{
               input: {
                 startAdornment: (
                   <InputAdornment position="start">
-                    <SearchIcon color="action" />
+                    <SearchIcon color="action" fontSize="small" />
                   </InputAdornment>
                 ),
               },
             }}
           />
-
-          <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 180 } }}>
+          <FormControl size="small" sx={{ minWidth: 180 }}>
             <InputLabel id="asset-class-filter-label">Asset Class</InputLabel>
             <Select
               labelId="asset-class-filter-label"
-              label="Asset Class"
               value={selectedAssetClass}
+              label="Asset Class"
               onChange={(e) => setSelectedAssetClass(e.target.value)}
             >
               <MenuItem value="ALL">All Asset Classes</MenuItem>
-              {Object.entries(ASSET_CLASS_LABELS).map(([key, label]) => (
-                <MenuItem key={key} value={key}>
+              {Object.entries(ASSET_CLASS_LABELS).map(([value, label]) => (
+                <MenuItem key={value} value={value}>
                   {label}
                 </MenuItem>
               ))}
@@ -136,17 +150,9 @@ export function InstrumentListPage() {
         </Stack>
       </Paper>
 
-      {/* Content */}
+      {/* Instruments Table */}
       {isLoading ? (
-        <LoadingState variant="table" count={4} />
-      ) : instruments.length === 0 ? (
-        <EmptyState
-          title="No Instruments Registered"
-          description="Register instruments into your master catalogue to use them across any portfolio account."
-          actionLabel="Register Instrument"
-          onAction={() => setModalOpen(true)}
-          icon={<ShowChartOutlinedIcon sx={{ fontSize: 56, opacity: 0.7 }} />}
-        />
+        <LoadingState message="Loading instrument directory..." />
       ) : filteredInstruments.length === 0 ? (
         <EmptyState
           title="No Matching Instruments"
@@ -163,6 +169,7 @@ export function InstrumentListPage() {
                 <TableCell>ISIN</TableCell>
                 <TableCell>Exchange</TableCell>
                 <TableCell>Currency</TableCell>
+                <TableCell align="right">Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -220,6 +227,15 @@ export function InstrumentListPage() {
                   <TableCell>
                     <Chip label={instrument.currency} size="small" variant="outlined" />
                   </TableCell>
+                  <TableCell align="right">
+                    <Button
+                      size="small"
+                      startIcon={<PriceChangeOutlinedIcon fontSize="small" />}
+                      onClick={() => handleOpenPriceModal(instrument)}
+                    >
+                      Set Price
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -234,6 +250,16 @@ export function InstrumentListPage() {
         error={createMutation.error}
         onClose={() => setModalOpen(false)}
         onSubmit={handleCreateSubmit}
+      />
+
+      {/* Manual Price Override Modal */}
+      <ManualPriceModal
+        open={priceModalOpen}
+        instrument={selectedInstrument}
+        onClose={() => {
+          setPriceModalOpen(false);
+          setSelectedInstrument(null);
+        }}
       />
     </Box>
   );

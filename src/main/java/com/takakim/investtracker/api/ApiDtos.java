@@ -3,6 +3,7 @@ package com.takakim.investtracker.api;
 import com.takakim.investtracker.domain.AssetClass;
 import com.takakim.investtracker.domain.CostBasisMethod;
 import com.takakim.investtracker.domain.ReturnMethod;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -199,4 +200,66 @@ public final class ApiDtos {
         String currency,
         String valuationBasis,
         List<AccountPerformanceSummaryResponse> byAccount) { }
+
+    public record MarketPriceOverrideRequest(
+        @NotNull(message = "price is required")
+        @DecimalMin(value = "0.0", message = "price must be non-negative")
+        java.math.BigDecimal price,
+        String currency,
+        Instant observedAt,
+        String reason) { }
+
+    public record PriceQuoteResponse(
+        UUID instrumentId,
+        java.math.BigDecimal price,
+        String currency,
+        Instant asOf,
+        String sourceType,
+        String sourceReference,
+        boolean isStale,
+        String warning) { }
+
+    public record MarketObservationResponse(
+        UUID id,
+        UUID instrumentId,
+        java.math.BigDecimal price,
+        String currency,
+        Instant observedAt,
+        String sourceType,
+        String sourceReference,
+        Instant createdAt) { }
+
+    public record FxRateOverrideRequest(
+        @NotBlank(message = "baseCurrency is required")
+        @Size(min = 3, max = 3, message = "baseCurrency must be a 3-letter ISO code")
+        String baseCurrency,
+        @NotBlank(message = "quoteCurrency is required")
+        @Size(min = 3, max = 3, message = "quoteCurrency must be a 3-letter ISO code")
+        String quoteCurrency,
+        @NotNull(message = "rate is required")
+        @DecimalMin(value = "0.00000001", message = "rate must be strictly positive")
+        java.math.BigDecimal rate,
+        Instant observedAt,
+        String reason) { }
+
+    public record FxRateQuoteResponse(
+        String baseCurrency,
+        String quoteCurrency,
+        java.math.BigDecimal rate,
+        Instant asOf,
+        String sourceType,
+        String sourceReference,
+        boolean isDerived,
+        String warning) { }
+
+    public record FxObservationResponse(
+        UUID id,
+        String baseCurrency,
+        String quoteCurrency,
+        java.math.BigDecimal rate,
+        Instant observedAt,
+        String sourceType,
+        String sourceReference,
+        Instant createdAt) { }
 }
+
