@@ -230,4 +230,24 @@ class MarketDataServiceTests {
                 id, BigDecimal.TEN, "USD", now, null, null, false, null
         ));
     }
+
+    @Test
+    @DisplayName("syncHistoricalPrices fetches and saves quotes")
+    void syncHistoricalPricesSaves() {
+        UUID id = instrument.getId();
+        when(instrumentRepository.findById(id)).thenReturn(Optional.of(instrument));
+        Instant now = Instant.now();
+        PriceQuote q1 = new PriceQuote(id, new BigDecimal("150.00"), "USD", now.minus(30, ChronoUnit.DAYS), ObservationSourceType.PROVIDER, "FEED", false, null);
+        PriceQuote q2 = new PriceQuote(id, new BigDecimal("160.00"), "USD", now, ObservationSourceType.PROVIDER, "FEED", false, null);
+        when(marketDataProvider.fetchHistoricalQuotes(instrument, now.minus(30, ChronoUnit.DAYS), now))
+                .thenReturn(List.of(q1, q2));
+        when(marketObservationRepository.save(org.mockito.ArgumentMatchers.any(MarketObservation.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        List<MarketObservation> synced = marketDataService.syncHistoricalPrices(id, now.minus(30, ChronoUnit.DAYS), now);
+        assertEquals(2, synced.size());
+
+        when(instrumentRepository.findById(id)).thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class, () -> marketDataService.syncHistoricalPrices(id, now.minus(30, ChronoUnit.DAYS), now));
+    }
 }

@@ -137,4 +137,23 @@ public class MarketDataService {
         Instant end = to != null ? to : Instant.now().plus(Duration.ofMinutes(5));
         return marketObservationRepository.findByInstrumentIdAndObservedAtBetweenOrderByObservedAtAsc(instrumentId, start, end);
     }
+
+    public List<MarketObservation> syncHistoricalPrices(UUID instrumentId, Instant from, Instant to) {
+        Instrument instrument = instrumentRepository.findById(instrumentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Instrument not found: " + instrumentId));
+        List<PriceQuote> quotes = marketDataProvider.fetchHistoricalQuotes(instrument, from, to);
+        List<MarketObservation> saved = new java.util.ArrayList<>();
+        for (PriceQuote q : quotes) {
+            MarketObservation obs = new MarketObservation(
+                    instrument,
+                    q.price(),
+                    q.currency(),
+                    q.asOf(),
+                    ObservationSourceType.PROVIDER,
+                    q.sourceReference()
+            );
+            saved.add(marketObservationRepository.save(obs));
+        }
+        return saved;
+    }
 }
