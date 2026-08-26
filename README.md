@@ -36,54 +36,75 @@ Spring Boot 4.1.1 is the current stable Spring Boot release selected for this pr
 - Secrets are supplied through environment variables; no credentials are committed.
 - Local PostgreSQL binds to `127.0.0.1` only.
 
-## Local development
+## Quickstart (One-Command Full Stack Docker)
+
+The simplest and fastest way to launch the complete system (PostgreSQL 18, Spring Boot 4 Backend on Java 25, and React 19 Frontend on Nginx) is via the included startup script or Docker Compose:
+
+### 1. Launch with `./start.sh`
+```bash
+./start.sh
+```
+
+Or using Docker Compose directly:
+```bash
+cp -n .env.example .env
+docker compose up --build -d --wait
+```
+
+### 2. Access Services
+- 🌐 **Web Application (Frontend)**: [http://localhost:3000](http://localhost:3000)
+- 🔌 **REST API (Backend)**: [http://localhost:8080/api/v1](http://localhost:8080/api/v1)
+- 🩺 **Health Check**: [http://localhost:8080/actuator/health](http://localhost:8080/actuator/health)
+- 🗄️ **PostgreSQL Database**: `127.0.0.1:5432` (user/db: `invest_tracker`)
+
+To view live container logs:
+```bash
+docker compose logs -f
+```
+
+To stop all containers and retain database volume:
+```bash
+docker compose down
+```
+
+---
+
+## Native Local Development (Optional)
+
+If developing locally without containerizing the backend/frontend processes:
 
 ### Prerequisites
-
 - **Java 25** (JDK 25)
-- **Maven 3.9.x** (or use the configured Maven build tool)
-- **Node.js >= 24** & **npm**
-- **Docker** & **Docker Compose**
+- **Maven 3.9.x**
+- **Node.js >= 22** & **npm**
+- **Docker** (for PostgreSQL)
 
 ### Step 1: Environment Setup
-
-1. Copy `.env.example` to `.env`:
 ```bash
 cp .env.example .env
-```
-2. Export the environment variables in your shell (or let your IDE source `.env`):
-```bash
 export $(grep -v '^#' .env | xargs)
 ```
 
 ### Step 2: Start PostgreSQL Database
-
-Start the local PostgreSQL 18 container (bound to `127.0.0.1:5432`):
 ```bash
-docker compose -f compose.yaml up -d postgres
+docker compose up -d postgres
 ```
 
-> **Note:** Flyway automatically creates and runs all schema migrations (`V1` through `V5`) when the backend application starts.
+> **Note:** Flyway automatically applies all schema migrations (`V1` through `V6`) when the backend starts.
 
-### Step 3: Run the Backend Application (Spring Boot)
-
-Run the Spring Boot application locally on port `8080`:
+### Step 3: Run the Backend Application
 ```bash
 mvn spring-boot:run
 ```
+Backend runs at `http://localhost:8080`.
 
-The REST API will be accessible at `http://localhost:8080/api/v1/...` and Actuator health check at `http://localhost:8080/actuator/health`.
-
-### Step 4: Run the Frontend (React + Vite)
-
-In a separate terminal, start the Vite development server on port `5173`:
+### Step 4: Run the Frontend
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-
-Open `http://localhost:5173` in your browser. The Vite dev server proxies `/api` requests to the backend at `http://localhost:8080`.
+Vite development server runs at `http://localhost:5173` and proxies `/api` requests to `http://localhost:8080`.
 
 ---
 
