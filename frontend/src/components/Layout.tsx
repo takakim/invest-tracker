@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { Link as RouterLink, useLocation } from 'react-router-dom';
+import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom';
 import {
+  Alert,
   AppBar,
   Box,
+  Button,
   Container,
   Divider,
   Drawer,
@@ -11,6 +13,7 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
+  Snackbar,
   Toolbar,
   Typography,
   useMediaQuery,
@@ -22,6 +25,9 @@ import AccountBalanceWalletOutlinedIcon from '@mui/icons-material/AccountBalance
 import ShowChartOutlinedIcon from '@mui/icons-material/ShowChartOutlined';
 import CurrencyExchangeIcon from '@mui/icons-material/CurrencyExchange';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import RestartAltIcon from '@mui/icons-material/RestartAlt';
+import { ConfirmDialog } from './ConfirmDialog';
+import { useResetDatabase } from '../features/system/useSystem';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -38,9 +44,24 @@ const DRAWER_WIDTH = 240;
 
 export function Layout({ children }: LayoutProps) {
   const location = useLocation();
+  const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState<string | null>(null);
+
+  const resetMutation = useResetDatabase();
+
+  const handleResetConfirm = () => {
+    resetMutation.mutate('RESET', {
+      onSuccess: () => {
+        setResetDialogOpen(false);
+        setSnackbarMessage('Database has been completely reset.');
+        navigate('/');
+      },
+    });
+  };
 
   const isCurrent = (path: string) => {
     if (path === '/') return location.pathname === '/';
@@ -97,6 +118,17 @@ export function Layout({ children }: LayoutProps) {
         })}
       </List>
       <Box sx={{ mt: 'auto', p: 2 }}>
+        <Button
+          fullWidth
+          variant="outlined"
+          color="error"
+          size="small"
+          startIcon={<RestartAltIcon />}
+          onClick={() => setResetDialogOpen(true)}
+          sx={{ mb: 1.5, textTransform: 'none', borderRadius: 2 }}
+        >
+          Reset Database
+        </Button>
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
           Invest Tracker v1.0.0
         </Typography>
@@ -177,6 +209,35 @@ export function Layout({ children }: LayoutProps) {
           {children}
         </Container>
       </Box>
+
+      {/* Reset Database Confirmation Dialog */}
+      <ConfirmDialog
+        open={resetDialogOpen}
+        title="Reset Entire Database?"
+        message="This will permanently delete all portfolios, accounts, holdings, transactions, CSV import batches, and market observations. This action CANNOT be undone."
+        confirmLabel="Reset Database"
+        confirmColor="error"
+        isPending={resetMutation.isPending}
+        onConfirm={handleResetConfirm}
+        onCancel={() => setResetDialogOpen(false)}
+      />
+
+      {/* Feedback Snackbar */}
+      <Snackbar
+        open={Boolean(snackbarMessage)}
+        autoHideDuration={4000}
+        onClose={() => setSnackbarMessage(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSnackbarMessage(null)}
+          severity="success"
+          variant="filled"
+          sx={{ width: '100%' }}
+        >
+          {snackbarMessage}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

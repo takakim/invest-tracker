@@ -633,6 +633,39 @@ paths:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/BenchmarkInstrument' }
+  /system/reset-database:
+    post:
+      summary: Reset entire application database (Danger Zone)
+      description: |
+        Wipes all portfolios, accounts, positions, transactions, CSV import batches,
+        and market observations. Requires confirmation: 'RESET'.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - confirmation
+              properties:
+                confirmation:
+                  type: string
+                  example: RESET
+      responses:
+        '200':
+          description: Database reset successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  timestamp:
+                    type: string
+                    format: date-time
+        '400':
+          $ref: '#/components/responses/Problem'
 components:
   parameters:
     PortfolioId:
