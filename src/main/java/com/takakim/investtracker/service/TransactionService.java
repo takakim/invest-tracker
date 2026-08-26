@@ -92,6 +92,31 @@ public class TransactionService {
             String counterCurrency,
             String notes,
             UUID correctionOfTransactionId) {
+        return recordTransaction(
+                portfolioId, accountId, instrumentId, type, tradeDate, settlementDate,
+                quantity, price, grossAmount, feeAmount, taxAmount, currency, fxRate,
+                counterCurrency, notes, correctionOfTransactionId, true
+        );
+    }
+
+    public Transaction recordTransaction(
+            UUID portfolioId,
+            UUID accountId,
+            UUID instrumentId,
+            TransactionType type,
+            Instant tradeDate,
+            Instant settlementDate,
+            BigDecimal quantity,
+            BigDecimal price,
+            BigDecimal grossAmount,
+            BigDecimal feeAmount,
+            BigDecimal taxAmount,
+            String currency,
+            BigDecimal fxRate,
+            String counterCurrency,
+            String notes,
+            UUID correctionOfTransactionId,
+            boolean syncPosition) {
 
         Account account = getValidatedAccount(portfolioId, accountId);
         Instrument instrument = null;
@@ -119,7 +144,9 @@ public class TransactionService {
         );
 
         Transaction saved = transactionRepository.save(transaction);
-        recalculatePositionIfTrade(account, instrument);
+        if (syncPosition) {
+            recalculatePositionIfTrade(account, instrument);
+        }
         return saved;
     }
 

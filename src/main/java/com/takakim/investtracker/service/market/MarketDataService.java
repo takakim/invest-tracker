@@ -66,20 +66,23 @@ public class MarketDataService {
         }
 
         // 2. Fetch from market data provider
-        Optional<PriceQuote> providerQuoteOpt = marketDataProvider.fetchQuote(instrument, targetTime);
-        if (providerQuoteOpt.isPresent()) {
-            PriceQuote quote = providerQuoteOpt.get();
-            // Cache/persist observation
-            MarketObservation obs = new MarketObservation(
-                    instrument,
-                    quote.price(),
-                    quote.currency(),
-                    quote.asOf(),
-                    ObservationSourceType.PROVIDER,
-                    quote.sourceReference()
-            );
-            marketObservationRepository.save(obs);
-            return quote;
+        try {
+            Optional<PriceQuote> providerQuoteOpt = marketDataProvider.fetchQuote(instrument, targetTime);
+            if (providerQuoteOpt.isPresent()) {
+                PriceQuote quote = providerQuoteOpt.get();
+                // Cache/persist observation
+                MarketObservation obs = new MarketObservation(
+                        instrument,
+                        quote.price(),
+                        quote.currency(),
+                        quote.asOf(),
+                        ObservationSourceType.PROVIDER,
+                        quote.sourceReference()
+                );
+                marketObservationRepository.save(obs);
+                return quote;
+            }
+        } catch (Exception ignored) {
         }
 
         // 3. Fallback to latest persisted observation
@@ -108,7 +111,7 @@ public class MarketDataService {
             if (tx.getPrice() != null && tx.getPrice().compareTo(BigDecimal.ZERO) > 0) {
                 boolean isStale = Duration.between(tx.getTradeDate(), targetTime).abs().compareTo(STALE_THRESHOLD) > 0;
                 String warning = "Live price unavailable; using last transaction trade price from " + tx.getTradeDate();
-                return new PriceQuote(
+                PriceQuote quote = new PriceQuote(
                         instrumentId,
                         tx.getPrice(),
                         tx.getCurrency(),
@@ -118,6 +121,19 @@ public class MarketDataService {
                         isStale,
                         warning
                 );
+                try {
+                    MarketObservation obs = new MarketObservation(
+                            instrument,
+                            quote.price(),
+                            quote.currency(),
+                            quote.asOf(),
+                            ObservationSourceType.PROVIDER,
+                            "LAST_TRANSACTION_TRADE_PRICE"
+                    );
+                    marketObservationRepository.save(obs);
+                } catch (Exception ignored) {
+                }
+                return quote;
             }
         }
 

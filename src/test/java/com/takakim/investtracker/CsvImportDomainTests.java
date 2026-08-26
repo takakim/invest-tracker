@@ -254,7 +254,7 @@ class CsvImportDomainTests {
                 org.mockito.Mockito.any(), org.mockito.Mockito.any(), org.mockito.Mockito.any(),
                 org.mockito.Mockito.any(), org.mockito.Mockito.any(), org.mockito.Mockito.any(),
                 org.mockito.Mockito.any(), org.mockito.Mockito.any(), org.mockito.Mockito.any(),
-                org.mockito.Mockito.any()
+                org.mockito.Mockito.any(), org.mockito.Mockito.anyBoolean()
         )).thenThrow(new IllegalArgumentException("Transaction recording error"));
 
         String errCsv = """

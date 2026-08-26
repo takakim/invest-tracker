@@ -35,6 +35,7 @@ public class CsvImportService {
     private final ImportBatchRepository importBatchRepository;
     private final ImportRecordRepository importRecordRepository;
     private final TransactionService transactionService;
+    private final com.takakim.investtracker.service.position.PositionEngine positionEngine;
     private final List<BrokerCsvParser> parsers;
 
     public CsvImportService(
@@ -44,11 +45,24 @@ public class CsvImportService {
             ImportRecordRepository importRecordRepository,
             TransactionService transactionService,
             List<BrokerCsvParser> parsers) {
+        this(accountRepository, instrumentRepository, importBatchRepository, importRecordRepository, transactionService, null, parsers);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public CsvImportService(
+            AccountRepository accountRepository,
+            InstrumentRepository instrumentRepository,
+            ImportBatchRepository importBatchRepository,
+            ImportRecordRepository importRecordRepository,
+            TransactionService transactionService,
+            com.takakim.investtracker.service.position.PositionEngine positionEngine,
+            List<BrokerCsvParser> parsers) {
         this.accountRepository = accountRepository;
         this.instrumentRepository = instrumentRepository;
         this.importBatchRepository = importBatchRepository;
         this.importRecordRepository = importRecordRepository;
         this.transactionService = transactionService;
+        this.positionEngine = positionEngine;
         this.parsers = parsers;
     }
 
@@ -144,6 +158,7 @@ public class CsvImportService {
 
         int importedCount = 0;
         int skippedCount = 0;
+        java.util.Map<UUID, Instrument> affectedInstruments = new java.util.TreeMap<>();
 
         for (ParsedTransactionRow row : parsedRows) {
             String fingerprint = calculateFingerprint(accountId, parser.getBrokerName(), row);
@@ -172,7 +187,7 @@ public class CsvImportService {
                 // Auto-resolve or create Instrument master data if ticker/ISIN is present
                 Instrument instrument = resolveOrCreateInstrument(row);
 
-                // Record transaction
+                // Record transaction without per-row position recalculation
                 Transaction tx = transactionService.recordTransaction(
                         portfolioId,
                         accountId,
@@ -189,8 +204,13 @@ public class CsvImportService {
                         row.fxRate(),
                         row.counterCurrency(),
                         row.notes(),
-                        null
+                        null,
+                        false
                 );
+
+                if (instrument != null) {
+                    affectedInstruments.put(instrument.getId(), instrument);
+                }
 
                 ImportRecord rec = new ImportRecord(
                         batch, account, row.rowNumber(), row.rawLine(), fingerprint,
@@ -205,6 +225,16 @@ public class CsvImportService {
                         ImportRecordStatus.ERROR, e.getMessage(), null
                 );
                 importRecordRepository.save(rec);
+            }
+        }
+
+        // Recalculate and sync positions for all affected instruments in deterministic sorted order
+        if (positionEngine != null) {
+            for (Instrument instrument : affectedInstruments.values()) {
+                try {
+                    positionEngine.recalculateAndSync(account, instrument);
+                } catch (Exception ignored) {
+                }
             }
         }
 
