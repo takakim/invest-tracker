@@ -297,6 +297,32 @@ public final class ApiDtos {
         List<AllocationItemResponse> byAccount,
         List<HoldingExposureResponse> topHoldings,
         List<String> warnings) { }
+
+    public record BenchmarkInstrumentResponse(
+        UUID id,
+        String name,
+        String ticker,
+        String isin,
+        String assetClass,
+        String currency) { }
+
+    public record BenchmarkComparisonResponse(
+        UUID portfolioId,
+        UUID benchmarkInstrumentId,
+        String benchmarkName,
+        String benchmarkTicker,
+        Instant periodStart,
+        Instant periodEnd,
+        java.math.BigDecimal portfolioReturn,
+        java.math.BigDecimal benchmarkReturn,
+        java.math.BigDecimal excessReturn,
+        java.math.BigDecimal annualizedPortfolioReturn,
+        java.math.BigDecimal annualizedBenchmarkReturn,
+        java.math.BigDecimal annualizedExcessReturn,
+        boolean outperforming,
+        String baseCurrency,
+        List<String> warnings) { }
 }
+
 
 

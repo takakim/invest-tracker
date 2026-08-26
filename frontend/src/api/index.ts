@@ -10,4 +10,6 @@ export * from './market';
 export * from './fx';
 export * from './analytics';
 export * from './export';
+export * from './benchmark';
+
 
