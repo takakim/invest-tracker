@@ -19,6 +19,7 @@ import { ValuationMetricsCard } from '../features/analytics/ValuationMetricsCard
 import { AssetAllocationCard } from '../features/analytics/AssetAllocationCard';
 import { ExportReportModal } from '../features/analytics/ExportReportModal';
 import { BenchmarkComparisonCard } from '../features/benchmark/BenchmarkComparisonCard';
+import { MarketRatesPage } from '../features/market/MarketRatesPage';
 import type { Portfolio, Instrument, Account, Position, Transaction, PerformanceResult, PortfolioAnalytics, BenchmarkInstrument, BenchmarkComparisonResult } from '../types';
 
 
@@ -113,6 +114,7 @@ describe('UI Primitives', () => {
     expect(screen.getByText('Dashboard')).toBeInTheDocument();
     expect(screen.getByText('Portfolios')).toBeInTheDocument();
     expect(screen.getByText('Instruments')).toBeInTheDocument();
+    expect(screen.getByText('Market & FX')).toBeInTheDocument();
     expect(screen.getByText('Content Body')).toBeInTheDocument();
   });
 });
@@ -555,7 +557,26 @@ describe('Feature Pages', () => {
       expect(screen.getByText('Benchmark start price is a proxy fallback')).toBeInTheDocument();
     });
   });
+
+  it('renders MarketRatesPage with FX rates and instrument live quotes', async () => {
+    renderWithProviders(<MarketRatesPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Market Data & FX Center')).toBeInTheDocument();
+      expect(screen.getByText('Exchange Rates (FX)')).toBeInTheDocument();
+      expect(screen.getByText('Securities & Instruments Live Quotes')).toBeInTheDocument();
+      expect(screen.getByText('Apple Inc')).toBeInTheDocument();
+    });
+
+    const newFxBtn = screen.getByRole('button', { name: 'New FX Override' });
+    fireEvent.click(newFxBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('Manual FX Rate Override')).toBeInTheDocument();
+    });
+  });
 });
+
 
 
 
