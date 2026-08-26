@@ -311,4 +311,28 @@ class PositionEngineTests {
         assertThrows(ResourceNotFoundException.class,
                 () -> positionEngine.getPositionLots(pId, aId, missingPosId));
     }
+
+    @Test
+    @DisplayName("PositionEngine recalculateAndSync unarchives position when positive quantity exists")
+    void recalculateAndSyncUnarchivesPosition() {
+        Transaction buy = new Transaction(
+                account, instrument, TransactionType.BUY, Instant.now().minus(5, java.time.temporal.ChronoUnit.DAYS),
+                null, new BigDecimal("10.00000000"), new BigDecimal("100.0000"), new BigDecimal("1000.0000"),
+                null, null, "USD", null, null, null, null
+        );
+        when(transactionRepository.findByAccountIdAndInstrumentIdOrderByTradeDateAsc(account.getId(), instrument.getId()))
+                .thenReturn(List.of(buy));
+
+        Position archivedPos = new Position(account, instrument, new Quantity(new BigDecimal("10.00000000")), null);
+        archivedPos.archive();
+        assertEquals(com.takakim.investtracker.domain.PositionStatus.ARCHIVED, archivedPos.getStatus());
+
+        when(positionRepository.findByAccountIdAndInstrumentId(account.getId(), instrument.getId()))
+                .thenReturn(Optional.of(archivedPos));
+
+        PositionCalculationResult res = positionEngine.recalculateAndSync(account, instrument);
+        assertNotNull(res);
+        assertEquals(com.takakim.investtracker.domain.PositionStatus.ACTIVE, archivedPos.getStatus());
+        verify(positionRepository).save(archivedPos);
+    }
 }
