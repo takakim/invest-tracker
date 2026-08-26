@@ -261,5 +261,42 @@ public final class ApiDtos {
         String sourceType,
         String sourceReference,
         Instant createdAt) { }
+
+    public record AllocationItemResponse(
+        String category,
+        java.math.BigDecimal marketValue,
+        java.math.BigDecimal percentage,
+        java.math.BigDecimal costBasis,
+        java.math.BigDecimal unrealizedGainLoss) { }
+
+    public record HoldingExposureResponse(
+        UUID instrumentId,
+        String instrumentName,
+        String ticker,
+        String assetClass,
+        java.math.BigDecimal quantity,
+        java.math.BigDecimal currentPrice,
+        java.math.BigDecimal marketValue,
+        java.math.BigDecimal costBasis,
+        java.math.BigDecimal unrealizedGainLoss,
+        java.math.BigDecimal weightPercentage,
+        String currency) { }
+
+    public record PortfolioAnalyticsResponse(
+        UUID portfolioId,
+        Instant asOf,
+        String baseCurrency,
+        java.math.BigDecimal totalCurrentValue,
+        java.math.BigDecimal totalCostBasis,
+        java.math.BigDecimal totalUnrealizedGainLoss,
+        java.math.BigDecimal totalUnrealizedReturnPercentage,
+        java.math.BigDecimal totalRealizedGainLoss,
+        java.math.BigDecimal totalCashValue,
+        List<AllocationItemResponse> byAssetClass,
+        List<AllocationItemResponse> byCurrency,
+        List<AllocationItemResponse> byAccount,
+        List<HoldingExposureResponse> topHoldings,
+        List<String> warnings) { }
 }
+
 

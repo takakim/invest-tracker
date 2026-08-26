@@ -345,3 +345,43 @@ export interface FxObservation {
   createdAt: string;
 }
 
+export interface AllocationItem {
+  category: string;
+  marketValue: number;
+  percentage: number;
+  costBasis: number;
+  unrealizedGainLoss: number;
+}
+
+export interface HoldingExposure {
+  instrumentId: string;
+  instrumentName: string;
+  ticker: string;
+  assetClass: AssetClass;
+  quantity: number;
+  currentPrice: number;
+  marketValue: number;
+  costBasis: number;
+  unrealizedGainLoss: number;
+  weightPercentage: number;
+  currency: string;
+}
+
+export interface PortfolioAnalytics {
+  portfolioId: string;
+  asOf: string;
+  baseCurrency: string;
+  totalCurrentValue: number;
+  totalCostBasis: number;
+  totalUnrealizedGainLoss: number;
+  totalUnrealizedReturnPercentage: number;
+  totalRealizedGainLoss: number;
+  totalCashValue: number;
+  byAssetClass: AllocationItem[];
+  byCurrency: AllocationItem[];
+  byAccount: AllocationItem[];
+  topHoldings: HoldingExposure[];
+  warnings: string[];
+}
+
+
