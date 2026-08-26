@@ -230,10 +230,12 @@ class BenchmarkEngineTests {
         when(fxRateService.convert(any(Money.class), eq(new Currency("GBP")), any(Instant.class)))
                 .thenReturn(new Money(BigDecimal.ZERO, new Currency("GBP")));
 
-        // Test with different periods (YTD, 6M, 1M, ALL, invalid, null asOf)
+        // Test with different periods (YTD, 6M, 3M, 1M, ALL, invalid, null asOf)
         benchmarkEngine.comparePortfolioToBenchmark(portfolioId, untracked.getId(), "YTD", null);
         benchmarkEngine.comparePortfolioToBenchmark(portfolioId, untracked.getId(), "6M", now);
+        benchmarkEngine.comparePortfolioToBenchmark(portfolioId, untracked.getId(), "3M", now);
         benchmarkEngine.comparePortfolioToBenchmark(portfolioId, untracked.getId(), "1M", now);
+        benchmarkEngine.comparePortfolioToBenchmark(portfolioId, untracked.getId(), "ALL", now);
         BenchmarkComparisonResult result = benchmarkEngine.comparePortfolioToBenchmark(portfolioId, untracked.getId(), "CUSTOM", now);
 
         assertNotNull(result);
@@ -241,5 +243,45 @@ class BenchmarkEngineTests {
         assertEquals(new BigDecimal("0.0800"), result.portfolioReturn());
         assertEquals(BigDecimal.ZERO.setScale(4), result.benchmarkReturn());
         assertFalse(result.warnings().isEmpty());
+    }
+
+    @Test
+    void comparePortfolioToBenchmark_underperformingAndPendingTx() {
+        Instant now = Instant.now();
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(portfolio));
+        when(instrumentRepository.findById(sp500.getId())).thenReturn(Optional.of(sp500));
+
+        // Create a corrected tx + completed tx
+        Transaction tx1 = new Transaction(
+                account, null, TransactionType.DEPOSIT, now.minus(10, ChronoUnit.DAYS),
+                null, null, null, new BigDecimal("1000.00"), null, null, "GBP", null, null, null, null
+        );
+        tx1.markCorrected();
+        Transaction tx2 = new Transaction(
+                account, null, TransactionType.DEPOSIT, now.minus(5, ChronoUnit.DAYS),
+                null, null, null, new BigDecimal("1000.00"), null, null, "GBP", null, null, null, null
+        );
+        when(transactionRepository.findByAccountPortfolioIdOrderByTradeDateDesc(portfolioId)).thenReturn(List.of(tx1, tx2));
+
+        // Negative portfolio return (-5%) vs Benchmark return (+10%)
+        PerformanceResult perf = new PerformanceResult(
+                portfolioId, now, "TWR",
+                new BigDecimal("-0.0500"), new BigDecimal("-0.0500"), null,
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("1000.00"), "GBP", "COST_BASIS", List.of()
+        );
+        when(performanceEngine.calculate(portfolioId)).thenReturn(perf);
+
+        when(marketDataService.getLatestPrice(eq(sp500.getId()), any(Instant.class)))
+                .thenReturn(new PriceQuote(sp500.getId(), new BigDecimal("110.00"), "USD", now, ObservationSourceType.PROVIDER, "FEED", false, null));
+
+        when(fxRateService.convert(any(Money.class), eq(new Currency("GBP")), any(Instant.class)))
+                .thenReturn(new Money(new BigDecimal("100.00"), new Currency("GBP"))) // start
+                .thenReturn(new Money(new BigDecimal("110.00"), new Currency("GBP"))); // end
+
+        BenchmarkComparisonResult result = benchmarkEngine.comparePortfolioToBenchmark(portfolioId, sp500.getId(), "1M", now);
+        assertNotNull(result);
+        assertFalse(result.outperforming());
+        assertTrue(result.excessReturn().compareTo(BigDecimal.ZERO) < 0);
     }
 }

@@ -299,4 +299,53 @@ class CsvImportDomainTests {
         assertNotNull(fp2);
         assertFalse(fp1.equals(fp2));
     }
+
+    @Test
+    @DisplayName("inferAssetClass correctly detects BONDs, ETFs, REITs, Cryptos, Funds, and Stocks")
+    void testInferAssetClass() {
+        assertEquals(com.takakim.investtracker.domain.AssetClass.BOND,
+                com.takakim.investtracker.service.csv.CsvImportService.inferAssetClass("UK T-Bill 03/02/25", "GB00BSGJV473", "GB00BSGJV473"));
+        assertEquals(com.takakim.investtracker.domain.AssetClass.BOND,
+                com.takakim.investtracker.service.csv.CsvImportService.inferAssetClass("Treasury 2028", "TR28", "GB0012345678"));
+        assertEquals(com.takakim.investtracker.domain.AssetClass.BOND,
+                com.takakim.investtracker.service.csv.CsvImportService.inferAssetClass("UK Gilt 2028", "GLT", null));
+        assertEquals(com.takakim.investtracker.domain.AssetClass.BOND,
+                com.takakim.investtracker.service.csv.CsvImportService.inferAssetClass("Corporate Bond", "BND", null));
+        assertEquals(com.takakim.investtracker.domain.AssetClass.BOND,
+                com.takakim.investtracker.service.csv.CsvImportService.inferAssetClass("Bond Note", "GB00BP123456", null));
+        assertEquals(com.takakim.investtracker.domain.AssetClass.ETF,
+                com.takakim.investtracker.service.csv.CsvImportService.inferAssetClass("FTSE All World Dis", "VWRL", "IE00B3RBWM25"));
+        assertEquals(com.takakim.investtracker.domain.AssetClass.ETF,
+                com.takakim.investtracker.service.csv.CsvImportService.inferAssetClass("Vanguard S&P 500", "VUSA", "IE00B3XXRP09"));
+        assertEquals(com.takakim.investtracker.domain.AssetClass.ETF,
+                com.takakim.investtracker.service.csv.CsvImportService.inferAssetClass("iShares S&P 500", "IITU", null));
+        assertEquals(com.takakim.investtracker.domain.AssetClass.ETF,
+                com.takakim.investtracker.service.csv.CsvImportService.inferAssetClass("SPDR Core", "SPY", null));
+        assertEquals(com.takakim.investtracker.domain.AssetClass.ETF,
+                com.takakim.investtracker.service.csv.CsvImportService.inferAssetClass("Index ETF", "ETF", null));
+        assertEquals(com.takakim.investtracker.domain.AssetClass.ETF,
+                com.takakim.investtracker.service.csv.CsvImportService.inferAssetClass("FTSE 100", "FTS", null));
+        assertEquals(com.takakim.investtracker.domain.AssetClass.ETF,
+                com.takakim.investtracker.service.csv.CsvImportService.inferAssetClass("S&P 500 Tracker", "SP5", null));
+        assertEquals(com.takakim.investtracker.domain.AssetClass.ETF,
+                com.takakim.investtracker.service.csv.CsvImportService.inferAssetClass("Core Xtrackers", "xdpg", null));
+        assertEquals(com.takakim.investtracker.domain.AssetClass.REIT,
+                com.takakim.investtracker.service.csv.CsvImportService.inferAssetClass("Regional REIT", "RGL", "GG00BSY2LD72"));
+        assertEquals(com.takakim.investtracker.domain.AssetClass.REIT,
+                com.takakim.investtracker.service.csv.CsvImportService.inferAssetClass("Property Trust", "PROP", null));
+        assertEquals(com.takakim.investtracker.domain.AssetClass.CRYPTO,
+                com.takakim.investtracker.service.csv.CsvImportService.inferAssetClass("Crypto Index", "CRP", null));
+        assertEquals(com.takakim.investtracker.domain.AssetClass.CRYPTO,
+                com.takakim.investtracker.service.csv.CsvImportService.inferAssetClass("Bitcoin Physical Crypto", "btc", "US1234567890"));
+        assertEquals(com.takakim.investtracker.domain.AssetClass.MUTUAL_FUND,
+                com.takakim.investtracker.service.csv.CsvImportService.inferAssetClass("Global Index Fund", "GLBF", null));
+        assertEquals(com.takakim.investtracker.domain.AssetClass.MUTUAL_FUND,
+                com.takakim.investtracker.service.csv.CsvImportService.inferAssetClass("Global OEIC Fund", "OEIC", null));
+        assertEquals(com.takakim.investtracker.domain.AssetClass.CASH,
+                com.takakim.investtracker.service.csv.CsvImportService.inferAssetClass("GBP Cash", "CASH", null));
+        assertEquals(com.takakim.investtracker.domain.AssetClass.STOCK,
+                com.takakim.investtracker.service.csv.CsvImportService.inferAssetClass("Apple Inc", "AAPL", "US0378331005"));
+        assertEquals(com.takakim.investtracker.domain.AssetClass.STOCK,
+                com.takakim.investtracker.service.csv.CsvImportService.inferAssetClass(null, null, null));
+    }
 }

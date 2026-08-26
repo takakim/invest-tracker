@@ -96,6 +96,11 @@ public class Position {
         this.updatedAt = Instant.now();
     }
 
+    public void unarchive() {
+        this.status = PositionStatus.ACTIVE;
+        this.updatedAt = Instant.now();
+    }
+
     private void validateQuantity(BigDecimal qty) {
         if (qty == null) {
             throw new IllegalArgumentException("Quantity must not be null");

@@ -31,3 +31,9 @@ management:
   endpoint:
     health:
       show-details: never
+
+logging:
+  file:
+    name: ${LOGGING_FILE_NAME:logs/backend.log}
+  pattern:
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"

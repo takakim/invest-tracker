@@ -90,11 +90,18 @@ class PerformanceEngineTests {
     }
 
     @Test
-    @DisplayName("PerformanceEngine throws UnsupportedOperationException for XIRR portfolio")
-    void xirrThrowsNotImplemented() {
+    @DisplayName("PerformanceEngine calculates performance for XIRR portfolio")
+    void xirrCalculatesPerformance() {
         UUID pId = xirrPortfolio.getId();
         when(portfolioRepository.findById(pId)).thenReturn(Optional.of(xirrPortfolio));
-        assertThrows(UnsupportedOperationException.class, () -> performanceEngine.calculate(pId));
+        when(accountRepository.findAllByPortfolioIdAndStatusOrderByNameAsc(pId, AccountStatus.ACTIVE))
+                .thenReturn(List.of());
+        when(transactionRepository.findByAccountPortfolioIdOrderByTradeDateDesc(pId))
+                .thenReturn(List.of());
+
+        PerformanceResult result = performanceEngine.calculate(pId);
+        assertNotNull(result);
+        assertEquals("XIRR", result.returnMethod());
     }
 
     @Test

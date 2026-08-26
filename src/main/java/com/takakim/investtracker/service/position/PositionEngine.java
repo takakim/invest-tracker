@@ -7,6 +7,7 @@ import com.takakim.investtracker.domain.Instrument;
 import com.takakim.investtracker.domain.Money;
 import com.takakim.investtracker.domain.Portfolio;
 import com.takakim.investtracker.domain.Position;
+import com.takakim.investtracker.domain.PositionStatus;
 import com.takakim.investtracker.domain.Quantity;
 import com.takakim.investtracker.domain.Transaction;
 import com.takakim.investtracker.repository.AccountRepository;
@@ -94,8 +95,18 @@ public class PositionEngine {
 
         if (existingOpt.isPresent()) {
             Position position = existingOpt.get();
-            position.update(new Quantity(qty), costBasisMoney);
-            positionRepository.save(position);
+            if (qty.compareTo(BigDecimal.ZERO) <= 0) {
+                if (position.getStatus() != PositionStatus.ARCHIVED) {
+                    position.archive();
+                    positionRepository.save(position);
+                }
+            } else {
+                if (position.getStatus() == PositionStatus.ARCHIVED) {
+                    position.unarchive();
+                }
+                position.update(new Quantity(qty), costBasisMoney);
+                positionRepository.save(position);
+            }
         } else if (qty.compareTo(BigDecimal.ZERO) > 0) {
             Position position = new Position(account, instrument, new Quantity(qty), costBasisMoney);
             positionRepository.save(position);

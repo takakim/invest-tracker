@@ -85,6 +85,8 @@ class CoreDomainIntegrationTests {
         String id = com.jayway.jsonpath.JsonPath.read(json, "$.id");
         mockMvc.perform(get("/api/v1/instruments")).andExpect(status().isOk()).andExpect(jsonPath("$[0].id").value(id));
         mockMvc.perform(get("/api/v1/instruments/{id}", id)).andExpect(status().isOk()).andExpect(jsonPath("$.ticker").value("ACME"));
+        mockMvc.perform(put("/api/v1/instruments/{id}", id).contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Acme Corp\",\"assetClass\":\"ETF\",\"ticker\":\"ACME\",\"isin\":\"GB00ACME1234\",\"exchange\":\"LSE\",\"currency\":\"GBP\"}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.name").value("Acme Corp")).andExpect(jsonPath("$.assetClass").value("ETF"));
         mockMvc.perform(post("/api/v1/instruments").contentType(MediaType.APPLICATION_JSON).content(instrument)).andExpect(status().isConflict());
         mockMvc.perform(post("/api/v1/instruments").contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"\",\"assetClass\":\"STOCK\",\"currency\":\"GBP\"}"))
             .andExpect(status().isBadRequest());

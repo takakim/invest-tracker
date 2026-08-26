@@ -445,6 +445,34 @@ paths:
               schema: { $ref: '#/components/schemas/Instrument' }
         '400': { $ref: '#/components/responses/Problem' }
         '409': { $ref: '#/components/responses/Problem' }
+  /instruments/{instrumentId}:
+    parameters:
+      - { $ref: '#/components/parameters/InstrumentId' }
+    get:
+      operationId: getInstrument
+      responses:
+        '200':
+          description: Instrument details
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Instrument' }
+        '404': { $ref: '#/components/responses/Problem' }
+    put:
+      operationId: updateInstrument
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InstrumentCreate' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Instrument' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
   /instruments/{instrumentId}/quotes/latest:
     parameters:
       - { $ref: '#/components/parameters/InstrumentId' }
@@ -605,6 +633,39 @@ paths:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/BenchmarkInstrument' }
+  /system/reset-database:
+    post:
+      summary: Reset entire application database (Danger Zone)
+      description: |
+        Wipes all portfolios, accounts, positions, transactions, CSV import batches,
+        and market observations. Requires confirmation: 'RESET'.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - confirmation
+              properties:
+                confirmation:
+                  type: string
+                  example: RESET
+      responses:
+        '200':
+          description: Database reset successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  timestamp:
+                    type: string
+                    format: date-time
+        '400':
+          $ref: '#/components/responses/Problem'
 components:
   parameters:
     PortfolioId:

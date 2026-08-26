@@ -12,8 +12,9 @@ public class SecurityConfig {
         http
             .csrf(csrf -> csrf.ignoringRequestMatchers("/api/v1/**"))
             .authorizeHttpRequests(authorize -> authorize
-                .requestMatchers("/actuator/health").permitAll()
+                .requestMatchers("/actuator/**").permitAll()
                 .requestMatchers("/api/v1/**").permitAll()
+                .requestMatchers("/error").permitAll()
                 .anyRequest().denyAll())
             .headers(headers -> headers
                 .contentTypeOptions(contentTypeOptions -> { })

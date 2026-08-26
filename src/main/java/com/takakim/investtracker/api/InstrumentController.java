@@ -23,6 +23,11 @@ public class InstrumentController {
     @ResponseStatus(HttpStatus.CREATED)
     public ApiDtos.InstrumentResponse create(@Valid @RequestBody ApiDtos.InstrumentRequest request) { return service.create(request); }
 
+    @org.springframework.web.bind.annotation.PutMapping("/{id}")
+    public ApiDtos.InstrumentResponse update(@PathVariable UUID id, @Valid @RequestBody ApiDtos.InstrumentRequest request) {
+        return service.update(id, request);
+    }
+
     @GetMapping
     public List<ApiDtos.InstrumentResponse> list() { return service.list(); }
 

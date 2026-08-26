@@ -245,15 +245,43 @@ public class CsvImportService {
                 ? row.instrumentCurrency()
                 : row.currency();
 
+        AssetClass inferredClass = inferAssetClass(name, row.ticker(), row.isin());
+
         Instrument inst = new Instrument(
                 name,
-                AssetClass.STOCK,
+                inferredClass,
                 row.ticker(),
                 row.isin(),
                 null,
                 new Currency(currencyCode != null ? currencyCode : "GBP")
         );
         return instrumentRepository.save(inst);
+    }
+
+    public static AssetClass inferAssetClass(String name, String ticker, String isin) {
+        String n = name != null ? name.toLowerCase() : "";
+        String t = ticker != null ? ticker.toLowerCase() : "";
+
+        if (n.contains("t-bill") || n.contains("treasury") || n.contains("gilt") || n.contains("bond") || t.startsWith("gb00b")) {
+            return AssetClass.BOND;
+        }
+        if (n.contains("reit") || n.contains("property")) {
+            return AssetClass.REIT;
+        }
+        if (n.contains("etf") || n.contains("vanguard") || n.contains("ishares") || n.contains("spdr") || n.contains("ftse") || n.contains("s&p 500") || t.equals("vwrl") || t.equals("xdpg")) {
+            return AssetClass.ETF;
+        }
+        if (n.contains("fund") || n.contains("oeic")) {
+            return AssetClass.MUTUAL_FUND;
+        }
+        if (n.contains("crypto") || n.contains("bitcoin") || t.equals("btc")) {
+            return AssetClass.CRYPTO;
+        }
+        if (n.contains("cash")) {
+            return AssetClass.CASH;
+        }
+
+        return AssetClass.STOCK;
     }
 
     private BrokerCsvParser selectParser(String csvContent) {

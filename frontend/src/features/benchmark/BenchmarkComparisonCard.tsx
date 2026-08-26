@@ -128,7 +128,11 @@ export function BenchmarkComparisonCard({ portfolioId, currency }: BenchmarkComp
 
           {isComparisonLoading ? (
             <Skeleton variant="rectangular" height={100} sx={{ borderRadius: 1 }} />
-          ) : error || !comparison ? (
+          ) : error ? (
+            <Alert severity="warning">
+              Unable to calculate benchmark comparison for the selected period. Ensure historical quotes and transactions are available.
+            </Alert>
+          ) : !comparison ? (
             <Alert severity="info">Select a benchmark to view comparative return analytics.</Alert>
           ) : (
             <>

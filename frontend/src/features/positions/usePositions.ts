@@ -59,6 +59,10 @@ export function useCreatePosition(portfolioId: string, accountId: string) {
       queryClient.invalidateQueries({
         queryKey: POSITION_QUERY_KEYS.portfolioList(portfolioId),
       });
+      queryClient.invalidateQueries({ queryKey: ['analytics', portfolioId] });
+      queryClient.invalidateQueries({ queryKey: ['portfolios', portfolioId] });
+      queryClient.invalidateQueries({ queryKey: ['performance', portfolioId] });
+      queryClient.invalidateQueries({ queryKey: ['benchmark', portfolioId] });
     },
   });
 }
@@ -83,6 +87,10 @@ export function useUpdatePosition(portfolioId: string, accountId: string) {
       queryClient.invalidateQueries({
         queryKey: POSITION_QUERY_KEYS.detail(portfolioId, accountId, updated.id),
       });
+      queryClient.invalidateQueries({ queryKey: ['analytics', portfolioId] });
+      queryClient.invalidateQueries({ queryKey: ['portfolios', portfolioId] });
+      queryClient.invalidateQueries({ queryKey: ['performance', portfolioId] });
+      queryClient.invalidateQueries({ queryKey: ['benchmark', portfolioId] });
     },
   });
 }
@@ -101,6 +109,10 @@ export function useArchivePosition(portfolioId: string, accountId: string) {
       queryClient.invalidateQueries({
         queryKey: POSITION_QUERY_KEYS.detail(portfolioId, accountId, positionId),
       });
+      queryClient.invalidateQueries({ queryKey: ['analytics', portfolioId] });
+      queryClient.invalidateQueries({ queryKey: ['portfolios', portfolioId] });
+      queryClient.invalidateQueries({ queryKey: ['performance', portfolioId] });
+      queryClient.invalidateQueries({ queryKey: ['benchmark', portfolioId] });
     },
   });
 }

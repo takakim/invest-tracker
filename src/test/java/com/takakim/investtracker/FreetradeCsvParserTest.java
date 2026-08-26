@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FreetradeCsvParserTest {
@@ -127,5 +128,56 @@ class FreetradeCsvParserTest {
             """;
         List<ParsedTransactionRow> unsupportedRows = parser.parse(nonFreetradeCsv);
         assertEquals(0, unsupportedRows.size());
+    }
+
+    @Test
+    @DisplayName("Freetrade parser auto-generates maturity redemption for T-Bills and adjusts RGL consolidation")
+    void testTbillMaturityAndRglConsolidation() {
+        String csv = """
+            Title,Type,Timestamp,Account Currency,Total Amount in Account Currency,Buy / Sell,Ticker,ISIN,Price per Share,Stamp Duty,Quantity,Venue,Order ID,Order Type,Instrument Currency,Total Amount in Instrument Currency,Price per Share,FX Rate
+            UK T-Bill 10/02/25,ORDER,2025-01-10T08:19:48.000Z,GBP,256.74,BUY,GB00BSGJXG32,GB00BSGJXG32,0.99642106,0.00,257.67000000,Off-exchange,TC5D,BASIC,GBP,256.74,0.99642106,
+            
+            Regional REIT,ORDER,2024-10-17T09:00:50.713Z,GBP,157.75,SELL,RGL,GG00BSY2LD72,1.28252033,0.00,123.00000000,LSE,2N4J,BASIC,GBP,157.75,1.28252033,
+            UK T-Bill No OrderID,ORDER,2025-01-10T08:19:48.000Z,,256.74,BUY,GB00BSGJXG32,GB00BSGJXG32,0.99642106,0.00,257.67000000,Off-exchange,,BASIC,,256.74,0.99642106,
+            ShortLine,ORDER,2025-01-10
+            InvalidNumber,ORDER,2025-01-10T08:00:00Z,GBP,NOT_A_NUMBER,BUY,TICK,ISIN,INVALID,0.00,INVALID,VENUE,ID,TYPE,CURR,INVALID,INVALID,INVALID
+            """;
+
+        List<ParsedTransactionRow> rows = parser.parse(csv);
+        assertTrue(rows.size() >= 4);
+
+        // Row 1: T-Bill BUY
+        ParsedTransactionRow buy = rows.get(0);
+        assertEquals(TransactionType.BUY, buy.mappedType());
+        assertEquals("GB00BSGJXG32", buy.ticker());
+        assertEquals(new BigDecimal("257.67000000"), buy.quantity());
+
+        // Row 2: T-Bill auto SELL (maturity redemption at par)
+        ParsedTransactionRow maturity = rows.get(1);
+        assertEquals(TransactionType.SELL, maturity.mappedType());
+        assertEquals("TC5D-MATURITY", maturity.externalReference());
+        assertEquals(new BigDecimal("257.67000000"), maturity.quantity());
+        assertEquals(new BigDecimal("257.67000000"), maturity.grossAmount());
+
+        // Row 3: RGL SELL (adjusted for 10:1 consolidation)
+        ParsedTransactionRow rgl = rows.get(2);
+        assertEquals(TransactionType.SELL, rgl.mappedType());
+        assertEquals("RGL", rgl.ticker());
+        assertEquals(new BigDecimal("1232.00000000"), rgl.quantity());
+
+        // extractMaturityDate edge cases
+        assertNull(FreetradeCsvParser.extractMaturityDate(null));
+        assertNull(FreetradeCsvParser.extractMaturityDate("Apple Inc"));
+        assertNull(FreetradeCsvParser.extractMaturityDate("UK T-Bill 99/99/99"));
+        assertNotNull(FreetradeCsvParser.extractMaturityDate("UK T-Bill 03/02/2025"));
+    }
+
+    @Test
+    @DisplayName("Freetrade parser supports checks variations")
+    void supportsHeaderVariations() {
+        assertFalse(parser.supports(List.of("A", "B", "C", "D", "E", "F", "G", "H", "I", "J")));
+        assertFalse(parser.supports(List.of("Title", "Wrong", "Timestamp", "D", "E", "Buy / Sell", "G", "H", "I", "J")));
+        assertFalse(parser.supports(List.of("Title", "Type", "Wrong", "D", "E", "Buy / Sell", "G", "H", "I", "J")));
+        assertFalse(parser.supports(List.of("Title", "Type", "Timestamp", "D", "E", "Wrong", "G", "H", "I", "J")));
     }
 }

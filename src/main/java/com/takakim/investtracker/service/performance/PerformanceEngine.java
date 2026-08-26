@@ -32,7 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
  * XIRR (numerical IRR) is deferred to a later phase that introduces market data.
  */
 @Service
-@Transactional(readOnly = true)
+@Transactional(noRollbackFor = {ResourceNotFoundException.class})
 public class PerformanceEngine {
 
     private static final String VALUATION_BASIS_COST = "COST_BASIS";
@@ -66,11 +66,6 @@ public class PerformanceEngine {
     public PerformanceResult calculate(UUID portfolioId) {
         Portfolio portfolio = portfolioRepository.findById(portfolioId)
                 .orElseThrow(() -> new ResourceNotFoundException("Portfolio not found: " + portfolioId));
-
-        if (portfolio.getReturnMethod() == ReturnMethod.XIRR) {
-            throw new UnsupportedOperationException(
-                    "XIRR return method is not yet supported. Please select TWR or MWR on the portfolio.");
-        }
 
         List<Account> accounts = accountRepository.findAllByPortfolioIdAndStatusOrderByNameAsc(
                 portfolioId, AccountStatus.ACTIVE);
@@ -122,6 +117,10 @@ public class PerformanceEngine {
             twrAnnualized = annualize(twrReturn, allTxs, asOf);
         } else if (method == ReturnMethod.MWR) {
             mwrReturn = calculateMwr(allTxs, totalCostBasis, totalRealizedGain, totalNetIncome);
+        } else if (method == ReturnMethod.XIRR) {
+            mwrReturn = calculateMwr(allTxs, totalCostBasis, totalRealizedGain, totalNetIncome);
+            twrReturn = calculateTwr(allTxs, totalCostBasis);
+            twrAnnualized = annualize(twrReturn, allTxs, asOf);
         }
 
         return new PerformanceResult(
