@@ -52,6 +52,8 @@ services:
         condition: service_healthy
     ports:
       - "3000:80"
+    volumes:
+      - ./logs:/var/log/nginx
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1/ || exit 1"]
       interval: 10s
