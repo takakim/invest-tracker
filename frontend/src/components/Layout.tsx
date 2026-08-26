@@ -20,6 +20,7 @@ import MenuIcon from '@mui/icons-material/Menu';
 import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined';
 import AccountBalanceWalletOutlinedIcon from '@mui/icons-material/AccountBalanceWalletOutlined';
 import ShowChartOutlinedIcon from '@mui/icons-material/ShowChartOutlined';
+import CurrencyExchangeIcon from '@mui/icons-material/CurrencyExchange';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 
 interface LayoutProps {
@@ -30,6 +31,7 @@ const NAV_ITEMS = [
   { label: 'Dashboard', path: '/', icon: <DashboardOutlinedIcon /> },
   { label: 'Portfolios', path: '/portfolios', icon: <AccountBalanceWalletOutlinedIcon /> },
   { label: 'Instruments', path: '/instruments', icon: <ShowChartOutlinedIcon /> },
+  { label: 'Market & FX', path: '/market', icon: <CurrencyExchangeIcon /> },
 ];
 
 const DRAWER_WIDTH = 240;
@@ -96,7 +98,7 @@ export function Layout({ children }: LayoutProps) {
       </List>
       <Box sx={{ mt: 'auto', p: 2 }}>
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-          Invest Tracker v0.1.0 (Phase 1.5)
+          Invest Tracker v1.0.0
         </Typography>
       </Box>
     </Box>

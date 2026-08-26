@@ -70,6 +70,14 @@ export function DashboardPage() {
           >
             Instruments
           </Button>
+          <Button
+            component={RouterLink}
+            to="/market"
+            variant="outlined"
+            startIcon={<AssessmentOutlinedIcon />}
+          >
+            Market & FX
+          </Button>
         </Stack>
       </Stack>
 
@@ -141,8 +149,8 @@ export function DashboardPage() {
                   sx={{
                     p: 1.5,
                     borderRadius: 2,
-                    bgcolor: 'info.main',
-                    color: 'info.contrastText',
+                    bgcolor: 'success.main',
+                    color: 'success.contrastText',
                     display: 'flex',
                   }}
                 >
@@ -150,10 +158,10 @@ export function DashboardPage() {
                 </Box>
                 <Box>
                   <Typography variant="caption" color="text.secondary">
-                    Core Status
+                    Platform Status
                   </Typography>
                   <Typography variant="h6" sx={{ fontWeight: 700, mt: 0.5 }}>
-                    Phase 1.5 Ready
+                    Production Ready
                   </Typography>
                 </Box>
               </Stack>
