@@ -365,6 +365,11 @@ export interface HoldingExposure {
   unrealizedGainLoss: number;
   weightPercentage: number;
   currency: string;
+  nativePrice?: number | null;
+  nativeCurrency?: string | null;
+  nativeCostBasis?: number | null;
+  nativeUnrealizedGainLoss?: number | null;
+  nativeGainLossPercentage?: number | null;
 }
 
 export interface PortfolioAnalytics {

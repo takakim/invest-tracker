@@ -143,6 +143,17 @@ public class AnalyticsEngine {
 
             BigDecimal unrealizedGain = marketValue.subtract(costBasisInBase.amount()).setScale(SCALE, ROUNDING);
 
+            // Compute native asset currency metrics
+            String nativeCurr = instrument.getCurrency().code();
+            BigDecimal nativePrice = quote.price();
+            Money nativeCostBasisMoney = fxRateService.convert(costBasisMoney, instrument.getCurrency(), targetTime);
+            BigDecimal nativeCostBasis = nativeCostBasisMoney.amount();
+            BigDecimal nativeMarketValue = qty.multiply(nativePrice).setScale(SCALE, ROUNDING);
+            BigDecimal nativeUnrealizedGain = nativeMarketValue.subtract(nativeCostBasis).setScale(SCALE, ROUNDING);
+            BigDecimal nativeGainPct = nativeCostBasis.compareTo(BigDecimal.ZERO) > 0
+                    ? nativeUnrealizedGain.divide(nativeCostBasis, 6, ROUNDING).multiply(BigDecimal.valueOf(100)).setScale(4, ROUNDING)
+                    : BigDecimal.ZERO.setScale(SCALE, ROUNDING);
+
             totalPositionsMarketValue = totalPositionsMarketValue.add(marketValue);
             totalPositionsCostBasis = totalPositionsCostBasis.add(costBasisInBase.amount());
 
@@ -157,7 +168,12 @@ public class AnalyticsEngine {
                     costBasisInBase.amount(),
                     unrealizedGain,
                     BigDecimal.ZERO, // will set weight after total
-                    instrument.getCurrency().code()
+                    instrument.getCurrency().code(),
+                    nativePrice,
+                    nativeCurr,
+                    nativeCostBasis,
+                    nativeUnrealizedGain,
+                    nativeGainPct
             ));
         }
 

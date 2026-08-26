@@ -144,8 +144,10 @@ class CsvImportDomainTests {
         var recordRepo = org.mockito.Mockito.mock(com.takakim.investtracker.repository.ImportRecordRepository.class);
         var txService = org.mockito.Mockito.mock(com.takakim.investtracker.service.TransactionService.class);
 
+        var t212Parser = new com.takakim.investtracker.service.csv.Trading212CsvParser();
+        var ieParser = new com.takakim.investtracker.service.csv.InvestEngineCsvParser();
         com.takakim.investtracker.service.csv.CsvImportService service = new com.takakim.investtracker.service.csv.CsvImportService(
-                accountRepo, instRepo, batchRepo, recordRepo, txService, List.of(parser)
+                accountRepo, instRepo, batchRepo, recordRepo, txService, List.of(parser, t212Parser, ieParser)
         );
 
         java.util.UUID portfolioId = java.util.UUID.randomUUID();

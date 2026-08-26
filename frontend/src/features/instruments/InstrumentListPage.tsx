@@ -29,8 +29,9 @@ import { useInstrumentsList, useCreateInstrument, useUpdateInstrument } from './
 import { InstrumentFormModal } from './InstrumentFormModal';
 import { ManualPriceModal } from '../market/ManualPriceModal';
 import { MarketRatesCard } from '../market/MarketRatesCard';
-import { EmptyState, ErrorAlert, LoadingState } from '../../components';
+import { EmptyState, ErrorAlert, LoadingState, SortableTableHead } from '../../components';
 import type { AssetClass, Instrument, InstrumentCreateInput } from '../../types';
+import { Order, sortRows } from '../../utils/sorting';
 
 const ASSET_CLASS_LABELS: Record<AssetClass, string> = {
   STOCK: 'Stock',
@@ -54,6 +55,14 @@ export function InstrumentListPage() {
   const [selectedAssetClass, setSelectedAssetClass] = useState<string>('ALL');
   const [priceModalOpen, setPriceModalOpen] = useState(false);
   const [selectedInstrument, setSelectedInstrument] = useState<Instrument | null>(null);
+  const [order, setOrder] = useState<Order>('asc');
+  const [orderBy, setOrderBy] = useState<string>('name');
+
+  const handleRequestSort = (property: string) => {
+    const isAsc = orderBy === property && order === 'asc';
+    setOrder(isAsc ? 'desc' : 'asc');
+    setOrderBy(property);
+  };
 
   const filteredInstruments = useMemo(() => {
     return instruments.filter((inst) => {
@@ -71,6 +80,10 @@ export function InstrumentListPage() {
       );
     });
   }, [instruments, searchQuery, selectedAssetClass]);
+
+  const sortedInstruments = useMemo(() => {
+    return sortRows(filteredInstruments, order, orderBy);
+  }, [filteredInstruments, order, orderBy]);
 
   const handleCreateOrEditSubmit = async (formData: InstrumentCreateInput) => {
     if (editingInstrument) {
@@ -181,19 +194,22 @@ export function InstrumentListPage() {
       ) : (
         <TableContainer component={Paper} sx={{ borderRadius: 2 }}>
           <Table aria-label="instruments table">
-            <TableHead>
-              <TableRow>
-                <TableCell>Instrument Name</TableCell>
-                <TableCell>Asset Class</TableCell>
-                <TableCell>Ticker / Symbol</TableCell>
-                <TableCell>ISIN</TableCell>
-                <TableCell>Exchange</TableCell>
-                <TableCell>Currency</TableCell>
-                <TableCell align="right">Actions</TableCell>
-              </TableRow>
-            </TableHead>
+            <SortableTableHead<Instrument>
+              headCells={[
+                { id: 'name', label: 'Instrument Name', sortable: true },
+                { id: 'assetClass', label: 'Asset Class', sortable: true },
+                { id: 'ticker', label: 'Ticker / Symbol', sortable: true },
+                { id: 'isin', label: 'ISIN', sortable: true },
+                { id: 'exchange', label: 'Exchange', sortable: true },
+                { id: 'currency', label: 'Currency', sortable: true },
+                { id: 'actions', label: 'Actions', align: 'right', sortable: false },
+              ]}
+              order={order}
+              orderBy={orderBy}
+              onRequestSort={handleRequestSort}
+            />
             <TableBody>
-              {filteredInstruments.map((instrument) => (
+              {sortedInstruments.map((instrument) => (
                 <TableRow key={instrument.id} hover>
                   <TableCell sx={{ fontWeight: 600 }}>{instrument.name}</TableCell>
                   <TableCell>
