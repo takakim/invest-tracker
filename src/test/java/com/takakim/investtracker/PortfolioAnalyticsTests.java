@@ -52,5 +52,34 @@ class PortfolioAnalyticsTests {
         assertThrows(NullPointerException.class, () -> new HoldingExposure(null, "Apple", "AAPL", AssetClass.STOCK, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ZERO, BigDecimal.ONE, "USD"));
         assertThrows(NullPointerException.class, () -> new HoldingExposure(id, null, "AAPL", AssetClass.STOCK, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ZERO, BigDecimal.ONE, "USD"));
         assertThrows(NullPointerException.class, () -> new HoldingExposure(id, "Apple", "AAPL", null, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ZERO, BigDecimal.ONE, "USD"));
+        assertThrows(NullPointerException.class, () -> new HoldingExposure(id, "Apple", "AAPL", AssetClass.STOCK, null, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ZERO, BigDecimal.ONE, "USD"));
+        assertThrows(NullPointerException.class, () -> new HoldingExposure(id, "Apple", "AAPL", AssetClass.STOCK, BigDecimal.ONE, null, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ZERO, BigDecimal.ONE, "USD"));
+        assertThrows(NullPointerException.class, () -> new HoldingExposure(id, "Apple", "AAPL", AssetClass.STOCK, BigDecimal.ONE, BigDecimal.ONE, null, BigDecimal.ONE, BigDecimal.ZERO, BigDecimal.ONE, "USD"));
+        assertThrows(NullPointerException.class, () -> new HoldingExposure(id, "Apple", "AAPL", AssetClass.STOCK, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE, null, BigDecimal.ZERO, BigDecimal.ONE, "USD"));
+        assertThrows(NullPointerException.class, () -> new HoldingExposure(id, "Apple", "AAPL", AssetClass.STOCK, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE, null, BigDecimal.ONE, "USD"));
+        assertThrows(NullPointerException.class, () -> new HoldingExposure(id, "Apple", "AAPL", AssetClass.STOCK, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ZERO, null, "USD"));
+        assertThrows(NullPointerException.class, () -> new HoldingExposure(id, "Apple", "AAPL", AssetClass.STOCK, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ZERO, BigDecimal.ONE, null));
+    }
+
+    @Test
+    void holdingExposure_convenienceConstructorCalculatesPercentages() {
+        UUID id = UUID.randomUUID();
+        // Positive cost basis
+        HoldingExposure exp1 = new HoldingExposure(
+                id, "Apple", "AAPL", AssetClass.STOCK, new BigDecimal("10"),
+                new BigDecimal("150.00"), new BigDecimal("1500.00"), new BigDecimal("1000.00"),
+                new BigDecimal("500.00"), new BigDecimal("0.50"), "USD"
+        );
+        assertNotNull(exp1);
+        assertEquals(new BigDecimal("50.0000"), exp1.nativeGainLossPercentage());
+        assertEquals("USD", exp1.nativeCurrency());
+
+        // Zero cost basis
+        HoldingExposure exp2 = new HoldingExposure(
+                id, "Gifted", "GIFT", AssetClass.STOCK, new BigDecimal("10"),
+                new BigDecimal("150.00"), new BigDecimal("1500.00"), BigDecimal.ZERO,
+                new BigDecimal("1500.00"), new BigDecimal("0.50"), "USD"
+        );
+        assertEquals(BigDecimal.ZERO, exp2.nativeGainLossPercentage());
     }
 }

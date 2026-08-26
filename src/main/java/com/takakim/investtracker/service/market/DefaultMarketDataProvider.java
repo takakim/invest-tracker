@@ -48,7 +48,7 @@ public class DefaultMarketDataProvider implements MarketDataProvider {
         tickerPriceMap.put("RIVN", new BigDecimal("13.8000"));
         tickerPriceMap.put("BBAI", new BigDecimal("2.1500"));
         tickerPriceMap.put("STX", new BigDecimal("104.5000"));
-        tickerPriceMap.put("VALE", new BigDecimal("10.4500"));
+        tickerPriceMap.put("VALE", new BigDecimal("15.1800"));
         tickerPriceMap.put("SGLD", new BigDecimal("42.1000"));
         tickerPriceMap.put("ALAB", new BigDecimal("65.3000"));
         tickerPriceMap.put("NVO", new BigDecimal("136.2000"));

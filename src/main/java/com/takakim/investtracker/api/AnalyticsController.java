@@ -72,7 +72,12 @@ public class AnalyticsController {
                 h.costBasis(),
                 h.unrealizedGainLoss(),
                 h.weightPercentage(),
-                h.currency()
+                h.currency(),
+                h.nativePrice(),
+                h.nativeCurrency(),
+                h.nativeCostBasis(),
+                h.nativeUnrealizedGainLoss(),
+                h.nativeGainLossPercentage()
         );
     }
 }

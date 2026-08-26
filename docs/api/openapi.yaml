@@ -1089,6 +1089,11 @@ components:
         unrealizedGainLoss: { type: number }
         weightPercentage: { type: number }
         currency: { type: string, pattern: '^[A-Z]{3}$' }
+        nativePrice: { type: number, nullable: true }
+        nativeCurrency: { type: string, nullable: true }
+        nativeCostBasis: { type: number, nullable: true }
+        nativeUnrealizedGainLoss: { type: number, nullable: true }
+        nativeGainLossPercentage: { type: number, nullable: true }
     PortfolioAnalytics:
       type: object
       required: [portfolioId, asOf, baseCurrency, totalCurrentValue, totalCostBasis, totalUnrealizedGainLoss, totalUnrealizedReturnPercentage, totalRealizedGainLoss, totalCashValue, byAssetClass, byCurrency, byAccount, topHoldings, warnings]

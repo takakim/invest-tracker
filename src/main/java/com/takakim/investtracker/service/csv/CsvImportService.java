@@ -288,12 +288,13 @@ public class CsvImportService {
         if (csvContent == null || csvContent.isBlank()) {
             throw new IllegalArgumentException("CSV file content must not be empty");
         }
-        String firstLine = csvContent.split("\r?\n")[0];
-        List<String> headers = FreetradeCsvParser.parseCsvLine(firstLine);
-
-        for (BrokerCsvParser p : parsers) {
-            if (p.supports(headers)) {
-                return p;
+        String[] lines = csvContent.split("\r?\n");
+        for (int i = 0; i < Math.min(5, lines.length); i++) {
+            List<String> headers = FreetradeCsvParser.parseCsvLine(lines[i]);
+            for (BrokerCsvParser p : parsers) {
+                if (p.supports(headers)) {
+                    return p;
+                }
             }
         }
         throw new IllegalArgumentException("Unsupported broker CSV format. Headers do not match known broker templates.");

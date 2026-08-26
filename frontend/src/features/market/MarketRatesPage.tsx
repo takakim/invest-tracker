@@ -25,8 +25,9 @@ import { ManualPriceModal } from './ManualPriceModal';
 import { ManualFxModal } from './ManualFxModal';
 import { useInstrumentsList } from '../instruments/useInstruments';
 import { useLatestQuote } from './useMarketData';
-import { LoadingState } from '../../components';
+import { LoadingState, SortableTableHead } from '../../components';
 import type { Instrument } from '../../types';
+import { Order, sortRows } from '../../utils/sorting';
 
 function InstrumentQuoteRow({ instrument, onOverride }: { instrument: Instrument; onOverride: (inst: Instrument) => void }) {
   const { data: quote, isLoading } = useLatestQuote(instrument.id);
@@ -65,6 +66,16 @@ export function MarketRatesPage() {
   const [selectedInstrument, setSelectedInstrument] = useState<Instrument | null>(null);
   const [priceModalOpen, setPriceModalOpen] = useState(false);
   const [fxModalOpen, setFxModalOpen] = useState(false);
+  const [order, setOrder] = useState<Order>('asc');
+  const [orderBy, setOrderBy] = useState<string>('name');
+
+  const handleRequestSort = (property: string) => {
+    const isAsc = orderBy === property && order === 'asc';
+    setOrder(isAsc ? 'desc' : 'asc');
+    setOrderBy(property);
+  };
+
+  const sortedInstruments = sortRows(instruments, order, orderBy);
 
   const handleOpenPriceOverride = (inst: Instrument) => {
     setSelectedInstrument(inst);
@@ -121,19 +132,22 @@ export function MarketRatesPage() {
               ) : (
                 <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
                   <Table size="small" aria-label="market quotes table">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Security</TableCell>
-                        <TableCell>Ticker</TableCell>
-                        <TableCell>Class</TableCell>
-                        <TableCell>Currency</TableCell>
-                        <TableCell>Price</TableCell>
-                        <TableCell>Source</TableCell>
-                        <TableCell align="right">Action</TableCell>
-                      </TableRow>
-                    </TableHead>
+                    <SortableTableHead<Instrument>
+                      headCells={[
+                        { id: 'name', label: 'Security', sortable: true },
+                        { id: 'ticker', label: 'Ticker', sortable: true },
+                        { id: 'assetClass', label: 'Class', sortable: true },
+                        { id: 'currency', label: 'Currency', sortable: true },
+                        { id: 'price', label: 'Price', sortable: false },
+                        { id: 'source', label: 'Source', sortable: false },
+                        { id: 'action', label: 'Action', align: 'right', sortable: false },
+                      ]}
+                      order={order}
+                      orderBy={orderBy}
+                      onRequestSort={handleRequestSort}
+                    />
                     <TableBody>
-                      {instruments.slice(0, 8).map((inst) => (
+                      {sortedInstruments.slice(0, 15).map((inst) => (
                         <InstrumentQuoteRow
                           key={inst.id}
                           instrument={inst}

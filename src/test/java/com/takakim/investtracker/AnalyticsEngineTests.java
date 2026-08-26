@@ -197,11 +197,16 @@ class AnalyticsEngineTests {
         );
         when(marketDataService.getLatestPrice(eq(aapl.getId()), any(Instant.class))).thenReturn(quote);
 
-        // FX conversion USD -> GBP: 1 USD = 0.80 GBP
-        when(fxRateService.convert(eq(new Money(new BigDecimal("200.00"), new Currency("USD"))), eq(new Currency("GBP")), any(Instant.class)))
-                .thenReturn(new Money(new BigDecimal("160.00"), new Currency("GBP"))); // 200 * 0.80 = 160 GBP per share
-        when(fxRateService.convert(eq(new Money(new BigDecimal("1500.00"), new Currency("USD"))), eq(new Currency("GBP")), any(Instant.class)))
-                .thenReturn(new Money(new BigDecimal("1200.00"), new Currency("GBP"))); // 1500 * 0.80 = 1200 GBP cost basis
+        when(fxRateService.convert(any(Money.class), any(Currency.class), any(Instant.class)))
+                .thenAnswer(inv -> {
+                    Money m = inv.getArgument(0);
+                    Currency target = inv.getArgument(1);
+                    if (m.currency().equals(target)) return m;
+                    if (m.currency().code().equals("USD") && target.code().equals("GBP")) {
+                        return new Money(m.amount().multiply(new BigDecimal("0.80")).setScale(4, java.math.RoundingMode.HALF_UP), target);
+                    }
+                    return m;
+                });
 
         PortfolioAnalytics result = analyticsEngine.calculate(portfolioId, Instant.now());
 

@@ -31,9 +31,10 @@ import {
 } from './usePositions';
 import { PositionFormModal } from './PositionFormModal';
 import { PositionLotsModal } from './PositionLotsModal';
-import { ConfirmDialog, EmptyState, ErrorAlert, LoadingState } from '../../components';
+import { ConfirmDialog, EmptyState, ErrorAlert, LoadingState, SortableTableHead } from '../../components';
 import type { Position, PositionCreateInput, PositionUpdateInput } from '../../types';
 import type { PositionFormData } from '../../forms/schemas';
+import { Order, sortRows } from '../../utils/sorting';
 
 interface PositionTableProps {
   portfolioId: string;
@@ -64,6 +65,16 @@ export function PositionTable({
   const [editingPosition, setEditingPosition] = useState<Position | null>(null);
   const [archiveTarget, setArchiveTarget] = useState<Position | null>(null);
   const [selectedLotsPosition, setSelectedLotsPosition] = useState<Position | null>(null);
+  const [order, setOrder] = useState<Order>('asc');
+  const [orderBy, setOrderBy] = useState<string>('instrumentName');
+
+  const handleRequestSort = (property: string) => {
+    const isAsc = orderBy === property && order === 'asc';
+    setOrder(isAsc ? 'desc' : 'asc');
+    setOrderBy(property);
+  };
+
+  const sortedPositions = sortRows(positions, order, orderBy);
 
   const handleOpenCreate = () => {
     setEditingPosition(null);
@@ -162,18 +173,21 @@ export function PositionTable({
       ) : (
         <TableContainer component={Paper} sx={{ borderRadius: 2 }}>
           <Table aria-label="positions table" size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Instrument</TableCell>
-                <TableCell>Asset Class</TableCell>
-                <TableCell>Ticker / ISIN</TableCell>
-                <TableCell align="right">Quantity</TableCell>
-                <TableCell align="right">Cost Basis</TableCell>
-                <TableCell align="right">Actions</TableCell>
-              </TableRow>
-            </TableHead>
+            <SortableTableHead<Position>
+              headCells={[
+                { id: 'instrumentName', label: 'Instrument', sortable: true },
+                { id: 'assetClass', label: 'Asset Class', sortable: true },
+                { id: 'instrumentTicker', label: 'Ticker / ISIN', sortable: true },
+                { id: 'quantity', label: 'Quantity', align: 'right', sortable: true },
+                { id: 'costBasisAmount', label: 'Cost Basis', align: 'right', sortable: true },
+                { id: 'actions', label: 'Actions', align: 'right', sortable: false },
+              ]}
+              order={order}
+              orderBy={orderBy}
+              onRequestSort={handleRequestSort}
+            />
             <TableBody>
-              {positions.map((pos) => (
+              {sortedPositions.map((pos) => (
                 <TableRow key={pos.id} hover>
                   <TableCell sx={{ fontWeight: 600 }}>{pos.instrumentName}</TableCell>
                   <TableCell>

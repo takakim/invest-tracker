@@ -188,6 +188,44 @@ class CsvImportIntegrationTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(unsupportedCsv))
                 .andExpect(status().isNotFound());
+
+        // 8. Trading 212 Import Flow
+        String t212Csv = """
+            Action,Time (UTC),ISIN,Ticker,Name,Notes,ID,No. of shares,Price / share,Currency (Price / share),Exchange rate,Result,Currency (Result),Total,Currency (Total),Withholding tax,Currency (Withholding tax),Stamp duty,Currency (Stamp duty),Currency conversion fee,Currency (Currency conversion fee)
+            Deposit,2024-07-13 06:37:13+00:00,,,,Notes,ID1,,,,,,,500.00,"GBP",,,,,,
+            Market buy,2024-07-15 07:00:31+00:00,IE00BMC38736,SMGB,"VanEck Semiconductor (Acc)",,EOF1,1.0000000000,35.0000000000,GBP,1.00000000,,,35.00,"GBP",,,,,,
+            """;
+        mockMvc.perform(post("/api/v1/portfolios/" + portfolioId + "/accounts/" + accountId + "/imports/preview")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(toJson("trading212.csv", t212Csv)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.brokerName").value("Trading 212"))
+                .andExpect(jsonPath("$.importableRows").value(2));
+
+        mockMvc.perform(post("/api/v1/portfolios/" + portfolioId + "/accounts/" + accountId + "/imports")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(toJson("trading212.csv", t212Csv)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.importedRows").value(2));
+
+        // 9. InvestEngine Import Flow
+        String ieCsv = """
+            Transaction Statement: 01 Feb 2025 - 25 Aug 2026 (Portfolio: DIY 1 / Reference: IP01985296)
+            Security / ISIN,Transaction Type,Quantity,Share Price,Total Trade Value,Trade Date/Time,Settlement Date,Broker
+            Global X NASDAQ 100 Covered Call / ISIN IE00BM8R0J59,Buy,10.000000,£12.5000,£125.00,04/03/25 15:06:44,06/03/25,None
+            """;
+        mockMvc.perform(post("/api/v1/portfolios/" + portfolioId + "/accounts/" + accountId + "/imports/preview")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(toJson("investengine.csv", ieCsv)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.brokerName").value("InvestEngine"))
+                .andExpect(jsonPath("$.importableRows").value(1));
+
+        mockMvc.perform(post("/api/v1/portfolios/" + portfolioId + "/accounts/" + accountId + "/imports")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(toJson("investengine.csv", ieCsv)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.importedRows").value(1));
     }
 
     private String toJson(String fileName, String csvContent) {

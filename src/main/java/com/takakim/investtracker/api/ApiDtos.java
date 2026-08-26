@@ -280,7 +280,12 @@ public final class ApiDtos {
         java.math.BigDecimal costBasis,
         java.math.BigDecimal unrealizedGainLoss,
         java.math.BigDecimal weightPercentage,
-        String currency) { }
+        String currency,
+        java.math.BigDecimal nativePrice,
+        String nativeCurrency,
+        java.math.BigDecimal nativeCostBasis,
+        java.math.BigDecimal nativeUnrealizedGainLoss,
+        java.math.BigDecimal nativeGainLossPercentage) { }
 
     public record PortfolioAnalyticsResponse(
         UUID portfolioId,

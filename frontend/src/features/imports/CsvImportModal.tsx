@@ -124,7 +124,7 @@ export function CsvImportModal({
                 Select a broker CSV file to import
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                Supports Freetrade activity feed exports (`activity-feed-export.csv`).
+                Supports Freetrade (`activity-feed-export.csv`), Trading 212, and InvestEngine statement exports.
               </Typography>
               <Button variant="outlined" sx={{ mt: 2 }} component="span">
                 Choose CSV File
