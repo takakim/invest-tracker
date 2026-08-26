@@ -13,11 +13,12 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import com.takakim.investtracker.service.ResourceNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@Transactional
+@Transactional(noRollbackFor = {ResourceNotFoundException.class})
 public class FxRateService {
 
     private static final Duration STALE_THRESHOLD = Duration.ofHours(24);
@@ -47,6 +48,20 @@ public class FxRateService {
             return new FxRateQuote(
                     base, quote, BigDecimal.ONE.setScale(FX_SCALE, ROUNDING),
                     targetTime, ObservationSourceType.PROVIDER, "IDENTITY", false, null
+            );
+        }
+
+        // Sub-unit pence sterling conversion (100 GBX = 1 GBP)
+        if (base.equals("GBX") && quote.equals("GBP")) {
+            return new FxRateQuote(
+                    base, quote, new BigDecimal("0.01000000"),
+                    targetTime, ObservationSourceType.PROVIDER, "SUB_UNIT", false, null
+            );
+        }
+        if (base.equals("GBP") && quote.equals("GBX")) {
+            return new FxRateQuote(
+                    base, quote, new BigDecimal("100.00000000"),
+                    targetTime, ObservationSourceType.PROVIDER, "SUB_UNIT", false, null
             );
         }
 

@@ -322,6 +322,13 @@ public final class ApiDtos {
         boolean outperforming,
         String baseCurrency,
         List<String> warnings) { }
+
+    public record DatabaseResetRequest(
+        String confirmation) { }
+
+    public record DatabaseResetResponse(
+        String message,
+        Instant timestamp) { }
 }
 
 

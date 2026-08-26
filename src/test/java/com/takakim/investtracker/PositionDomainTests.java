@@ -118,5 +118,10 @@ class PositionDomainTests {
 
         assertEquals(PositionStatus.ARCHIVED, position.getStatus());
         assertThrows(IllegalStateException.class, () -> position.update(new Quantity(BigDecimal.TEN), null));
+
+        position.unarchive();
+        assertEquals(PositionStatus.ACTIVE, position.getStatus());
+        position.update(new Quantity(BigDecimal.TEN), null);
+        assertEquals(new BigDecimal("10"), position.getQuantity());
     }
 }

@@ -13,11 +13,12 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import com.takakim.investtracker.service.ResourceNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@Transactional
+@Transactional(noRollbackFor = {ResourceNotFoundException.class})
 public class MarketDataService {
 
     private static final Duration STALE_THRESHOLD = Duration.ofHours(24);
@@ -25,14 +26,17 @@ public class MarketDataService {
     private final MarketObservationRepository marketObservationRepository;
     private final InstrumentRepository instrumentRepository;
     private final MarketDataProvider marketDataProvider;
+    private final com.takakim.investtracker.repository.TransactionRepository transactionRepository;
 
     public MarketDataService(
             MarketObservationRepository marketObservationRepository,
             InstrumentRepository instrumentRepository,
-            MarketDataProvider marketDataProvider) {
+            MarketDataProvider marketDataProvider,
+            com.takakim.investtracker.repository.TransactionRepository transactionRepository) {
         this.marketObservationRepository = marketObservationRepository;
         this.instrumentRepository = instrumentRepository;
         this.marketDataProvider = marketDataProvider;
+        this.transactionRepository = transactionRepository;
     }
 
     public PriceQuote getLatestPrice(UUID instrumentId, Instant asOf) {
@@ -98,6 +102,25 @@ public class MarketDataService {
             );
         }
 
+        // 4. Fallback to latest transaction trade price if available
+        List<com.takakim.investtracker.domain.Transaction> txs = transactionRepository.findByInstrumentIdOrderByTradeDateDesc(instrumentId);
+        for (com.takakim.investtracker.domain.Transaction tx : txs) {
+            if (tx.getPrice() != null && tx.getPrice().compareTo(BigDecimal.ZERO) > 0) {
+                boolean isStale = Duration.between(tx.getTradeDate(), targetTime).abs().compareTo(STALE_THRESHOLD) > 0;
+                String warning = "Live price unavailable; using last transaction trade price from " + tx.getTradeDate();
+                return new PriceQuote(
+                        instrumentId,
+                        tx.getPrice(),
+                        tx.getCurrency(),
+                        tx.getTradeDate(),
+                        ObservationSourceType.PROVIDER,
+                        "LAST_TRANSACTION_TRADE_PRICE",
+                        isStale,
+                        warning
+                );
+            }
+        }
+
         throw new ResourceNotFoundException(
                 "No market price available for instrument: " + instrument.getTicker() + " (" + instrumentId + ")");
     }
@@ -135,5 +158,24 @@ public class MarketDataService {
         Instant start = from != null ? from : Instant.EPOCH;
         Instant end = to != null ? to : Instant.now().plus(Duration.ofMinutes(5));
         return marketObservationRepository.findByInstrumentIdAndObservedAtBetweenOrderByObservedAtAsc(instrumentId, start, end);
+    }
+
+    public List<MarketObservation> syncHistoricalPrices(UUID instrumentId, Instant from, Instant to) {
+        Instrument instrument = instrumentRepository.findById(instrumentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Instrument not found: " + instrumentId));
+        List<PriceQuote> quotes = marketDataProvider.fetchHistoricalQuotes(instrument, from, to);
+        List<MarketObservation> saved = new java.util.ArrayList<>();
+        for (PriceQuote q : quotes) {
+            MarketObservation obs = new MarketObservation(
+                    instrument,
+                    q.price(),
+                    q.currency(),
+                    q.asOf(),
+                    ObservationSourceType.PROVIDER,
+                    q.sourceReference()
+            );
+            saved.add(marketObservationRepository.save(obs));
+        }
+        return saved;
     }
 }

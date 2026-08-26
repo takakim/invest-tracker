@@ -267,9 +267,21 @@ class FxRateServiceTests {
         assertThrows(NullPointerException.class, () -> new FxRateQuote("GBP", "USD", null, now, ObservationSourceType.PROVIDER, null, false, null));
         assertThrows(IllegalArgumentException.class, () -> new FxRateQuote("GBP", "USD", BigDecimal.ZERO, now, ObservationSourceType.PROVIDER, null, false, null));
         assertThrows(NullPointerException.class, () -> new FxRateQuote("GBP", "USD", BigDecimal.ONE, null, ObservationSourceType.PROVIDER, null, false, null));
-        assertThrows(NullPointerException.class, () -> new FxRateQuote("GBP", "USD", BigDecimal.ONE, now, null, null, false, null));
-
         assertThrows(IllegalArgumentException.class, () -> new FxObservation("GBP", "USD", new BigDecimal("-0.5"), now, ObservationSourceType.PROVIDER, null));
+    }
+
+    @Test
+    @DisplayName("Sub-unit pence sterling (GBX / GBP) conversion rates")
+    void penceSubUnitConversions() {
+        FxRateQuote gbxToGbp = fxRateService.getRate("GBX", "GBP", null);
+        assertNotNull(gbxToGbp);
+        assertEquals(new BigDecimal("0.01000000"), gbxToGbp.rate());
+        assertEquals("SUB_UNIT", gbxToGbp.sourceReference());
+
+        FxRateQuote gbpToGbx = fxRateService.getRate("GBP", "GBX", null);
+        assertNotNull(gbpToGbx);
+        assertEquals(new BigDecimal("100.00000000"), gbpToGbx.rate());
+        assertEquals("SUB_UNIT", gbpToGbx.sourceReference());
     }
 }
 

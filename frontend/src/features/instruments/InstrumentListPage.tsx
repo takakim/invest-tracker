@@ -23,8 +23,9 @@ import AddIcon from '@mui/icons-material/Add';
 import SearchIcon from '@mui/icons-material/Search';
 import ShowChartOutlinedIcon from '@mui/icons-material/ShowChartOutlined';
 import PriceChangeOutlinedIcon from '@mui/icons-material/PriceChangeOutlined';
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 
-import { useInstrumentsList, useCreateInstrument } from './useInstruments';
+import { useInstrumentsList, useCreateInstrument, useUpdateInstrument } from './useInstruments';
 import { InstrumentFormModal } from './InstrumentFormModal';
 import { ManualPriceModal } from '../market/ManualPriceModal';
 import { MarketRatesCard } from '../market/MarketRatesCard';
@@ -45,8 +46,10 @@ const ASSET_CLASS_LABELS: Record<AssetClass, string> = {
 export function InstrumentListPage() {
   const { data: instruments = [], isLoading, error, refetch } = useInstrumentsList();
   const createMutation = useCreateInstrument();
+  const updateMutation = useUpdateInstrument();
 
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingInstrument, setEditingInstrument] = useState<Instrument | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAssetClass, setSelectedAssetClass] = useState<string>('ALL');
   const [priceModalOpen, setPriceModalOpen] = useState(false);
@@ -69,10 +72,27 @@ export function InstrumentListPage() {
     });
   }, [instruments, searchQuery, selectedAssetClass]);
 
-  const handleCreateSubmit = async (formData: InstrumentCreateInput) => {
-    await createMutation.mutateAsync(formData, {
-      onSuccess: () => setModalOpen(false),
-    });
+  const handleCreateOrEditSubmit = async (formData: InstrumentCreateInput) => {
+    if (editingInstrument) {
+      await updateMutation.mutateAsync(
+        { id: editingInstrument.id, input: formData },
+        {
+          onSuccess: () => {
+            setModalOpen(false);
+            setEditingInstrument(null);
+          },
+        },
+      );
+    } else {
+      await createMutation.mutateAsync(formData, {
+        onSuccess: () => setModalOpen(false),
+      });
+    }
+  };
+
+  const handleOpenEditModal = (inst: Instrument) => {
+    setEditingInstrument(inst);
+    setModalOpen(true);
   };
 
   const handleOpenPriceModal = (inst: Instrument) => {
@@ -228,13 +248,22 @@ export function InstrumentListPage() {
                     <Chip label={instrument.currency} size="small" variant="outlined" />
                   </TableCell>
                   <TableCell align="right">
-                    <Button
-                      size="small"
-                      startIcon={<PriceChangeOutlinedIcon fontSize="small" />}
-                      onClick={() => handleOpenPriceModal(instrument)}
-                    >
-                      Set Price
-                    </Button>
+                    <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end' }}>
+                      <Button
+                        size="small"
+                        startIcon={<EditOutlinedIcon fontSize="small" />}
+                        onClick={() => handleOpenEditModal(instrument)}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        size="small"
+                        startIcon={<PriceChangeOutlinedIcon fontSize="small" />}
+                        onClick={() => handleOpenPriceModal(instrument)}
+                      >
+                        Set Price
+                      </Button>
+                    </Stack>
                   </TableCell>
                 </TableRow>
               ))}
@@ -243,13 +272,17 @@ export function InstrumentListPage() {
         </TableContainer>
       )}
 
-      {/* Register Instrument Modal */}
+      {/* Register / Edit Instrument Modal */}
       <InstrumentFormModal
         open={modalOpen}
-        isPending={createMutation.isPending}
-        error={createMutation.error}
-        onClose={() => setModalOpen(false)}
-        onSubmit={handleCreateSubmit}
+        instrument={editingInstrument}
+        isPending={createMutation.isPending || updateMutation.isPending}
+        error={editingInstrument ? updateMutation.error : createMutation.error}
+        onClose={() => {
+          setModalOpen(false);
+          setEditingInstrument(null);
+        }}
+        onSubmit={handleCreateOrEditSubmit}
       />
 
       {/* Manual Price Override Modal */}

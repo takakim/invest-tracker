@@ -19,8 +19,11 @@ import {
 import { instrumentSchema, type InstrumentFormData } from '../../forms/schemas';
 import { ErrorAlert } from '../../components';
 
+import type { Instrument } from '../../types';
+
 interface InstrumentFormModalProps {
   open: boolean;
+  instrument?: Instrument | null;
   isPending: boolean;
   error?: unknown;
   onClose: () => void;
@@ -29,11 +32,14 @@ interface InstrumentFormModalProps {
 
 export function InstrumentFormModal({
   open,
+  instrument,
   isPending,
   error,
   onClose,
   onSubmit,
 }: InstrumentFormModalProps) {
+  const isEditing = Boolean(instrument);
+
   const {
     register,
     handleSubmit,
@@ -54,16 +60,27 @@ export function InstrumentFormModal({
 
   React.useEffect(() => {
     if (open) {
-      reset({
-        name: '',
-        assetClass: 'STOCK',
-        ticker: '',
-        isin: '',
-        exchange: '',
-        currency: 'USD',
-      });
+      if (instrument) {
+        reset({
+          name: instrument.name,
+          assetClass: instrument.assetClass,
+          ticker: instrument.ticker || '',
+          isin: instrument.isin || '',
+          exchange: instrument.exchange || '',
+          currency: instrument.currency,
+        });
+      } else {
+        reset({
+          name: '',
+          assetClass: 'STOCK',
+          ticker: '',
+          isin: '',
+          exchange: '',
+          currency: 'USD',
+        });
+      }
     }
-  }, [open, reset]);
+  }, [open, instrument, reset]);
 
   const handleFormSubmit = (data: InstrumentFormData) => {
     onSubmit(data);
@@ -71,7 +88,9 @@ export function InstrumentFormModal({
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle sx={{ fontWeight: 600 }}>Register New Instrument</DialogTitle>
+      <DialogTitle sx={{ fontWeight: 600 }}>
+        {isEditing ? 'Edit Instrument' : 'Register New Instrument'}
+      </DialogTitle>
       <form onSubmit={handleSubmit(handleFormSubmit)} noValidate>
         <DialogContent dividers>
           <Stack spacing={3} sx={{ mt: 1 }}>
@@ -174,7 +193,7 @@ export function InstrumentFormModal({
             Cancel
           </Button>
           <Button type="submit" variant="contained" disabled={isPending}>
-            {isPending ? 'Registering...' : 'Register Instrument'}
+            {isPending ? (isEditing ? 'Saving...' : 'Registering...') : (isEditing ? 'Save Changes' : 'Register Instrument')}
           </Button>
         </DialogActions>
       </form>

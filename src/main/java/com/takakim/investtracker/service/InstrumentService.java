@@ -21,6 +21,28 @@ public class InstrumentService {
         return toResponse(repository.save(new Instrument(request.name(), request.assetClass(), request.ticker(), request.isin(), request.exchange(), new Currency(request.currency()))));
     }
 
+    public ApiDtos.InstrumentResponse update(UUID id, ApiDtos.InstrumentRequest request) {
+        Instrument instrument = repository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Instrument not found: " + id));
+        if (request.isin() != null && !request.isin().isBlank()) {
+            repository.findByIsin(request.isin())
+                    .ifPresent(existing -> {
+                        if (!existing.getId().equals(id)) {
+                            throw new ConflictException("Instrument ISIN already exists on another instrument: " + request.isin());
+                        }
+                    });
+        }
+        instrument.update(
+                request.name(),
+                request.assetClass(),
+                request.ticker(),
+                request.isin(),
+                request.exchange(),
+                new Currency(request.currency())
+        );
+        return toResponse(repository.save(instrument));
+    }
+
     @Transactional(readOnly = true)
     public ApiDtos.InstrumentResponse get(UUID id) { return toResponse(repository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Instrument not found: " + id))); }
 

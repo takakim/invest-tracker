@@ -12,4 +12,10 @@ export const instrumentApi = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
+
+  update: (id: string, input: InstrumentCreateInput): Promise<Instrument> =>
+    request<Instrument>(`/api/v1/instruments/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
 };
