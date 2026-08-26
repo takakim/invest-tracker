@@ -32,7 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
  * XIRR (numerical IRR) is deferred to a later phase that introduces market data.
  */
 @Service
-@Transactional(readOnly = true)
+@Transactional
 public class PerformanceEngine {
 
     private static final String VALUATION_BASIS_COST = "COST_BASIS";
