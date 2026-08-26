@@ -95,13 +95,15 @@ public class PositionEngine {
 
         if (existingOpt.isPresent()) {
             Position position = existingOpt.get();
-            if (position.getStatus() == PositionStatus.ARCHIVED) {
-                if (qty.compareTo(BigDecimal.ZERO) > 0) {
-                    position.unarchive();
-                    position.update(new Quantity(qty), costBasisMoney);
+            if (qty.compareTo(BigDecimal.ZERO) <= 0) {
+                if (position.getStatus() != PositionStatus.ARCHIVED) {
+                    position.archive();
                     positionRepository.save(position);
                 }
             } else {
+                if (position.getStatus() == PositionStatus.ARCHIVED) {
+                    position.unarchive();
+                }
                 position.update(new Quantity(qty), costBasisMoney);
                 positionRepository.save(position);
             }
