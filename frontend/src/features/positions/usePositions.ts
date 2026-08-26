@@ -10,7 +10,37 @@ export const POSITION_QUERY_KEYS = {
     ['positions', portfolioId, accountId, positionId] as const,
   lots: (portfolioId: string, accountId: string, positionId: string) =>
     ['positions', portfolioId, accountId, positionId, 'lots'] as const,
+  performance: (portfolioId: string, accountId: string, positionId: string) =>
+    ['positions', portfolioId, accountId, positionId, 'performance'] as const,
+  portfolioPerformance: (portfolioId: string, includeClosed: boolean) =>
+    ['positions', 'portfolio', portfolioId, 'performance', includeClosed] as const,
+  accountPerformance: (portfolioId: string, accountId: string, includeClosed: boolean) =>
+    ['positions', portfolioId, accountId, 'performance', includeClosed] as const,
 };
+
+export function usePositionPerformance(portfolioId: string, accountId: string, positionId: string) {
+  return useQuery({
+    queryKey: POSITION_QUERY_KEYS.performance(portfolioId, accountId, positionId),
+    queryFn: () => positionApi.getPositionPerformance(portfolioId, accountId, positionId),
+    enabled: Boolean(portfolioId && accountId && positionId),
+  });
+}
+
+export function usePortfolioPositionsPerformance(portfolioId: string, includeClosed: boolean = false) {
+  return useQuery({
+    queryKey: POSITION_QUERY_KEYS.portfolioPerformance(portfolioId, includeClosed),
+    queryFn: () => positionApi.listPortfolioPerformance(portfolioId, includeClosed),
+    enabled: Boolean(portfolioId),
+  });
+}
+
+export function useAccountPositionsPerformance(portfolioId: string, accountId: string, includeClosed: boolean = false) {
+  return useQuery({
+    queryKey: POSITION_QUERY_KEYS.accountPerformance(portfolioId, accountId, includeClosed),
+    queryFn: () => positionApi.listAccountPerformance(portfolioId, accountId, includeClosed),
+    enabled: Boolean(portfolioId && accountId),
+  });
+}
 
 export function usePositionLots(portfolioId: string, accountId: string, positionId: string) {
   return useQuery({

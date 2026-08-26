@@ -209,7 +209,7 @@ class DomainValueObjectTests {
     @Test
     void instrumentServiceUpdateBranches() {
         var repo = org.mockito.Mockito.mock(com.takakim.investtracker.repository.InstrumentRepository.class);
-        var service = new com.takakim.investtracker.service.InstrumentService(repo);
+        var service = new com.takakim.investtracker.service.InstrumentService(repo, null, null);
         java.util.UUID id1 = java.util.UUID.randomUUID();
         java.util.UUID id2 = java.util.UUID.randomUUID();
         Instrument inst1 = new Instrument("Inst1", AssetClass.STOCK, "T1", "GB0000000001", null, new Currency("GBP"));

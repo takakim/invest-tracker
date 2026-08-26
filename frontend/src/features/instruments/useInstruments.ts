@@ -42,6 +42,41 @@ export function useUpdateInstrument() {
       queryClient.invalidateQueries({ queryKey: INSTRUMENT_QUERY_KEYS.detail(variables.id) });
       queryClient.invalidateQueries({ queryKey: ['benchmarks'] });
       queryClient.invalidateQueries({ queryKey: ['portfolio'] });
+      queryClient.invalidateQueries({ queryKey: ['market-quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['market'] });
+      queryClient.invalidateQueries({ queryKey: ['positions'] });
     },
   });
 }
+
+export function useRefreshAllPrices() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => instrumentApi.refreshAll(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: INSTRUMENT_QUERY_KEYS.all });
+      queryClient.invalidateQueries({ queryKey: ['market-quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['market'] });
+      queryClient.invalidateQueries({ queryKey: ['portfolio'] });
+      queryClient.invalidateQueries({ queryKey: ['positions'] });
+      queryClient.invalidateQueries({ queryKey: ['benchmarks'] });
+    },
+  });
+}
+
+export function useRefreshInstrumentPrice() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => instrumentApi.refreshPrice(id),
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: INSTRUMENT_QUERY_KEYS.all });
+      queryClient.invalidateQueries({ queryKey: INSTRUMENT_QUERY_KEYS.detail(id) });
+      queryClient.invalidateQueries({ queryKey: ['market-quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['market'] });
+      queryClient.invalidateQueries({ queryKey: ['portfolio'] });
+      queryClient.invalidateQueries({ queryKey: ['positions'] });
+      queryClient.invalidateQueries({ queryKey: ['benchmarks'] });
+    },
+  });
+}
+

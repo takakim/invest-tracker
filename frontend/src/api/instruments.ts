@@ -18,4 +18,14 @@ export const instrumentApi = {
       method: 'PUT',
       body: JSON.stringify(input),
     }),
+
+  refreshAll: (): Promise<Instrument[]> =>
+    request<Instrument[]>('/api/v1/instruments/refresh-prices', {
+      method: 'POST',
+    }),
+
+  refreshPrice: (id: string): Promise<Instrument> =>
+    request<Instrument>(`/api/v1/instruments/${id}/refresh-price`, {
+      method: 'POST',
+    }),
 };

@@ -6,12 +6,14 @@ import {
   IconButton,
   Paper,
   Stack,
+  Tab,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
+  Tabs,
   Tooltip,
   Typography,
 } from '@mui/material';
@@ -24,6 +26,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 
 import {
   usePositionsList,
+  useAccountPositionsPerformance,
   useCreatePosition,
   useUpdatePosition,
   useArchivePosition,
@@ -31,8 +34,9 @@ import {
 } from './usePositions';
 import { PositionFormModal } from './PositionFormModal';
 import { PositionLotsModal } from './PositionLotsModal';
+import { PositionPerformanceModal } from './PositionPerformanceModal';
 import { ConfirmDialog, EmptyState, ErrorAlert, LoadingState, SortableTableHead } from '../../components';
-import type { Position, PositionCreateInput, PositionUpdateInput } from '../../types';
+import type { Position, PositionCreateInput, PositionPerformance, PositionUpdateInput } from '../../types';
 import type { PositionFormData } from '../../forms/schemas';
 import { Order, sortRows } from '../../utils/sorting';
 
@@ -49,12 +53,14 @@ export function PositionTable({
   defaultCurrency = 'GBP',
   isReadOnly = false,
 }: PositionTableProps) {
+  const [includeClosed, setIncludeClosed] = useState(false);
+
   const {
-    data: positions = [],
+    data: performanceItems = [],
     isLoading,
     error,
     refetch,
-  } = usePositionsList(portfolioId, accountId);
+  } = useAccountPositionsPerformance(portfolioId, accountId, includeClosed);
 
   const createMutation = useCreatePosition(portfolioId, accountId);
   const updateMutation = useUpdatePosition(portfolioId, accountId);
@@ -63,8 +69,9 @@ export function PositionTable({
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingPosition, setEditingPosition] = useState<Position | null>(null);
-  const [archiveTarget, setArchiveTarget] = useState<Position | null>(null);
+  const [archiveTarget, setArchiveTarget] = useState<PositionPerformance | null>(null);
   const [selectedLotsPosition, setSelectedLotsPosition] = useState<Position | null>(null);
+  const [selectedPerfPosition, setSelectedPerfPosition] = useState<Position | null>(null);
   const [order, setOrder] = useState<Order>('asc');
   const [orderBy, setOrderBy] = useState<string>('instrumentName');
 
@@ -74,16 +81,71 @@ export function PositionTable({
     setOrderBy(property);
   };
 
-  const sortedPositions = sortRows(positions, order, orderBy);
+  const sortedItems = sortRows(performanceItems, order, orderBy);
 
   const handleOpenCreate = () => {
     setEditingPosition(null);
     setFormOpen(true);
   };
 
-  const handleOpenEdit = (position: Position) => {
-    setEditingPosition(position);
+  const handleOpenEdit = (perf: PositionPerformance) => {
+    if (!perf.positionId) return;
+    const pos: Position = {
+      id: perf.positionId,
+      accountId: perf.accountId,
+      instrumentId: perf.instrumentId,
+      instrumentName: perf.instrumentName,
+      instrumentTicker: perf.ticker,
+      instrumentIsin: perf.isin,
+      assetClass: perf.assetClass,
+      quantity: perf.currentQuantity,
+      costBasisAmount: perf.currentCostBasis,
+      costBasisCurrency: perf.currency,
+      status: perf.status === 'ARCHIVED' ? 'ARCHIVED' : 'ACTIVE',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    setEditingPosition(pos);
     setFormOpen(true);
+  };
+
+  const handleOpenLots = (perf: PositionPerformance) => {
+    if (!perf.positionId) return;
+    const pos: Position = {
+      id: perf.positionId,
+      accountId: perf.accountId,
+      instrumentId: perf.instrumentId,
+      instrumentName: perf.instrumentName,
+      instrumentTicker: perf.ticker,
+      instrumentIsin: perf.isin,
+      assetClass: perf.assetClass,
+      quantity: perf.currentQuantity,
+      costBasisAmount: perf.currentCostBasis,
+      costBasisCurrency: perf.currency,
+      status: perf.status === 'ARCHIVED' ? 'ARCHIVED' : 'ACTIVE',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    setSelectedLotsPosition(pos);
+  };
+
+  const handleOpenPerformance = (perf: PositionPerformance) => {
+    const pos: Position = {
+      id: perf.positionId || perf.instrumentId,
+      accountId: perf.accountId,
+      instrumentId: perf.instrumentId,
+      instrumentName: perf.instrumentName,
+      instrumentTicker: perf.ticker,
+      instrumentIsin: perf.isin,
+      assetClass: perf.assetClass,
+      quantity: perf.currentQuantity,
+      costBasisAmount: perf.currentCostBasis,
+      costBasisCurrency: perf.currency,
+      status: perf.status === 'CLOSED' ? 'ARCHIVED' : 'ACTIVE',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    setSelectedPerfPosition(pos);
   };
 
   const handleFormSubmit = async (formData: PositionFormData) => {
@@ -115,8 +177,8 @@ export function PositionTable({
   };
 
   const handleConfirmArchive = async () => {
-    if (!archiveTarget) return;
-    await archiveMutation.mutateAsync(archiveTarget.id, {
+    if (!archiveTarget || !archiveTarget.positionId) return;
+    await archiveMutation.mutateAsync(archiveTarget.positionId, {
       onSuccess: () => setArchiveTarget(null),
     });
   };
@@ -124,48 +186,58 @@ export function PositionTable({
   return (
     <Box sx={{ mt: 3 }}>
       <Stack
-        direction="row"
-        sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2 }}
+        direction={{ xs: 'column', sm: 'row' }}
+        sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 2, gap: 2 }}
       >
         <Box>
           <Typography variant="h6" sx={{ fontWeight: 600 }}>
-            Position Holdings
+            Position Holdings & Performance
           </Typography>
           <Typography variant="caption" color="text.secondary">
-            Instruments and holdings owned in this account.
+            Instruments, cost basis, realized gains, and performance lifecycle in this account.
           </Typography>
         </Box>
-        {!isReadOnly && (
-          <Stack direction="row" spacing={1}>
-            <Button
-              variant="outlined"
-              size="small"
-              startIcon={<RefreshIcon />}
-              onClick={() => recalculateMutation.mutate()}
-              disabled={recalculateMutation.isPending}
-            >
-              Recalculate
-            </Button>
-            <Button
-              variant="contained"
-              size="small"
-              startIcon={<AddIcon />}
-              onClick={handleOpenCreate}
-            >
-              Add Holding
-            </Button>
-          </Stack>
-        )}
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+          <Tabs
+            value={includeClosed ? 1 : 0}
+            onChange={(_, val) => setIncludeClosed(val === 1)}
+            sx={{ minHeight: 36, '& .MuiTab-root': { minHeight: 36, py: 0.5, px: 1.5, fontSize: '0.85rem' } }}
+          >
+            <Tab label="Active Holdings" />
+            <Tab label="All (incl. Closed / Past)" />
+          </Tabs>
+          {!isReadOnly && (
+            <>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<RefreshIcon />}
+                onClick={() => recalculateMutation.mutate()}
+                disabled={recalculateMutation.isPending}
+              >
+                Recalculate
+              </Button>
+              <Button
+                variant="contained"
+                size="small"
+                startIcon={<AddIcon />}
+                onClick={handleOpenCreate}
+              >
+                Add Holding
+              </Button>
+            </>
+          )}
+        </Stack>
       </Stack>
 
       <ErrorAlert error={error} onClose={() => refetch()} />
 
       {isLoading ? (
         <LoadingState variant="table" count={2} />
-      ) : positions.length === 0 ? (
+      ) : sortedItems.length === 0 ? (
         <EmptyState
-          title="No Positions in this Account"
-          description="Add instrument holdings (e.g. Stocks, ETFs, Mutual Funds) owned in this account."
+          title={includeClosed ? "No Position History in this Account" : "No Active Holdings in this Account"}
+          description={includeClosed ? "Import or record transactions to track portfolio holdings and historical performance." : "Add instrument holdings or switch to view past closed positions."}
           actionLabel={!isReadOnly ? 'Add Holding' : undefined}
           onAction={handleOpenCreate}
           icon={<ShowChartOutlinedIcon sx={{ fontSize: 48, opacity: 0.7 }} />}
@@ -173,13 +245,15 @@ export function PositionTable({
       ) : (
         <TableContainer component={Paper} sx={{ borderRadius: 2 }}>
           <Table aria-label="positions table" size="small">
-            <SortableTableHead<Position>
+            <SortableTableHead<PositionPerformance>
               headCells={[
                 { id: 'instrumentName', label: 'Instrument', sortable: true },
                 { id: 'assetClass', label: 'Asset Class', sortable: true },
-                { id: 'instrumentTicker', label: 'Ticker / ISIN', sortable: true },
-                { id: 'quantity', label: 'Quantity', align: 'right', sortable: true },
-                { id: 'costBasisAmount', label: 'Cost Basis', align: 'right', sortable: true },
+                { id: 'ticker', label: 'Ticker / ISIN', sortable: true },
+                { id: 'status', label: 'Status', sortable: true },
+                { id: 'currentQuantity', label: 'Shares', align: 'right', sortable: true },
+                { id: 'currentCostBasis', label: 'Cost Basis', align: 'right', sortable: true },
+                { id: 'netTotalReturnAmount', label: 'Net Total Return', align: 'right', sortable: true },
                 { id: 'actions', label: 'Actions', align: 'right', sortable: false },
               ]}
               order={order}
@@ -187,78 +261,123 @@ export function PositionTable({
               onRequestSort={handleRequestSort}
             />
             <TableBody>
-              {sortedPositions.map((pos) => (
-                <TableRow key={pos.id} hover>
-                  <TableCell sx={{ fontWeight: 600 }}>{pos.instrumentName}</TableCell>
-                  <TableCell>
-                    <Chip label={pos.assetClass} size="small" variant="outlined" />
-                  </TableCell>
-                  <TableCell>
-                    {pos.instrumentTicker ? (
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                        {pos.instrumentTicker}
-                      </Typography>
-                    ) : pos.instrumentIsin ? (
-                      <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-                        {pos.instrumentIsin}
-                      </Typography>
-                    ) : (
-                      <Typography variant="body2" color="text.secondary">
-                        —
-                      </Typography>
-                    )}
-                  </TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 600 }}>
-                    {pos.quantity}
-                  </TableCell>
-                  <TableCell align="right">
-                    {pos.costBasisAmount != null ? (
-                      `${pos.costBasisCurrency || defaultCurrency} ${pos.costBasisAmount.toLocaleString()}`
-                    ) : (
-                      <Typography variant="body2" color="text.secondary">
-                        —
-                      </Typography>
-                    )}
-                  </TableCell>
-                  <TableCell align="right">
-                    <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}>
-                      <Tooltip title="View tax lots">
-                        <IconButton
-                          size="small"
-                          color="primary"
-                          onClick={() => setSelectedLotsPosition(pos)}
-                          aria-label={`view tax lots for ${pos.instrumentName}`}
-                        >
-                          <LayersOutlinedIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      {!isReadOnly && (
-                        <>
-                          <Tooltip title="Edit position">
-                            <IconButton
-                              size="small"
-                              onClick={() => handleOpenEdit(pos)}
-                              aria-label={`edit position ${pos.instrumentName}`}
-                            >
-                              <EditOutlinedIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Archive position">
-                            <IconButton
-                              size="small"
-                              color="error"
-                              onClick={() => setArchiveTarget(pos)}
-                              aria-label={`archive position ${pos.instrumentName}`}
-                            >
-                              <ArchiveOutlinedIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        </>
+              {sortedItems.map((item, idx) => {
+                const isProfitable = item.netTotalReturnAmount >= 0;
+                const returnColor = isProfitable ? 'success.main' : 'error.main';
+                const isItemClosed = item.status === 'CLOSED' || item.currentQuantity === 0;
+
+                return (
+                  <TableRow key={item.positionId || `${item.instrumentId}-${idx}`} hover>
+                    <TableCell sx={{ fontWeight: 600 }}>{item.instrumentName}</TableCell>
+                    <TableCell>
+                      <Chip label={item.assetClass} size="small" variant="outlined" />
+                    </TableCell>
+                    <TableCell>
+                      {item.ticker ? (
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {item.ticker}
+                        </Typography>
+                      ) : item.isin ? (
+                        <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                          {item.isin}
+                        </Typography>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">
+                          —
+                        </Typography>
                       )}
-                    </Stack>
-                  </TableCell>
-                </TableRow>
-              ))}
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={isItemClosed ? 'Closed' : 'Active'}
+                        size="small"
+                        color={isItemClosed ? 'default' : 'success'}
+                        variant={isItemClosed ? 'outlined' : 'filled'}
+                        sx={{ height: 20, fontSize: '0.7rem' }}
+                      />
+                    </TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 600 }}>
+                      {item.currentQuantity.toLocaleString(undefined, {
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 4,
+                      })}
+                    </TableCell>
+                    <TableCell align="right">
+                      {item.currentCostBasis != null && item.currentCostBasis > 0 ? (
+                        `${item.currency} ${item.currentCostBasis.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">
+                          —
+                        </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell align="right">
+                      <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end', alignItems: 'center' }}>
+                        <Typography variant="body2" sx={{ fontWeight: 700, color: returnColor }}>
+                          {item.netTotalReturnAmount >= 0 ? '+' : ''}
+                          {item.netTotalReturnAmount.toFixed(2)} {item.currency}
+                        </Typography>
+                        <Typography variant="caption" sx={{ fontWeight: 600, color: returnColor }}>
+                          ({item.totalReturnPercentage >= 0 ? '+' : ''}
+                          {item.totalReturnPercentage.toFixed(2)}%)
+                        </Typography>
+                      </Stack>
+                    </TableCell>
+                    <TableCell align="right">
+                      <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end', alignItems: 'center' }}>
+                        <Tooltip title="View performance, dividends, and full ledger">
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<ShowChartOutlinedIcon fontSize="small" />}
+                            onClick={() => handleOpenPerformance(item)}
+                            sx={{ py: 0.25, px: 1, fontSize: '0.75rem' }}
+                          >
+                            Performance
+                          </Button>
+                        </Tooltip>
+
+                        {item.positionId && (
+                          <Tooltip title="View open tax lots">
+                            <IconButton
+                              size="small"
+                              color="primary"
+                              onClick={() => handleOpenLots(item)}
+                              aria-label={`view tax lots for ${item.instrumentName}`}
+                            >
+                              <LayersOutlinedIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+
+                        {!isReadOnly && item.positionId && (
+                          <>
+                            <Tooltip title="Edit position">
+                              <IconButton
+                                size="small"
+                                onClick={() => handleOpenEdit(item)}
+                                aria-label={`edit position ${item.instrumentName}`}
+                              >
+                                <EditOutlinedIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Archive position">
+                              <IconButton
+                                size="small"
+                                color="error"
+                                onClick={() => setArchiveTarget(item)}
+                                aria-label={`archive position ${item.instrumentName}`}
+                              >
+                                <ArchiveOutlinedIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </>
+                        )}
+                      </Stack>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </TableContainer>
@@ -284,6 +403,15 @@ export function PositionTable({
         onClose={() => setSelectedLotsPosition(null)}
       />
 
+      {/* Performance Detail Modal */}
+      <PositionPerformanceModal
+        open={Boolean(selectedPerfPosition)}
+        portfolioId={portfolioId}
+        accountId={accountId}
+        position={selectedPerfPosition}
+        onClose={() => setSelectedPerfPosition(null)}
+      />
+
       {/* Archive Confirm Modal */}
       <ConfirmDialog
         open={Boolean(archiveTarget)}
@@ -298,4 +426,5 @@ export function PositionTable({
     </Box>
   );
 }
+
 
