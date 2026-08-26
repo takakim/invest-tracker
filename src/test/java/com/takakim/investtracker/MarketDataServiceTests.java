@@ -34,6 +34,7 @@ class MarketDataServiceTests {
     @Mock private MarketObservationRepository marketObservationRepository;
     @Mock private InstrumentRepository instrumentRepository;
     @Mock private MarketDataProvider marketDataProvider;
+    @Mock private com.takakim.investtracker.repository.TransactionRepository transactionRepository;
 
     private MarketDataService marketDataService;
     private Instrument instrument;
@@ -43,7 +44,8 @@ class MarketDataServiceTests {
         marketDataService = new MarketDataService(
                 marketObservationRepository,
                 instrumentRepository,
-                marketDataProvider
+                marketDataProvider,
+                transactionRepository
         );
         instrument = new Instrument("Apple Inc", AssetClass.STOCK, "AAPL", "US0378331005", "NASDAQ", new Currency("USD"));
     }
@@ -145,7 +147,7 @@ class MarketDataServiceTests {
     }
 
     @Test
-    @DisplayName("Throws ResourceNotFoundException when neither provider nor persisted observation is available")
+    @DisplayName("Throws ResourceNotFoundException when neither provider, persisted observation, nor transaction price is available")
     void noPriceAvailableThrows() {
         UUID id = instrument.getId();
         when(instrumentRepository.findById(id)).thenReturn(Optional.of(instrument));
@@ -154,8 +156,57 @@ class MarketDataServiceTests {
         when(marketDataProvider.fetchQuote(eq(instrument), any())).thenReturn(Optional.empty());
         when(marketObservationRepository.findFirstByInstrumentIdOrderByObservedAtDesc(id))
                 .thenReturn(Optional.empty());
+        when(transactionRepository.findByInstrumentIdOrderByTradeDateDesc(id)).thenReturn(List.of());
 
         assertThrows(ResourceNotFoundException.class, () -> marketDataService.getLatestPrice(id, null));
+    }
+
+    @Test
+    @DisplayName("Falls back to latest transaction trade price when provider and persisted quotes are missing")
+    void fallbackToTransactionPrice() {
+        UUID id = instrument.getId();
+        when(instrumentRepository.findById(id)).thenReturn(Optional.of(instrument));
+        when(marketObservationRepository.findFirstByInstrumentIdAndSourceTypeOrderByObservedAtDesc(id, ObservationSourceType.MANUAL))
+                .thenReturn(Optional.empty());
+        when(marketDataProvider.fetchQuote(eq(instrument), any())).thenReturn(Optional.empty());
+        when(marketObservationRepository.findFirstByInstrumentIdOrderByObservedAtDesc(id))
+                .thenReturn(Optional.empty());
+
+        com.takakim.investtracker.domain.Portfolio portfolio = new com.takakim.investtracker.domain.Portfolio("P", new Currency("USD"), com.takakim.investtracker.domain.CostBasisMethod.FIFO, com.takakim.investtracker.domain.ReturnMethod.TWR);
+        com.takakim.investtracker.domain.Account acct = new com.takakim.investtracker.domain.Account(portfolio, "Trading", "Broker", new Currency("USD"));
+        com.takakim.investtracker.domain.Transaction tx = new com.takakim.investtracker.domain.Transaction(
+                acct, instrument, com.takakim.investtracker.domain.TransactionType.BUY, Instant.now().minus(5, ChronoUnit.DAYS),
+                null, new BigDecimal("10"), new BigDecimal("1.1145"), new BigDecimal("11.145"), null, null, "USD", null, null, null, null
+        );
+        com.takakim.investtracker.domain.Transaction txNullPrice = new com.takakim.investtracker.domain.Transaction(
+                acct, null, com.takakim.investtracker.domain.TransactionType.DEPOSIT, Instant.now().minus(1, ChronoUnit.DAYS),
+                null, null, null, new BigDecimal("100.00"), null, null, "USD", null, null, null, null
+        );
+        when(transactionRepository.findByInstrumentIdOrderByTradeDateDesc(id)).thenReturn(List.of(txNullPrice, tx));
+
+        PriceQuote quote = marketDataService.getLatestPrice(id, Instant.now());
+        assertNotNull(quote);
+        assertEquals(new BigDecimal("1.1145"), quote.price());
+        assertEquals("LAST_TRANSACTION_TRADE_PRICE", quote.sourceReference());
+    }
+
+    @Test
+    @DisplayName("Persisted observation older than 24h marks quote as stale")
+    void persistedObservationStale() {
+        UUID id = instrument.getId();
+        when(instrumentRepository.findById(id)).thenReturn(Optional.of(instrument));
+        when(marketObservationRepository.findFirstByInstrumentIdAndSourceTypeOrderByObservedAtDesc(id, ObservationSourceType.MANUAL))
+                .thenReturn(Optional.empty());
+        when(marketDataProvider.fetchQuote(eq(instrument), any())).thenReturn(Optional.empty());
+
+        Instant oldTime = Instant.now().minus(48, ChronoUnit.HOURS);
+        MarketObservation obs = new MarketObservation(instrument, new BigDecimal("150.00"), "USD", oldTime, ObservationSourceType.PROVIDER, "FEED");
+        when(marketObservationRepository.findFirstByInstrumentIdOrderByObservedAtDesc(id))
+                .thenReturn(Optional.of(obs));
+
+        PriceQuote quote = marketDataService.getLatestPrice(id, Instant.now());
+        assertTrue(quote.isStale());
+        assertNotNull(quote.warning());
     }
 
     @Test

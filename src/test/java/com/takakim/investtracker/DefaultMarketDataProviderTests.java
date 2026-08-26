@@ -26,24 +26,25 @@ class DefaultMarketDataProviderTests {
     }
 
     @Test
-    @DisplayName("fetchQuote handles null instrument and deterministic pricing for known/unknown tickers")
+    @DisplayName("fetchQuote handles null instrument and known/unknown tickers")
     void fetchQuoteEdgeCases() {
         assertTrue(provider.fetchQuote(null, Instant.now()).isEmpty());
 
         Instrument noTicker = new Instrument("Private Asset", AssetClass.OTHER, null, null, null, new Currency("USD"));
-        var noTickerQuote = provider.fetchQuote(noTicker, Instant.now());
-        assertTrue(noTickerQuote.isPresent());
-        assertTrue(noTickerQuote.get().price().compareTo(BigDecimal.ZERO) > 0);
+        assertTrue(provider.fetchQuote(noTicker, Instant.now()).isEmpty());
 
         Instrument unknown = new Instrument("Unknown Asset", AssetClass.STOCK, "XYZ999", null, null, new Currency("USD"));
-        var unknownQuote = provider.fetchQuote(unknown, Instant.now());
-        assertTrue(unknownQuote.isPresent());
-        assertTrue(unknownQuote.get().price().compareTo(BigDecimal.ZERO) > 0);
+        assertTrue(provider.fetchQuote(unknown, Instant.now()).isEmpty());
 
         Instrument byIsin = new Instrument("UK T-Bill", AssetClass.BOND, null, "GB00BSGJV473", null, new Currency("GBP"));
         var isinQuote = provider.fetchQuote(byIsin, Instant.now());
         assertTrue(isinQuote.isPresent());
         assertEquals(new BigDecimal("99.8500"), isinQuote.get().price());
+
+        Instrument lloy = new Instrument("Lloyds", AssetClass.STOCK, "LLOY", "GB0008706128", "LSE", new Currency("GBP"));
+        var lloyQuote = provider.fetchQuote(lloy, Instant.now());
+        assertTrue(lloyQuote.isPresent());
+        assertEquals(new BigDecimal("1.1145"), lloyQuote.get().price());
     }
 
     @Test
@@ -104,14 +105,14 @@ class DefaultMarketDataProviderTests {
         assertTrue(ancientQuote.isPresent());
         assertTrue(ancientQuote.get().price().compareTo(BigDecimal.ZERO) > 0);
 
-        // Instrument with only unknown ISIN
-        Instrument isinOnly = new Instrument("Isin Fund", AssetClass.MUTUAL_FUND, null, "GB00UNKNOWN1", null, new Currency("GBP"));
-        var q1 = provider.fetchQuote(isinOnly, Instant.now());
+        // Instrument with known ISIN
+        Instrument byIsin = new Instrument("Isin Fund", AssetClass.MUTUAL_FUND, null, "GB00BSGJV473", null, new Currency("GBP"));
+        var q1 = provider.fetchQuote(byIsin, Instant.now());
         assertTrue(q1.isPresent());
 
-        // Instrument with only name
-        Instrument nameOnly = new Instrument("Pure Name Asset", AssetClass.OTHER, null, null, null, new Currency("GBP"));
-        var q2 = provider.fetchQuote(nameOnly, Instant.now());
-        assertTrue(q2.isPresent());
+        // Instrument with unknown ISIN
+        Instrument unknownIsin = new Instrument("Isin Fund", AssetClass.MUTUAL_FUND, null, "GB00UNKNOWN1", null, new Currency("GBP"));
+        var q2 = provider.fetchQuote(unknownIsin, Instant.now());
+        assertTrue(q2.isEmpty());
     }
 }

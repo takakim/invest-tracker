@@ -51,6 +51,20 @@ public class FxRateService {
             );
         }
 
+        // Sub-unit pence sterling conversion (100 GBX = 1 GBP)
+        if (base.equals("GBX") && quote.equals("GBP")) {
+            return new FxRateQuote(
+                    base, quote, new BigDecimal("0.01000000"),
+                    targetTime, ObservationSourceType.PROVIDER, "SUB_UNIT", false, null
+            );
+        }
+        if (base.equals("GBP") && quote.equals("GBX")) {
+            return new FxRateQuote(
+                    base, quote, new BigDecimal("100.00000000"),
+                    targetTime, ObservationSourceType.PROVIDER, "SUB_UNIT", false, null
+            );
+        }
+
         // 2. Direct manual override (base -> quote)
         Optional<FxObservation> directManual = fxObservationRepository
                 .findFirstByBaseCurrencyAndQuoteCurrencyAndSourceTypeOrderByObservedAtDesc(base, quote, ObservationSourceType.MANUAL);

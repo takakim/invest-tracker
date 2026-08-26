@@ -35,6 +35,8 @@ public class DefaultMarketDataProvider implements MarketDataProvider {
         tickerPriceMap.put("EQQQ", new BigDecimal("380.0000"));
         tickerPriceMap.put("GB00BSGJV473", new BigDecimal("99.8500"));
         tickerPriceMap.put("RGL", new BigDecimal("0.5500"));
+        tickerPriceMap.put("LLOY", new BigDecimal("1.1145"));
+        tickerPriceMap.put("GB0008706128", new BigDecimal("1.1145"));
     }
 
     public void setPrice(String ticker, BigDecimal price) {
@@ -48,8 +50,11 @@ public class DefaultMarketDataProvider implements MarketDataProvider {
         if (instrument == null) {
             return Optional.empty();
         }
-        Instant time = asOf != null ? asOf : Instant.now();
         BigDecimal basePrice = resolveBasePrice(instrument);
+        if (basePrice == null) {
+            return Optional.empty();
+        }
+        Instant time = asOf != null ? asOf : Instant.now();
         BigDecimal priceAtTime = computeHistoricalPrice(basePrice, time);
 
         return Optional.of(new PriceQuote(
@@ -97,11 +102,7 @@ public class DefaultMarketDataProvider implements MarketDataProvider {
         if (isin != null && tickerPriceMap.containsKey(isin)) {
             return tickerPriceMap.get(isin);
         }
-        // Deterministic price fallback based on name/ticker
-        String seed = ticker != null ? ticker : (isin != null ? isin : instrument.getName());
-        int hash = Math.abs(seed.hashCode());
-        double val = 30.0 + (hash % 170) + ((hash % 100) / 100.0);
-        return BigDecimal.valueOf(val).setScale(4, java.math.RoundingMode.HALF_EVEN);
+        return null;
     }
 
     private BigDecimal computeHistoricalPrice(BigDecimal basePrice, Instant asOf) {
