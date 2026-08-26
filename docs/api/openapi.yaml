@@ -248,6 +248,50 @@ paths:
               schema: { $ref: '#/components/schemas/PerformanceResult' }
         '404': { $ref: '#/components/responses/Problem' }
         '501': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/analytics:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+    get:
+      operationId: getPortfolioAnalytics
+      summary: Get portfolio analytics, exposures, and allocations
+      parameters:
+        - name: asOf
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Portfolio analytics with live valuations and allocation slices
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PortfolioAnalytics' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/export/positions.csv:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+    get:
+      operationId: exportPositionsCsv
+      summary: Export portfolio holdings and positions as CSV
+      responses:
+        '200':
+          description: CSV file of portfolio positions
+          content:
+            text/csv:
+              schema: { type: string }
+        '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/export/transactions.csv:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+    get:
+      operationId: exportTransactionsCsv
+      summary: Export portfolio transaction ledger history as CSV
+      responses:
+        '200':
+          description: CSV file of portfolio transactions
+          content:
+            text/csv:
+              schema: { type: string }
+        '404': { $ref: '#/components/responses/Problem' }
   /portfolios/{portfolioId}/accounts/{accountId}/transactions:
     parameters:
       - { $ref: '#/components/parameters/PortfolioId' }
@@ -925,4 +969,57 @@ components:
         sourceType: { type: string, enum: [PROVIDER, MANUAL] }
         sourceReference: { type: string, nullable: true }
         createdAt: { type: string, format: date-time }
+    AllocationItem:
+      type: object
+      required: [category, marketValue, percentage, costBasis, unrealizedGainLoss]
+      properties:
+        category: { type: string }
+        marketValue: { type: number }
+        percentage: { type: number }
+        costBasis: { type: number }
+        unrealizedGainLoss: { type: number }
+    HoldingExposure:
+      type: object
+      required: [instrumentId, instrumentName, ticker, assetClass, quantity, currentPrice, marketValue, costBasis, unrealizedGainLoss, weightPercentage, currency]
+      properties:
+        instrumentId: { type: string, format: uuid }
+        instrumentName: { type: string }
+        ticker: { type: string }
+        assetClass: { type: string, enum: [STOCK, ETF, MUTUAL_FUND, BOND, REIT, CRYPTO, CASH, OTHER] }
+        quantity: { type: number }
+        currentPrice: { type: number }
+        marketValue: { type: number }
+        costBasis: { type: number }
+        unrealizedGainLoss: { type: number }
+        weightPercentage: { type: number }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+    PortfolioAnalytics:
+      type: object
+      required: [portfolioId, asOf, baseCurrency, totalCurrentValue, totalCostBasis, totalUnrealizedGainLoss, totalUnrealizedReturnPercentage, totalRealizedGainLoss, totalCashValue, byAssetClass, byCurrency, byAccount, topHoldings, warnings]
+      properties:
+        portfolioId: { type: string, format: uuid }
+        asOf: { type: string, format: date-time }
+        baseCurrency: { type: string, pattern: '^[A-Z]{3}$' }
+        totalCurrentValue: { type: number }
+        totalCostBasis: { type: number }
+        totalUnrealizedGainLoss: { type: number }
+        totalUnrealizedReturnPercentage: { type: number }
+        totalRealizedGainLoss: { type: number }
+        totalCashValue: { type: number }
+        byAssetClass:
+          type: array
+          items: { $ref: '#/components/schemas/AllocationItem' }
+        byCurrency:
+          type: array
+          items: { $ref: '#/components/schemas/AllocationItem' }
+        byAccount:
+          type: array
+          items: { $ref: '#/components/schemas/AllocationItem' }
+        topHoldings:
+          type: array
+          items: { $ref: '#/components/schemas/HoldingExposure' }
+        warnings:
+          type: array
+          items: { type: string }
+
 
