@@ -384,4 +384,34 @@ export interface PortfolioAnalytics {
   warnings: string[];
 }
 
+export interface BenchmarkInstrument {
+  id: string;
+  name: string;
+  ticker?: string | null;
+  isin?: string | null;
+  assetClass: AssetClass;
+  currency: string;
+}
+
+export type BenchmarkPeriod = '1M' | '3M' | '6M' | '1Y' | 'YTD' | 'ALL';
+
+export interface BenchmarkComparisonResult {
+  portfolioId: string;
+  benchmarkInstrumentId: string;
+  benchmarkName: string;
+  benchmarkTicker: string;
+  periodStart: string;
+  periodEnd: string;
+  portfolioReturn: number;
+  benchmarkReturn: number;
+  excessReturn: number;
+  annualizedPortfolioReturn: number;
+  annualizedBenchmarkReturn: number;
+  annualizedExcessReturn: number;
+  outperforming: boolean;
+  baseCurrency: string;
+  warnings: string[];
+}
+
+
 

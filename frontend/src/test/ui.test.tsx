@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from '@mui/material';
 
 import { theme } from '../theme';
-import { ApiError, portfolioApi, instrumentApi, accountApi, positionApi, transactionApi, importApi, performanceApi, marketApi, fxApi, analyticsApi, exportApi } from '../api';
+import { ApiError, portfolioApi, instrumentApi, accountApi, positionApi, transactionApi, importApi, performanceApi, marketApi, fxApi, analyticsApi, exportApi, benchmarkApi } from '../api';
 import { ErrorAlert, EmptyState, ConfirmDialog, Layout } from '../components';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { PortfolioListPage } from '../features/portfolios/PortfolioListPage';
@@ -18,7 +18,8 @@ import { ManualPriceModal } from '../features/market/ManualPriceModal';
 import { ValuationMetricsCard } from '../features/analytics/ValuationMetricsCard';
 import { AssetAllocationCard } from '../features/analytics/AssetAllocationCard';
 import { ExportReportModal } from '../features/analytics/ExportReportModal';
-import type { Portfolio, Instrument, Account, Position, Transaction, PerformanceResult, PortfolioAnalytics } from '../types';
+import { BenchmarkComparisonCard } from '../features/benchmark/BenchmarkComparisonCard';
+import type { Portfolio, Instrument, Account, Position, Transaction, PerformanceResult, PortfolioAnalytics, BenchmarkInstrument, BenchmarkComparisonResult } from '../types';
 
 
 function createTestQueryClient() {
@@ -305,6 +306,33 @@ describe('Feature Pages', () => {
     });
     vi.spyOn(exportApi, 'downloadPositionsCsv').mockResolvedValue();
     vi.spyOn(exportApi, 'downloadTransactionsCsv').mockResolvedValue();
+    vi.spyOn(benchmarkApi, 'getAvailableBenchmarks').mockResolvedValue([
+      {
+        id: 'bm-1',
+        name: 'Vanguard S&P 500 ETF',
+        ticker: 'VUSA',
+        isin: 'IE00B3XXRP09',
+        assetClass: 'ETF',
+        currency: 'GBP',
+      },
+    ]);
+    vi.spyOn(benchmarkApi, 'comparePortfolioToBenchmark').mockResolvedValue({
+      portfolioId: 'p-1',
+      benchmarkInstrumentId: 'bm-1',
+      benchmarkName: 'Vanguard S&P 500 ETF',
+      benchmarkTicker: 'VUSA',
+      periodStart: '2025-08-20T10:00:00Z',
+      periodEnd: '2026-08-20T10:00:00Z',
+      portfolioReturn: 0.152,
+      benchmarkReturn: 0.100,
+      excessReturn: 0.052,
+      annualizedPortfolioReturn: 0.152,
+      annualizedBenchmarkReturn: 0.100,
+      annualizedExcessReturn: 0.052,
+      outperforming: true,
+      baseCurrency: 'GBP',
+      warnings: [],
+    });
   });
 
   it('renders DashboardPage with active portfolios and metrics', async () => {
@@ -477,6 +505,57 @@ describe('Feature Pages', () => {
       expect(screen.getByText('No Matching Instruments')).toBeInTheDocument();
     });
   });
+
+  it('renders BenchmarkComparisonCard and displays alpha comparison', async () => {
+    renderWithProviders(<BenchmarkComparisonCard portfolioId="p-1" currency="GBP" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Benchmark Comparison & Alpha')).toBeInTheDocument();
+      expect(screen.getByText(/Outperforming Benchmark/i)).toBeInTheDocument();
+      expect(screen.getAllByText('+15.20%').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('+10.00%').length).toBeGreaterThan(0);
+    });
+
+    const btn3M = screen.getByRole('button', { name: '3M' });
+    fireEvent.click(btn3M);
+
+    await waitFor(() => {
+      expect(benchmarkApi.comparePortfolioToBenchmark).toHaveBeenCalledWith(
+        'p-1',
+        'bm-1',
+        '3M',
+        undefined
+      );
+    });
+  });
+
+  it('renders BenchmarkComparisonCard in underperformance state with warnings', async () => {
+    vi.spyOn(benchmarkApi, 'comparePortfolioToBenchmark').mockResolvedValueOnce({
+      portfolioId: 'p-1',
+      benchmarkInstrumentId: 'bm-1',
+      benchmarkName: 'Vanguard S&P 500 ETF',
+      benchmarkTicker: 'VUSA',
+      periodStart: '2025-08-20T10:00:00Z',
+      periodEnd: '2026-08-20T10:00:00Z',
+      portfolioReturn: 0.05,
+      benchmarkReturn: 0.08,
+      excessReturn: -0.03,
+      annualizedPortfolioReturn: 0.05,
+      annualizedBenchmarkReturn: 0.08,
+      annualizedExcessReturn: -0.03,
+      outperforming: false,
+      baseCurrency: 'GBP',
+      warnings: ['Benchmark start price is a proxy fallback'],
+    });
+
+    renderWithProviders(<BenchmarkComparisonCard portfolioId="p-1" currency="GBP" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Underperforming Benchmark by -3.00% \(Alpha\)/)).toBeInTheDocument();
+      expect(screen.getByText('Benchmark start price is a proxy fallback')).toBeInTheDocument();
+    });
+  });
 });
+
 
 

@@ -50,6 +50,7 @@ import PerformanceSummaryCard from '../performance/PerformanceSummaryCard';
 import { ValuationMetricsCard } from '../analytics/ValuationMetricsCard';
 import { AssetAllocationCard } from '../analytics/AssetAllocationCard';
 import { ExportReportModal } from '../analytics/ExportReportModal';
+import { BenchmarkComparisonCard } from '../benchmark/BenchmarkComparisonCard';
 import { ConfirmDialog, EmptyState, ErrorAlert, LoadingState } from '../../components';
 import type { Account, AccountCreateInput, PortfolioCreateInput } from '../../types';
 
@@ -294,6 +295,11 @@ export function PortfolioDetailPage() {
       {/* Portfolio Performance */}
       <Box sx={{ mb: 4 }}>
         <PerformanceSummaryCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
+      </Box>
+
+      {/* Benchmark Comparison & Alpha */}
+      <Box sx={{ mb: 4 }}>
+        <BenchmarkComparisonCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
       </Box>
 
       {/* Accounts Section */}
