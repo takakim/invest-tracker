@@ -67,11 +67,6 @@ public class PerformanceEngine {
         Portfolio portfolio = portfolioRepository.findById(portfolioId)
                 .orElseThrow(() -> new ResourceNotFoundException("Portfolio not found: " + portfolioId));
 
-        if (portfolio.getReturnMethod() == ReturnMethod.XIRR) {
-            throw new UnsupportedOperationException(
-                    "XIRR return method is not yet supported. Please select TWR or MWR on the portfolio.");
-        }
-
         List<Account> accounts = accountRepository.findAllByPortfolioIdAndStatusOrderByNameAsc(
                 portfolioId, AccountStatus.ACTIVE);
 
@@ -122,6 +117,10 @@ public class PerformanceEngine {
             twrAnnualized = annualize(twrReturn, allTxs, asOf);
         } else if (method == ReturnMethod.MWR) {
             mwrReturn = calculateMwr(allTxs, totalCostBasis, totalRealizedGain, totalNetIncome);
+        } else if (method == ReturnMethod.XIRR) {
+            mwrReturn = calculateMwr(allTxs, totalCostBasis, totalRealizedGain, totalNetIncome);
+            twrReturn = calculateTwr(allTxs, totalCostBasis);
+            twrAnnualized = annualize(twrReturn, allTxs, asOf);
         }
 
         return new PerformanceResult(

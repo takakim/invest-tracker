@@ -31,3 +31,17 @@ export function useCreateInstrument() {
     },
   });
 }
+
+export function useUpdateInstrument() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: InstrumentCreateInput }) =>
+      instrumentApi.update(id, input),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: INSTRUMENT_QUERY_KEYS.all });
+      queryClient.invalidateQueries({ queryKey: INSTRUMENT_QUERY_KEYS.detail(variables.id) });
+      queryClient.invalidateQueries({ queryKey: ['benchmarks'] });
+      queryClient.invalidateQueries({ queryKey: ['portfolio'] });
+    },
+  });
+}

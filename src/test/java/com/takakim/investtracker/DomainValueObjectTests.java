@@ -205,5 +205,37 @@ class DomainValueObjectTests {
         assertThrows(NullPointerException.class, () -> instrument.update("Valid", null, null, null, null, gbp));
         assertThrows(NullPointerException.class, () -> instrument.update("Valid", AssetClass.STOCK, null, null, null, null));
     }
+
+    @Test
+    void instrumentServiceUpdateBranches() {
+        var repo = org.mockito.Mockito.mock(com.takakim.investtracker.repository.InstrumentRepository.class);
+        var service = new com.takakim.investtracker.service.InstrumentService(repo);
+        java.util.UUID id1 = java.util.UUID.randomUUID();
+        java.util.UUID id2 = java.util.UUID.randomUUID();
+        Instrument inst1 = new Instrument("Inst1", AssetClass.STOCK, "T1", "GB0000000001", null, new Currency("GBP"));
+        Instrument inst2 = new Instrument("Inst2", AssetClass.STOCK, "T2", "GB0000000002", null, new Currency("GBP"));
+
+        org.mockito.Mockito.when(repo.findById(id1)).thenReturn(java.util.Optional.of(inst1));
+        org.mockito.Mockito.when(repo.findById(id2)).thenReturn(java.util.Optional.empty());
+        org.mockito.Mockito.when(repo.findByIsin("GB0000000002")).thenReturn(java.util.Optional.of(inst2));
+        org.mockito.Mockito.when(repo.save(org.mockito.ArgumentMatchers.any())).thenAnswer(inv -> inv.getArgument(0));
+
+        // 1. Not found
+        assertThrows(com.takakim.investtracker.service.ResourceNotFoundException.class,
+                () -> service.update(id2, new com.takakim.investtracker.api.ApiDtos.InstrumentRequest("Name", AssetClass.STOCK, null, null, null, "GBP")));
+
+        // 2. ISIN Conflict with another instrument
+        assertThrows(com.takakim.investtracker.service.ConflictException.class,
+                () -> service.update(id1, new com.takakim.investtracker.api.ApiDtos.InstrumentRequest("Name", AssetClass.STOCK, null, "GB0000000002", null, "GBP")));
+
+        // 3. Successful update with null/blank isin
+        var res1 = service.update(id1, new com.takakim.investtracker.api.ApiDtos.InstrumentRequest("Name Up", AssetClass.ETF, "TCK", null, "LSE", "USD"));
+        assertEquals("Name Up", res1.name());
+        assertEquals(AssetClass.ETF, res1.assetClass());
+
+        // 4. Successful update with blank isin
+        var res2 = service.update(id1, new com.takakim.investtracker.api.ApiDtos.InstrumentRequest("Name Up 2", AssetClass.BOND, "TCK", "   ", "LSE", "USD"));
+        assertEquals(AssetClass.BOND, res2.assetClass());
+    }
 }
 

@@ -93,8 +93,8 @@ class PerformanceIntegrationTests {
     }
 
     @Test
-    @DisplayName("XIRR portfolio returns 501 Not Implemented")
-    void xirrPortfolioReturns501() throws Exception {
+    @DisplayName("XIRR portfolio returns 200 OK with performance metrics")
+    void xirrPortfolioReturns200() throws Exception {
         String portfolioJson = """
             {"name":"XIRR Test","baseCurrency":"EUR","costBasisMethod":"AVERAGE_COST","returnMethod":"XIRR"}
             """;
@@ -105,7 +105,8 @@ class PerformanceIntegrationTests {
         String portfolioId = JsonPath.read(pResp, "$.id");
 
         mockMvc.perform(get("/api/v1/portfolios/{id}/performance", portfolioId))
-                .andExpect(status().isNotImplemented());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.returnMethod", is("XIRR")));
     }
 
     @Test
