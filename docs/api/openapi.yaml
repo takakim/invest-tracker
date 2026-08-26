@@ -570,6 +570,41 @@ paths:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/FxObservation' }
+  /portfolios/{portfolioId}/benchmark-comparison:
+    get:
+      summary: Compare portfolio performance to a benchmark index
+      parameters:
+        - $ref: '#/components/parameters/PortfolioId'
+        - in: query
+          name: benchmarkInstrumentId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: period
+          required: false
+          schema: { type: string, enum: [1M, 3M, 6M, 1Y, YTD, ALL] }
+        - in: query
+          name: asOf
+          required: false
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Portfolio vs Benchmark comparison result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BenchmarkComparison' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /benchmarks:
+    get:
+      summary: List available benchmark indices and instruments
+      responses:
+        '200':
+          description: List of available benchmark instruments
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/BenchmarkInstrument' }
 components:
   parameters:
     PortfolioId:
@@ -1021,5 +1056,37 @@ components:
         warnings:
           type: array
           items: { type: string }
+    BenchmarkInstrument:
+      type: object
+      required: [id, name, assetClass, currency]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        ticker: { type: string }
+        isin: { type: string }
+        assetClass: { type: string, enum: [STOCK, ETF, MUTUAL_FUND, BOND, REIT, CRYPTO, CASH, OTHER] }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+    BenchmarkComparison:
+      type: object
+      required: [portfolioId, benchmarkInstrumentId, benchmarkName, benchmarkTicker, periodStart, periodEnd, portfolioReturn, benchmarkReturn, excessReturn, annualizedPortfolioReturn, annualizedBenchmarkReturn, annualizedExcessReturn, outperforming, baseCurrency, warnings]
+      properties:
+        portfolioId: { type: string, format: uuid }
+        benchmarkInstrumentId: { type: string, format: uuid }
+        benchmarkName: { type: string }
+        benchmarkTicker: { type: string }
+        periodStart: { type: string, format: date-time }
+        periodEnd: { type: string, format: date-time }
+        portfolioReturn: { type: number }
+        benchmarkReturn: { type: number }
+        excessReturn: { type: number }
+        annualizedPortfolioReturn: { type: number }
+        annualizedBenchmarkReturn: { type: number }
+        annualizedExcessReturn: { type: number }
+        outperforming: { type: boolean }
+        baseCurrency: { type: string, pattern: '^[A-Z]{3}$' }
+        warnings:
+          type: array
+          items: { type: string }
+
 
 
