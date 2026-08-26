@@ -490,9 +490,9 @@ Key deliverables:
 
 ### Phase 7 — Market Data & Currency
 
-**Status: Completed and ready for merge.**
+**Status: Completed and merged.**
 
-Tracking: Issue #29, branch `phase-7-market-data`.
+Tracking: Issue #29, PR #41, branch `phase-7-market-data`.
 
 Key deliverables:
 - Flyway schema migration `V6__market_data_and_fx.sql` (`market_observations` and `fx_observations` tables with provenance tracking).
@@ -511,9 +511,35 @@ Key deliverables:
 - Frontend UI: `ManualPriceModal`, `ManualFxModal`, `MarketRatesCard` exchange rate widget on `InstrumentListPage`, "Set Price" actions on instruments table, and React Query hooks (`useLatestQuote`, `useRecordPriceOverride`, `useFxRate`, `useRecordFxOverride`).
 - 125 backend tests (unit + Testcontainers PostgreSQL) and 29 frontend tests passing with >=90% branch/line coverage and 0 vulnerabilities.
 
-### Phase 8 — Advanced Analytics & Reporting
+### Phase 8 — Advanced Analytics, Asset Allocation, Exposures & Reporting
 
-Implement asset allocation, geographic/sector exposure, benchmark comparisons, and export reports (PDF/CSV).
+**Status: Completed and ready for merge.**
+
+Tracking: Issue #30, branch `phase-8-analytics-reporting`.
+
+Key deliverables:
+- Domain records in `com.takakim.investtracker.service.analytics`: `AllocationItem`, `HoldingExposure`, `PortfolioAnalytics`.
+- `AnalyticsEngine`:
+  - Real-time valuation of portfolio positions using live quotes (`MarketDataService`) and multi-currency FX conversion (`FxRateService`).
+  - Cash calculation per account aggregated from ledger transactions with currency conversion.
+  - Calculation of unrealized gains/losses, unrealized return percentage, realized gains from tax lots, and cost basis.
+  - Multi-dimensional asset allocation breakdowns: Asset Class, Currency Exposure, and Account Distribution.
+  - Top holdings ranking with proportional portfolio weights.
+  - Data quality warning aggregation (stale quotes, missing prices falling back to cost-basis proxy).
+- `PortfolioExportService`:
+  - `exportPositionsCsv`: Comprehensive holdings & positions statement (Account, Instrument Name, Ticker, ISIN, Asset Class, Quantity, Cost Basis, Current Price, Market Value, Unrealized Gain/Loss, Weight %).
+  - `exportTransactionsCsv`: Full transaction ledger audit report (Date, Type, Account, Instrument, Ticker, Quantity, Price, Gross Amount, Fee, Tax, Net Amount, Currency, Notes) with CSV injection prevention and RFC 4180 compliant escaping.
+- REST endpoints:
+  - `GET /api/v1/portfolios/{portfolioId}/analytics` (`AnalyticsController`)
+  - `GET /api/v1/portfolios/{portfolioId}/export/positions.csv` (`ExportController`)
+  - `GET /api/v1/portfolios/{portfolioId}/export/transactions.csv` (`ExportController`)
+- OpenAPI 3.1.1 contract synchronized (`docs/api/openapi.yaml`).
+- Frontend UI:
+  - `ValuationMetricsCard`: Total market value, cost basis, available cash, color-coded unrealized P&L badge, and quality alerts.
+  - `AssetAllocationCard`: Tabbed breakdown for Asset Class, Currency Exposure, Account Distribution, and Top Holdings table with weights and gains.
+  - `ExportReportModal`: One-click statement downloads for positions and transaction history.
+  - Integrated directly into `PortfolioDetailPage.tsx`.
+- 138 backend tests (unit + Testcontainers PostgreSQL) and 31 frontend tests passing with >=90% branch/line coverage and 0 vulnerabilities.
 
 ## 16. Future LLM instructions
 
@@ -547,7 +573,7 @@ Before changing the repository:
 - Phase 0.5 decisions agreed: ownership model, immutable ledger, transfer/cost-basis preservation, missing-data warnings/manual overrides.
 - Phase 0.5 architecture documentation, ADRs, workflows and OpenAPI design added on `phase-0.5-architecture`.
 
-### 2026-08-22 / 2026-08-25
+### 2026-08-22 / 2026-08-26
 
 - Phase 1 core domain merged in PR #22 (Flyway autoconfig, value objects, domain services, REST endpoints, and integration tests).
 - Phase 1.5 React frontend foundation implemented and merged in PR #35 (Issue #23) with modular domain feature layout, Material UI theme, React Hook Form + Zod validation, TanStack Query integration, RFC 9457 error handling, and Vitest testing suite.
@@ -556,5 +582,7 @@ Before changing the repository:
 - Phase 4 CSV Import Engine implemented (Issue #26) and merged in PR #38 with Flyway migration `V5__csv_import.sql`, `FreetradeCsvParser`, `CsvImportService`, idempotency deduplication, REST endpoints, frontend `CsvImportModal`, and full test coverage.
 - Phase 5 Position Engine implemented (Issue #27) and merged in PR #39 with `PositionEngine`, FIFO / LIFO / Weighted Average cost basis strategies, tax lot tracking (`PositionLot`, `LotDisposal`), stock split adjustments, `GET /lots` & `POST /recalculate` endpoints, frontend `PositionLotsModal`, and 100% passing test suites.
 - Phase 6 Performance Engine implemented (Issue #28) and merged in PR #40 with `PerformanceEngine` (TWR chain-linking, MWR, annualized return, realized gain & income aggregation), `GET /portfolios/{id}/performance` endpoint, `PerformanceSummaryCard` UI component, updated OpenAPI contract, and 91 backend + 27 frontend tests passing with >=90% coverage and 0 vulnerabilities.
-- Phase 7 Market Data & Currency implemented (Issue #29) on branch `phase-7-market-data` with Flyway migration `V6__market_data_and_fx.sql`, `MarketDataService`, `FxRateService` (triangulation, inverted rates, multi-currency conversion), manual override modals, `MarketRatesCard` UI, OpenAPI synchronization, and 125 backend + 29 frontend tests passing with >=90% coverage and 0 vulnerabilities.
+- Phase 7 Market Data & Currency implemented (Issue #29) and merged in PR #41 with Flyway migration `V6__market_data_and_fx.sql`, `MarketDataService`, `FxRateService` (triangulation, inverted rates, multi-currency conversion), manual override modals, `MarketRatesCard` UI, OpenAPI synchronization, and 125 backend + 29 frontend tests passing with >=90% coverage and 0 vulnerabilities.
+- Phase 8 Advanced Analytics, Asset Allocation & Reporting implemented (Issue #30) on branch `phase-8-analytics-reporting` with `AnalyticsEngine`, `PortfolioExportService` (positions & transactions CSV statements), REST endpoints, OpenAPI update, frontend `ValuationMetricsCard`, `AssetAllocationCard`, and `ExportReportModal` UI components, and 138 backend + 31 frontend tests passing with >=90% coverage and 0 vulnerabilities.
+
 

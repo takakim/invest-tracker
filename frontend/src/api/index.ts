@@ -8,3 +8,6 @@ export * from './imports';
 export * from './performance';
 export * from './market';
 export * from './fx';
+export * from './analytics';
+export * from './export';
+

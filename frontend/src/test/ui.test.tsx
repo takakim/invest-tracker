@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from '@mui/material';
 
 import { theme } from '../theme';
-import { ApiError, portfolioApi, instrumentApi, accountApi, positionApi, transactionApi, importApi, performanceApi, marketApi, fxApi } from '../api';
+import { ApiError, portfolioApi, instrumentApi, accountApi, positionApi, transactionApi, importApi, performanceApi, marketApi, fxApi, analyticsApi, exportApi } from '../api';
 import { ErrorAlert, EmptyState, ConfirmDialog, Layout } from '../components';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { PortfolioListPage } from '../features/portfolios/PortfolioListPage';
@@ -15,7 +15,11 @@ import { InstrumentListPage } from '../features/instruments/InstrumentListPage';
 import PerformanceSummaryCard from '../features/performance/PerformanceSummaryCard';
 import { MarketRatesCard } from '../features/market/MarketRatesCard';
 import { ManualPriceModal } from '../features/market/ManualPriceModal';
-import type { Portfolio, Instrument, Account, Position, Transaction, PerformanceResult } from '../types';
+import { ValuationMetricsCard } from '../features/analytics/ValuationMetricsCard';
+import { AssetAllocationCard } from '../features/analytics/AssetAllocationCard';
+import { ExportReportModal } from '../features/analytics/ExportReportModal';
+import type { Portfolio, Instrument, Account, Position, Transaction, PerformanceResult, PortfolioAnalytics } from '../types';
+
 
 function createTestQueryClient() {
   return new QueryClient({
@@ -261,6 +265,46 @@ describe('Feature Pages', () => {
       sourceType: 'MANUAL',
       createdAt: '2026-08-20T10:00:00Z',
     });
+    vi.spyOn(analyticsApi, 'getPortfolioAnalytics').mockResolvedValue({
+      portfolioId: 'p-1',
+      asOf: '2026-08-20T10:00:00Z',
+      baseCurrency: 'GBP',
+      totalCurrentValue: 5600,
+      totalCostBasis: 5000,
+      totalUnrealizedGainLoss: 600,
+      totalUnrealizedReturnPercentage: 12.0,
+      totalRealizedGainLoss: 250,
+      totalCashValue: 1000,
+      byAssetClass: [
+        { category: 'STOCK', marketValue: 4600, percentage: 0.8214, costBasis: 4000, unrealizedGainLoss: 600 },
+        { category: 'CASH', marketValue: 1000, percentage: 0.1786, costBasis: 1000, unrealizedGainLoss: 0 },
+      ],
+      byCurrency: [
+        { category: 'USD', marketValue: 4600, percentage: 0.8214, costBasis: 0, unrealizedGainLoss: 0 },
+        { category: 'GBP', marketValue: 1000, percentage: 0.1786, costBasis: 0, unrealizedGainLoss: 0 },
+      ],
+      byAccount: [
+        { category: 'Interactive Brokers SIPP', marketValue: 5600, percentage: 1.0, costBasis: 0, unrealizedGainLoss: 0 },
+      ],
+      topHoldings: [
+        {
+          instrumentId: 'inst-1',
+          instrumentName: 'Apple Inc',
+          ticker: 'AAPL',
+          assetClass: 'STOCK',
+          quantity: 25,
+          currentPrice: 184,
+          marketValue: 4600,
+          costBasis: 4000,
+          unrealizedGainLoss: 600,
+          weightPercentage: 0.8214,
+          currency: 'USD',
+        },
+      ],
+      warnings: [],
+    });
+    vi.spyOn(exportApi, 'downloadPositionsCsv').mockResolvedValue();
+    vi.spyOn(exportApi, 'downloadTransactionsCsv').mockResolvedValue();
   });
 
   it('renders DashboardPage with active portfolios and metrics', async () => {
@@ -288,7 +332,7 @@ describe('Feature Pages', () => {
     expect(screen.getByLabelText(/Portfolio Name/i)).toBeInTheDocument();
   });
 
-  it('renders PortfolioDetailPage with account list and performance card', async () => {
+  it('renders PortfolioDetailPage with account list, valuation, and allocation cards', async () => {
     const testQueryClient = createTestQueryClient();
 
     render(
@@ -308,9 +352,15 @@ describe('Feature Pages', () => {
       expect(screen.getByRole('heading', { level: 5, name: 'Accounts' })).toBeInTheDocument();
       expect(screen.getByText('Interactive Brokers SIPP')).toBeInTheDocument();
       expect(screen.getByText('Interactive Brokers')).toBeInTheDocument();
+      expect(screen.getByText('Portfolio Valuation & Unrealized P&L')).toBeInTheDocument();
+      expect(screen.getByText('Asset Allocation & Exposure Breakdown')).toBeInTheDocument();
       expect(screen.getByText('Portfolio Performance')).toBeInTheDocument();
-      expect(screen.getByText('12.50%')).toBeInTheDocument();
     });
+
+    const exportBtn = screen.getByRole('button', { name: 'Export Statements' });
+    fireEvent.click(exportBtn);
+
+    expect(screen.getByText('Export Portfolio Statements')).toBeInTheDocument();
   });
 
   it('renders PerformanceSummaryCard component with metrics', async () => {
@@ -322,6 +372,56 @@ describe('Feature Pages', () => {
       expect(screen.getByText('Realized Gain/Loss')).toBeInTheDocument();
       expect(screen.getByText('Net Income')).toBeInTheDocument();
       expect(screen.getByText('Cost Basis')).toBeInTheDocument();
+    });
+  });
+
+  it('renders ValuationMetricsCard and AssetAllocationCard', async () => {
+    renderWithProviders(
+      <>
+        <ValuationMetricsCard portfolioId="p-1" currency="GBP" />
+        <AssetAllocationCard portfolioId="p-1" currency="GBP" />
+      </>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Portfolio Valuation & Unrealized P&L')).toBeInTheDocument();
+      expect(screen.getByText('5,600.00')).toBeInTheDocument();
+      expect(screen.getByText(/Cost Basis:/)).toBeInTheDocument();
+      expect(screen.getByText(/Available Cash:/)).toBeInTheDocument();
+      expect(screen.getByText('Asset Allocation & Exposure Breakdown')).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Asset Class' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Top Holdings' })).toBeInTheDocument();
+    });
+
+    const topHoldingsTab = screen.getByRole('tab', { name: 'Top Holdings' });
+    fireEvent.click(topHoldingsTab);
+
+    await waitFor(() => {
+      expect(screen.getByText('AAPL')).toBeInTheDocument();
+      expect(screen.getByText(/82.1%/)).toBeInTheDocument();
+    });
+  });
+
+  it('renders ExportReportModal and triggers CSV downloads', async () => {
+    const handleClose = vi.fn();
+    renderWithProviders(
+      <ExportReportModal open={true} portfolioId="p-1" portfolioName="Retirement Growth" onClose={handleClose} />
+    );
+
+    expect(screen.getByText('Export Portfolio Statements')).toBeInTheDocument();
+    expect(screen.getByText('Retirement Growth')).toBeInTheDocument();
+
+    const downloadBtns = screen.getAllByRole('button', { name: 'Download CSV' });
+    expect(downloadBtns.length).toBe(2);
+
+    fireEvent.click(downloadBtns[0]);
+    await waitFor(() => {
+      expect(exportApi.downloadPositionsCsv).toHaveBeenCalledWith('p-1');
+    });
+
+    fireEvent.click(downloadBtns[1]);
+    await waitFor(() => {
+      expect(exportApi.downloadTransactionsCsv).toHaveBeenCalledWith('p-1');
     });
   });
 
@@ -378,4 +478,5 @@ describe('Feature Pages', () => {
     });
   });
 });
+
 

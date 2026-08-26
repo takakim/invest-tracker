@@ -33,6 +33,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AccountBalanceOutlinedIcon from '@mui/icons-material/AccountBalanceOutlined';
 import ShowChartOutlinedIcon from '@mui/icons-material/ShowChartOutlined';
 import ReceiptLongOutlinedIcon from '@mui/icons-material/ReceiptLongOutlined';
+import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
 
 import { usePortfolio, useUpdatePortfolio, useArchivePortfolio } from './usePortfolios';
 import {
@@ -46,8 +47,12 @@ import { AccountFormModal } from '../accounts/AccountFormModal';
 import { PositionTable } from '../positions/PositionTable';
 import { TransactionTable } from '../transactions/TransactionTable';
 import PerformanceSummaryCard from '../performance/PerformanceSummaryCard';
+import { ValuationMetricsCard } from '../analytics/ValuationMetricsCard';
+import { AssetAllocationCard } from '../analytics/AssetAllocationCard';
+import { ExportReportModal } from '../analytics/ExportReportModal';
 import { ConfirmDialog, EmptyState, ErrorAlert, LoadingState } from '../../components';
 import type { Account, AccountCreateInput, PortfolioCreateInput } from '../../types';
+
 
 export function PortfolioDetailPage() {
   const { id: portfolioId = '' } = useParams();
@@ -77,6 +82,7 @@ export function PortfolioDetailPage() {
   // Modal states
   const [portfolioEditOpen, setPortfolioEditOpen] = useState(false);
   const [portfolioArchiveOpen, setPortfolioArchiveOpen] = useState(false);
+  const [exportModalOpen, setExportModalOpen] = useState(false);
 
   const [accountTabMap, setAccountTabMap] = useState<Record<string, number>>({});
 
@@ -194,6 +200,14 @@ export function PortfolioDetailPage() {
           <Stack direction="row" spacing={1}>
             <Button
               variant="outlined"
+              startIcon={<FileDownloadOutlinedIcon />}
+              onClick={() => setExportModalOpen(true)}
+              size="small"
+            >
+              Export Statements
+            </Button>
+            <Button
+              variant="outlined"
               startIcon={<EditOutlinedIcon />}
               onClick={() => setPortfolioEditOpen(true)}
               size="small"
@@ -266,6 +280,16 @@ export function PortfolioDetailPage() {
           </Grid>
         </Grid>
       </Paper>
+
+      {/* Valuation & Unrealized P&L */}
+      <Box sx={{ mb: 4 }}>
+        <ValuationMetricsCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
+      </Box>
+
+      {/* Asset Allocation Breakdown */}
+      <Box sx={{ mb: 4 }}>
+        <AssetAllocationCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
+      </Box>
 
       {/* Portfolio Performance */}
       <Box sx={{ mb: 4 }}>
@@ -445,6 +469,14 @@ export function PortfolioDetailPage() {
         isPending={archiveAccountMutation.isPending}
         onConfirm={handleArchiveAccountConfirm}
         onCancel={() => setArchiveAccountTarget(null)}
+      />
+
+      {/* Export Statements Modal */}
+      <ExportReportModal
+        open={exportModalOpen}
+        portfolioId={portfolio.id}
+        portfolioName={portfolio.name}
+        onClose={() => setExportModalOpen(false)}
       />
     </Box>
   );
