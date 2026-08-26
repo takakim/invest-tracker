@@ -13,11 +13,12 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import com.takakim.investtracker.service.ResourceNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@Transactional
+@Transactional(noRollbackFor = {ResourceNotFoundException.class})
 public class FxRateService {
 
     private static final Duration STALE_THRESHOLD = Duration.ofHours(24);

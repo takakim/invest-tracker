@@ -30,7 +30,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@Transactional
+@Transactional(noRollbackFor = {ResourceNotFoundException.class})
 public class BenchmarkEngine {
 
     private static final int SCALE = 4;

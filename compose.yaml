@@ -33,6 +33,8 @@ services:
       SPRING_FLYWAY_PASSWORD: ${POSTGRES_PASSWORD:-invest_tracker}
     ports:
       - "127.0.0.1:8080:8080"
+    volumes:
+      - ./logs:/app/logs
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
       interval: 10s
