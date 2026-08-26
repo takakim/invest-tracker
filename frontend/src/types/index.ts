@@ -55,6 +55,10 @@ export interface Instrument {
   isin?: string | null;
   exchange?: string | null;
   currency: string;
+  latestPrice?: number | null;
+  priceCurrency?: string | null;
+  priceAsOf?: string | null;
+  isStale?: boolean | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -108,6 +112,17 @@ export interface PositionLot {
   currency: string;
 }
 
+export interface LotDisposal {
+  transactionId: string;
+  lotId: string;
+  disposalDate: string;
+  quantity: number;
+  costBasis: number;
+  proceeds: number;
+  realizedGainLoss: number;
+  currency: string;
+}
+
 export interface PositionLotsDetail {
   positionId: string;
   accountId: string;
@@ -119,6 +134,43 @@ export interface PositionLotsDetail {
   averageUnitCostAmount: number;
   realizedGainLossAmount: number;
   openLots: PositionLot[];
+}
+
+export interface PositionPerformance {
+  positionId?: string | null;
+  accountId: string;
+  accountName: string;
+  instrumentId: string;
+  instrumentName: string;
+  ticker?: string | null;
+  isin?: string | null;
+  assetClass: AssetClass;
+  status: string;
+  currentQuantity: number;
+  totalBoughtQuantity: number;
+  totalSoldQuantity: number;
+  averageBuyPrice: number;
+  averageSellPrice: number;
+  totalInvestedAmount: number;
+  totalProceedsAmount: number;
+  currentCostBasis: number;
+  currentPrice: number;
+  currentMarketValue: number;
+  realizedGainLoss: number;
+  unrealizedGainLoss: number;
+  dividendIncome: number;
+  fees: number;
+  taxes: number;
+  netTotalReturnAmount: number;
+  totalReturnPercentage: number;
+  currency: string;
+  nativePrice?: number | null;
+  nativeCurrency?: string | null;
+  nativeNetTotalReturnAmount?: number | null;
+  nativeReturnPercentage?: number | null;
+  openLots: PositionLot[];
+  disposals: LotDisposal[];
+  transactions: Transaction[];
 }
 
 export interface PositionRecalculateResponse {

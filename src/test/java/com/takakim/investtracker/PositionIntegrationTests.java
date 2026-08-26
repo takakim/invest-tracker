@@ -277,5 +277,35 @@ class PositionIntegrationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.portfolioId").value(pId))
                 .andExpect(jsonPath("$.recalculatedPositionsCount").value(1));
+
+        // 8. Query Position Performance Detail
+        mockMvc.perform(get("/api/v1/portfolios/" + pId + "/accounts/" + aId + "/positions/" + posId + "/performance"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.positionId").value(posId))
+                .andExpect(jsonPath("$.instrumentName").value("Microsoft"))
+                .andExpect(jsonPath("$.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.currentQuantity").value(10.0))
+                .andExpect(jsonPath("$.totalBoughtQuantity").value(10.0))
+                .andExpect(jsonPath("$.totalInvestedAmount").value(2000.0))
+                .andExpect(jsonPath("$.transactions.length()").value(1));
+
+        // 9. Query Account Positions Performance
+        mockMvc.perform(get("/api/v1/portfolios/" + pId + "/accounts/" + aId + "/positions/performance?includeClosed=true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1));
+
+        // 10. Query Portfolio Positions Performance
+        mockMvc.perform(get("/api/v1/portfolios/" + pId + "/positions/performance?includeClosed=true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1));
+
+        // 11. Refresh Instrument Price
+        mockMvc.perform(post("/api/v1/instruments/" + instId + "/refresh-price"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(instId));
+
+        // 12. Refresh All Instrument Prices
+        mockMvc.perform(post("/api/v1/instruments/refresh-prices"))
+                .andExpect(status().isOk());
     }
 }

@@ -44,7 +44,16 @@ public final class ApiDtos {
 
     public record InstrumentResponse(
         UUID id, String name, AssetClass assetClass, String ticker, String isin,
-        String exchange, String currency, Instant createdAt, Instant updatedAt) { }
+        String exchange, String currency, Instant createdAt, Instant updatedAt,
+        java.math.BigDecimal latestPrice, String priceCurrency, Instant priceAsOf,
+        Boolean isStale) {
+        public InstrumentResponse(
+            UUID id, String name, AssetClass assetClass, String ticker, String isin,
+            String exchange, String currency, Instant createdAt, Instant updatedAt
+        ) {
+            this(id, name, assetClass, ticker, isin, exchange, currency, createdAt, updatedAt, null, null, null, null);
+        }
+    }
 
     public record PositionRequest(
         @NotNull UUID instrumentId,
@@ -155,6 +164,16 @@ public final class ApiDtos {
         java.math.BigDecimal totalCostAmount,
         String currency) { }
 
+    public record LotDisposalResponse(
+        UUID transactionId,
+        UUID lotId,
+        Instant disposalDate,
+        java.math.BigDecimal quantity,
+        java.math.BigDecimal costBasis,
+        java.math.BigDecimal proceeds,
+        java.math.BigDecimal realizedGainLoss,
+        String currency) { }
+
     public record PositionLotsDetailResponse(
         UUID positionId,
         UUID accountId,
@@ -166,6 +185,42 @@ public final class ApiDtos {
         java.math.BigDecimal averageUnitCostAmount,
         java.math.BigDecimal realizedGainLossAmount,
         List<PositionLotResponse> openLots) { }
+
+    public record PositionPerformanceResponse(
+        UUID positionId,
+        UUID accountId,
+        String accountName,
+        UUID instrumentId,
+        String instrumentName,
+        String ticker,
+        String isin,
+        AssetClass assetClass,
+        String status,
+        java.math.BigDecimal currentQuantity,
+        java.math.BigDecimal totalBoughtQuantity,
+        java.math.BigDecimal totalSoldQuantity,
+        java.math.BigDecimal averageBuyPrice,
+        java.math.BigDecimal averageSellPrice,
+        java.math.BigDecimal totalInvestedAmount,
+        java.math.BigDecimal totalProceedsAmount,
+        java.math.BigDecimal currentCostBasis,
+        java.math.BigDecimal currentPrice,
+        java.math.BigDecimal currentMarketValue,
+        java.math.BigDecimal realizedGainLoss,
+        java.math.BigDecimal unrealizedGainLoss,
+        java.math.BigDecimal dividendIncome,
+        java.math.BigDecimal fees,
+        java.math.BigDecimal taxes,
+        java.math.BigDecimal netTotalReturnAmount,
+        java.math.BigDecimal totalReturnPercentage,
+        String currency,
+        java.math.BigDecimal nativePrice,
+        String nativeCurrency,
+        java.math.BigDecimal nativeNetTotalReturnAmount,
+        java.math.BigDecimal nativeReturnPercentage,
+        List<PositionLotResponse> openLots,
+        List<LotDisposalResponse> disposals,
+        List<TransactionResponse> transactions) { }
 
     public record PositionRecalculateResponse(
         UUID portfolioId,

@@ -56,6 +56,29 @@ public class PositionController {
         return toResponse(positionService.getPosition(portfolioId, accountId, positionId));
     }
 
+    @GetMapping("/api/v1/portfolios/{portfolioId}/positions/performance")
+    public List<ApiDtos.PositionPerformanceResponse> listPortfolioPositionsPerformance(
+            @PathVariable UUID portfolioId,
+            @org.springframework.web.bind.annotation.RequestParam(required = false, defaultValue = "false") boolean includeClosed) {
+        return positionService.listPortfolioPositionsPerformance(portfolioId, includeClosed);
+    }
+
+    @GetMapping("/api/v1/portfolios/{portfolioId}/accounts/{accountId}/positions/performance")
+    public List<ApiDtos.PositionPerformanceResponse> listAccountPositionsPerformance(
+            @PathVariable UUID portfolioId,
+            @PathVariable UUID accountId,
+            @org.springframework.web.bind.annotation.RequestParam(required = false, defaultValue = "false") boolean includeClosed) {
+        return positionService.listAccountPositionsPerformance(portfolioId, accountId, includeClosed);
+    }
+
+    @GetMapping("/api/v1/portfolios/{portfolioId}/accounts/{accountId}/positions/{positionId}/performance")
+    public ApiDtos.PositionPerformanceResponse getPositionPerformance(
+            @PathVariable UUID portfolioId,
+            @PathVariable UUID accountId,
+            @PathVariable UUID positionId) {
+        return positionService.getPositionPerformance(portfolioId, accountId, positionId);
+    }
+
     @GetMapping("/api/v1/portfolios/{portfolioId}/accounts/{accountId}/positions/{positionId}/lots")
     public ApiDtos.PositionLotsDetailResponse getPositionLots(
             @PathVariable UUID portfolioId,

@@ -16,6 +16,32 @@ export const positionApi = {
       `/api/v1/portfolios/${portfolioId}/accounts/${accountId}/positions/${positionId}/lots`,
     ),
 
+  getPositionPerformance: (
+    portfolioId: string,
+    accountId: string,
+    positionId: string,
+  ): Promise<import('../types').PositionPerformance> =>
+    request<import('../types').PositionPerformance>(
+      `/api/v1/portfolios/${portfolioId}/accounts/${accountId}/positions/${positionId}/performance`,
+    ),
+
+  listPortfolioPerformance: (
+    portfolioId: string,
+    includeClosed: boolean = false,
+  ): Promise<import('../types').PositionPerformance[]> =>
+    request<import('../types').PositionPerformance[]>(
+      `/api/v1/portfolios/${portfolioId}/positions/performance?includeClosed=${includeClosed}`,
+    ),
+
+  listAccountPerformance: (
+    portfolioId: string,
+    accountId: string,
+    includeClosed: boolean = false,
+  ): Promise<import('../types').PositionPerformance[]> =>
+    request<import('../types').PositionPerformance[]>(
+      `/api/v1/portfolios/${portfolioId}/accounts/${accountId}/positions/performance?includeClosed=${includeClosed}`,
+    ),
+
   recalculate: (portfolioId: string): Promise<PositionRecalculateResponse> =>
     request<PositionRecalculateResponse>(`/api/v1/portfolios/${portfolioId}/positions/recalculate`, {
       method: 'POST',

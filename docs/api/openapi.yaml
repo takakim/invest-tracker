@@ -204,6 +204,59 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/PositionLotsDetail' }
         '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/accounts/{accountId}/positions/{positionId}/performance:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+      - { $ref: '#/components/parameters/AccountId' }
+      - { $ref: '#/components/parameters/PositionId' }
+    get:
+      operationId: getPositionPerformance
+      responses:
+        '200':
+          description: Position performance details
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PositionPerformance' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/accounts/{accountId}/positions/performance:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+      - { $ref: '#/components/parameters/AccountId' }
+    get:
+      operationId: listAccountPositionsPerformance
+      parameters:
+        - in: query
+          name: includeClosed
+          required: false
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: Account positions performance
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PositionPerformance' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/positions/performance:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+    get:
+      operationId: listPortfolioPositionsPerformance
+      parameters:
+        - in: query
+          name: includeClosed
+          required: false
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: Portfolio positions performance
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PositionPerformance' }
+        '404': { $ref: '#/components/responses/Problem' }
   /portfolios/{portfolioId}/positions:
     parameters:
       - { $ref: '#/components/parameters/PortfolioId' }
@@ -445,6 +498,29 @@ paths:
               schema: { $ref: '#/components/schemas/Instrument' }
         '400': { $ref: '#/components/responses/Problem' }
         '409': { $ref: '#/components/responses/Problem' }
+  /instruments/refresh-prices:
+    post:
+      operationId: refreshAllInstrumentPrices
+      responses:
+        '200':
+          description: Refreshed instruments with latest quotes
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Instrument' }
+  /instruments/{instrumentId}/refresh-price:
+    parameters:
+      - { $ref: '#/components/parameters/InstrumentId' }
+    post:
+      operationId: refreshInstrumentPrice
+      responses:
+        '200':
+          description: Refreshed instrument with latest quote
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Instrument' }
+        '404': { $ref: '#/components/responses/Problem' }
   /instruments/{instrumentId}:
     parameters:
       - { $ref: '#/components/parameters/InstrumentId' }
@@ -756,6 +832,10 @@ components:
         isin: { type: string, maxLength: 12, nullable: true }
         exchange: { type: string, maxLength: 80, nullable: true }
         currency: { type: string, pattern: '^[A-Z]{3}$' }
+        latestPrice: { type: number, nullable: true }
+        priceCurrency: { type: string, pattern: '^[A-Za-z]{3}$', nullable: true }
+        priceAsOf: { type: string, format: date-time, nullable: true }
+        isStale: { type: boolean, nullable: true }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
     InstrumentCreate:
@@ -812,6 +892,18 @@ components:
         unitCostAmount: { type: number }
         totalCostAmount: { type: number }
         currency: { type: string, pattern: '^[A-Za-z]{3}$' }
+    LotDisposal:
+      type: object
+      required: [transactionId, lotId, disposalDate, quantity, costBasis, proceeds, realizedGainLoss, currency]
+      properties:
+        transactionId: { type: string, format: uuid }
+        lotId: { type: string, format: uuid }
+        disposalDate: { type: string, format: date-time }
+        quantity: { type: number }
+        costBasis: { type: number }
+        proceeds: { type: number }
+        realizedGainLoss: { type: number }
+        currency: { type: string, pattern: '^[A-Za-z]{3}$' }
     PositionLotsDetail:
       type: object
       required: [positionId, accountId, instrumentId, costBasisMethod, totalQuantity, totalCostBasisAmount, currency, averageUnitCostAmount, realizedGainLossAmount, openLots]
@@ -828,6 +920,50 @@ components:
         openLots:
           type: array
           items: { $ref: '#/components/schemas/PositionLot' }
+    PositionPerformance:
+      type: object
+      required: [positionId, accountId, accountName, instrumentId, instrumentName, assetClass, status, currentQuantity, totalBoughtQuantity, totalSoldQuantity, totalInvestedAmount, totalProceedsAmount, netTotalReturnAmount, totalReturnPercentage, currency]
+      properties:
+        positionId: { type: string, format: uuid, nullable: true }
+        accountId: { type: string, format: uuid }
+        accountName: { type: string }
+        instrumentId: { type: string, format: uuid }
+        instrumentName: { type: string }
+        ticker: { type: string, nullable: true }
+        isin: { type: string, nullable: true }
+        assetClass: { $ref: '#/components/schemas/AssetClass' }
+        status: { type: string, enum: [ACTIVE, CLOSED, ARCHIVED] }
+        currentQuantity: { type: number }
+        totalBoughtQuantity: { type: number }
+        totalSoldQuantity: { type: number }
+        averageBuyPrice: { type: number }
+        averageSellPrice: { type: number }
+        totalInvestedAmount: { type: number }
+        totalProceedsAmount: { type: number }
+        currentCostBasis: { type: number }
+        currentPrice: { type: number }
+        currentMarketValue: { type: number }
+        realizedGainLoss: { type: number }
+        unrealizedGainLoss: { type: number }
+        dividendIncome: { type: number }
+        fees: { type: number }
+        taxes: { type: number }
+        netTotalReturnAmount: { type: number }
+        totalReturnPercentage: { type: number }
+        currency: { type: string, pattern: '^[A-Za-z]{3}$' }
+        nativePrice: { type: number, nullable: true }
+        nativeCurrency: { type: string, nullable: true }
+        nativeNetTotalReturnAmount: { type: number, nullable: true }
+        nativeReturnPercentage: { type: number, nullable: true }
+        openLots:
+          type: array
+          items: { $ref: '#/components/schemas/PositionLot' }
+        disposals:
+          type: array
+          items: { $ref: '#/components/schemas/LotDisposal' }
+        transactions:
+          type: array
+          items: { $ref: '#/components/schemas/Transaction' }
     PositionRecalculateResponse:
       type: object
       required: [portfolioId, recalculatedPositionsCount, message]

@@ -31,6 +31,12 @@ public class InstrumentController {
     @GetMapping
     public List<ApiDtos.InstrumentResponse> list() { return service.list(); }
 
+    @PostMapping("/refresh-prices")
+    public List<ApiDtos.InstrumentResponse> refreshAllPrices() { return service.refreshAllPrices(); }
+
+    @PostMapping("/{id}/refresh-price")
+    public ApiDtos.InstrumentResponse refreshPrice(@PathVariable UUID id) { return service.refreshPrice(id); }
+
     @GetMapping("/{id}")
     public ApiDtos.InstrumentResponse get(@PathVariable UUID id) { return service.get(id); }
 }
