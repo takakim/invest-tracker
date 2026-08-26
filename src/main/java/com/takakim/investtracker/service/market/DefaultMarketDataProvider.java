@@ -37,6 +37,23 @@ public class DefaultMarketDataProvider implements MarketDataProvider {
         tickerPriceMap.put("RGL", new BigDecimal("0.5500"));
         tickerPriceMap.put("LLOY", new BigDecimal("1.1145"));
         tickerPriceMap.put("GB0008706128", new BigDecimal("1.1145"));
+        tickerPriceMap.put("HSBA", new BigDecimal("6.8500"));
+        tickerPriceMap.put("RR.", new BigDecimal("5.2500"));
+        tickerPriceMap.put("RR", new BigDecimal("5.2500"));
+        tickerPriceMap.put("FTC", new BigDecimal("0.7200"));
+        tickerPriceMap.put("SPCX", new BigDecimal("95.0000"));
+        tickerPriceMap.put("MU", new BigDecimal("112.5000"));
+        tickerPriceMap.put("SFTBY", new BigDecimal("28.4000"));
+        tickerPriceMap.put("RTX", new BigDecimal("121.2000"));
+        tickerPriceMap.put("RIVN", new BigDecimal("13.8000"));
+        tickerPriceMap.put("BBAI", new BigDecimal("2.1500"));
+        tickerPriceMap.put("STX", new BigDecimal("104.5000"));
+        tickerPriceMap.put("VALE", new BigDecimal("10.4500"));
+        tickerPriceMap.put("SGLD", new BigDecimal("42.1000"));
+        tickerPriceMap.put("ALAB", new BigDecimal("65.3000"));
+        tickerPriceMap.put("NVO", new BigDecimal("136.2000"));
+        tickerPriceMap.put("HON", new BigDecimal("212.0000"));
+        tickerPriceMap.put("QS", new BigDecimal("5.8500"));
     }
 
     public void setPrice(String ticker, BigDecimal price) {
@@ -101,6 +118,13 @@ public class DefaultMarketDataProvider implements MarketDataProvider {
         String isin = instrument.getIsin() != null ? instrument.getIsin().toUpperCase() : null;
         if (isin != null && tickerPriceMap.containsKey(isin)) {
             return tickerPriceMap.get(isin);
+        }
+        // Treasury bills pattern matching (UK T-Bills price near par ~99.85)
+        if (isin != null && isin.startsWith("GB00") && (isin.contains("BS") || isin.contains("BP") || isin.contains("BX"))) {
+            return new BigDecimal("99.8500");
+        }
+        if (instrument.getName() != null && instrument.getName().toUpperCase().contains("T-BILL")) {
+            return new BigDecimal("99.8500");
         }
         return null;
     }

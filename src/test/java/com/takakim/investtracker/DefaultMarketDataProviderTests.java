@@ -111,8 +111,39 @@ class DefaultMarketDataProviderTests {
         assertTrue(q1.isPresent());
 
         // Instrument with unknown ISIN
-        Instrument unknownIsin = new Instrument("Isin Fund", AssetClass.MUTUAL_FUND, null, "GB00UNKNOWN1", null, new Currency("GBP"));
+        Instrument unknownIsin = new Instrument("Isin Fund", AssetClass.MUTUAL_FUND, null, "GB12UNKNOWN1", null, new Currency("GBP"));
         var q2 = provider.fetchQuote(unknownIsin, Instant.now());
         assertTrue(q2.isEmpty());
+
+        // Instrument with T-Bill name pattern
+        Instrument tbillName = new Instrument("UK T-Bill 10/02/25", AssetClass.BOND, null, "GB00BSGJXG32", null, new Currency("GBP"));
+        var q3 = provider.fetchQuote(tbillName, Instant.now());
+        assertTrue(q3.isPresent());
+        assertEquals(new BigDecimal("99.8500"), q3.get().price());
+
+        // Instrument with T-Bill BP isin pattern
+        Instrument tbillBp = new Instrument("Treasury", AssetClass.BOND, null, "GB00BP24ST95", null, new Currency("GBP"));
+        var q4 = provider.fetchQuote(tbillBp, Instant.now());
+        assertTrue(q4.isPresent());
+        assertEquals(new BigDecimal("99.8500"), q4.get().price());
+
+        // Instrument with T-Bill BX isin pattern
+        Instrument tbillBx = new Instrument("Treasury", AssetClass.BOND, null, "GB00BXRJ4080", null, new Currency("GBP"));
+        var q5 = provider.fetchQuote(tbillBx, Instant.now());
+        assertTrue(q5.isPresent());
+        assertEquals(new BigDecimal("99.8500"), q5.get().price());
+
+        // Instrument without isin and without tbill name
+        Instrument equityNoIsin = new Instrument("Acme Corp", AssetClass.STOCK, null, null, null, new Currency("GBP"));
+        var q6 = provider.fetchQuote(equityNoIsin, Instant.now());
+        assertTrue(q6.isEmpty());
+
+        // fetchHistoricalQuotes with null from and to
+        List<PriceQuote> quotesNullDates = provider.fetchHistoricalQuotes(aapl, null, null);
+        assertFalse(quotesNullDates.isEmpty());
+
+        // fetchHistoricalQuotes for unknown asset (empty quotes list)
+        List<PriceQuote> emptyQuotes = provider.fetchHistoricalQuotes(equityNoIsin, Instant.now().minus(10, java.time.temporal.ChronoUnit.DAYS), Instant.now());
+        assertTrue(emptyQuotes.isEmpty());
     }
 }
