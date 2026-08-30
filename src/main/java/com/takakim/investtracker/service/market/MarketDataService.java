@@ -52,6 +52,40 @@ public class MarketDataService {
         this(marketObservationRepository, instrumentRepository, marketDataProvider, transactionRepository, null);
     }
 
+    public static boolean isWeekendMarketClosed(Instant targetTime, com.takakim.investtracker.domain.AssetClass assetClass) {
+        if (assetClass == com.takakim.investtracker.domain.AssetClass.CRYPTO) {
+            return false; // Crypto trades 24/7/365
+        }
+        java.time.ZonedDateTime zdt = (targetTime != null ? targetTime : Instant.now()).atZone(java.time.ZoneOffset.UTC);
+        java.time.DayOfWeek day = zdt.getDayOfWeek();
+        return day == java.time.DayOfWeek.SATURDAY || day == java.time.DayOfWeek.SUNDAY || (day == java.time.DayOfWeek.MONDAY && zdt.getHour() < 8);
+    }
+
+    public static boolean isObservationFresh(Instant observedAt, Instant targetTime, com.takakim.investtracker.domain.AssetClass assetClass) {
+        if (observedAt == null || targetTime == null) {
+            return false;
+        }
+        Duration diff = Duration.between(observedAt, targetTime).abs();
+        if (diff.compareTo(FRESHNESS_THRESHOLD) <= 0) {
+            return true;
+        }
+        if (isWeekendMarketClosed(targetTime, assetClass)) {
+            return diff.compareTo(Duration.ofHours(80)) <= 0;
+        }
+        return false;
+    }
+
+    public static boolean isObservationStale(Instant observedAt, Instant targetTime, com.takakim.investtracker.domain.AssetClass assetClass) {
+        if (observedAt == null || targetTime == null) {
+            return true;
+        }
+        Duration diff = Duration.between(observedAt, targetTime).abs();
+        if (isWeekendMarketClosed(targetTime, assetClass)) {
+            return diff.compareTo(Duration.ofHours(80)) > 0;
+        }
+        return diff.compareTo(STALE_THRESHOLD) > 0;
+    }
+
     public PriceQuote getLatestPrice(UUID instrumentId, Instant asOf) {
         Instrument instrument = instrumentRepository.findById(instrumentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Instrument not found: " + instrumentId));
@@ -64,7 +98,7 @@ public class MarketDataService {
 
         if (manualOpt.isPresent()) {
             MarketObservation manual = manualOpt.get();
-            boolean isStale = Duration.between(manual.getObservedAt(), targetTime).abs().compareTo(STALE_THRESHOLD) > 0;
+            boolean isStale = isObservationStale(manual.getObservedAt(), targetTime, instrument.getAssetClass());
             String warning = isStale ? "Manual price override is older than 24 hours" : null;
             return new PriceQuote(
                     instrumentId,
@@ -78,13 +112,15 @@ public class MarketDataService {
             );
         }
 
-        // 2. Check for recent fresh persisted observation (within last 5 minutes) to prioritize stale instruments
+        // 2. Check for recent fresh persisted observation (or weekend Friday close) to avoid redundant polling
         if (asOf == null) {
             Optional<MarketObservation> recentObsOpt = marketObservationRepository
                     .findFirstByInstrumentIdOrderByObservedAtDesc(instrumentId);
             if (recentObsOpt.isPresent()) {
                 MarketObservation recent = recentObsOpt.get();
-                if (Duration.between(recent.getObservedAt(), targetTime).abs().compareTo(FRESHNESS_THRESHOLD) <= 0) {
+                if (recent.getPrice() != null && recent.getPrice().compareTo(BigDecimal.ZERO) > 0
+                        && (instrument.getCurrency() == null || instrument.getCurrency().code().equalsIgnoreCase(recent.getCurrency()))
+                        && isObservationFresh(recent.getObservedAt(), targetTime, instrument.getAssetClass())) {
                     return new PriceQuote(
                             instrumentId,
                             recent.getPrice(),
@@ -99,57 +135,61 @@ public class MarketDataService {
             }
         }
 
-        // 3. Fetch from market data provider for stale or unobserved instruments (unless manual-only)
+        // 3. Fetch from market data provider for stale, missing, or unobserved instruments (unless manual-only)
         if (!instrument.isManualPriceOnly()) {
             try {
                 Optional<PriceQuote> providerQuoteOpt = marketDataProvider.fetchQuote(instrument, targetTime);
                 if (providerQuoteOpt.isPresent()) {
                     PriceQuote quote = providerQuoteOpt.get();
-                    // Cache/persist observation
-                    MarketObservation obs = new MarketObservation(
-                            instrument,
-                            quote.price(),
-                            quote.currency(),
-                            quote.asOf(),
-                            ObservationSourceType.PROVIDER,
-                            quote.sourceReference()
-                    );
-                    if (observationStorageService != null) {
-                        observationStorageService.saveMarketObservation(obs);
-                    } else {
-                        marketObservationRepository.save(obs);
+                    if (quote.price() != null && quote.price().compareTo(BigDecimal.ZERO) > 0) {
+                        // Cache/persist observation
+                        MarketObservation obs = new MarketObservation(
+                                instrument,
+                                quote.price(),
+                                quote.currency(),
+                                quote.asOf(),
+                                ObservationSourceType.PROVIDER,
+                                quote.sourceReference()
+                        );
+                        if (observationStorageService != null) {
+                            observationStorageService.saveMarketObservation(obs);
+                        } else {
+                            marketObservationRepository.save(obs);
+                        }
+                        return quote;
                     }
-                    return quote;
                 }
             } catch (Exception ignored) {
             }
         }
 
-        // 3. Fallback to latest persisted observation
+        // 4. Fallback to latest persisted observation
         Optional<MarketObservation> latestPersisted = marketObservationRepository
                 .findFirstByInstrumentIdOrderByObservedAtDesc(instrumentId);
 
         if (latestPersisted.isPresent()) {
             MarketObservation obs = latestPersisted.get();
-            boolean isStale = Duration.between(obs.getObservedAt(), targetTime).abs().compareTo(STALE_THRESHOLD) > 0;
-            String warning = "Live price unavailable; using latest persisted observation from " + obs.getObservedAt();
-            return new PriceQuote(
-                    instrumentId,
-                    obs.getPrice(),
-                    obs.getCurrency(),
-                    obs.getObservedAt(),
-                    obs.getSourceType(),
-                    obs.getSourceReference(),
-                    isStale,
-                    warning
-            );
+            if (obs.getPrice() != null && obs.getPrice().compareTo(BigDecimal.ZERO) > 0) {
+                boolean isStale = isObservationStale(obs.getObservedAt(), targetTime, instrument.getAssetClass());
+                String warning = "Live price unavailable; using latest persisted observation from " + obs.getObservedAt();
+                return new PriceQuote(
+                        instrumentId,
+                        obs.getPrice(),
+                        obs.getCurrency(),
+                        obs.getObservedAt(),
+                        obs.getSourceType(),
+                        obs.getSourceReference(),
+                        isStale,
+                        warning
+                );
+            }
         }
 
-        // 4. Fallback to latest transaction trade price if available
+        // 5. Fallback to latest transaction trade price if available
         List<com.takakim.investtracker.domain.Transaction> txs = transactionRepository.findByInstrumentIdOrderByTradeDateDesc(instrumentId);
         for (com.takakim.investtracker.domain.Transaction tx : txs) {
             if (tx.getPrice() != null && tx.getPrice().compareTo(BigDecimal.ZERO) > 0) {
-                boolean isStale = Duration.between(tx.getTradeDate(), targetTime).abs().compareTo(STALE_THRESHOLD) > 0;
+                boolean isStale = isObservationStale(tx.getTradeDate(), targetTime, instrument.getAssetClass());
                 String warning = "Live price unavailable; using last transaction trade price from " + tx.getTradeDate();
                 PriceQuote quote = new PriceQuote(
                         instrumentId,

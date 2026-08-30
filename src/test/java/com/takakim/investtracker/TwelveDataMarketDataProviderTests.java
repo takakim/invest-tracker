@@ -296,6 +296,27 @@ class TwelveDataMarketDataProviderTests {
     }
 
     @Test
+    @DisplayName("fetchQuote returns empty when close price is zero or negative")
+    void testZeroClosePrice() {
+        Instrument inst = new Instrument("Test Stock", AssetClass.STOCK, "TEST", null, null, new Currency("USD"));
+        String json = """
+            {
+                "symbol": "TEST",
+                "currency": "USD",
+                "close": "0.00000",
+                "status": "ok"
+            }
+            """;
+        mockServer.expect(requestTo("https://api.twelvedata.com/quote?symbol=TEST&apikey=test-api-key"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(json, MediaType.APPLICATION_JSON));
+
+        Optional<PriceQuote> quoteOpt = provider.fetchQuote(inst, Instant.now());
+        mockServer.verify();
+        assertTrue(quoteOpt.isEmpty());
+    }
+
+    @Test
     @DisplayName("Falls back to DefaultMarketDataProvider when API key is missing, null, or disabled")
     void fallsBackWhenDisabledOrNoApiKey() {
         MarketDataProperties nullProps = new MarketDataProperties();

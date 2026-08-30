@@ -148,4 +148,35 @@ class InstrumentServiceTests {
         List<ApiDtos.InstrumentResponse> res = noRepoService.refreshAllPrices();
         assertNotNull(res);
     }
+
+    @Test
+    @DisplayName("update with manualPriceOnly true skips market data refresh")
+    void updateManualPriceOnlySkipsRefresh() {
+        UUID id = UUID.randomUUID();
+        Instrument inst = new Instrument("Manual Asset", AssetClass.STOCK, "MAN", null, null, new Currency("USD"), false);
+        when(repository.findById(id)).thenReturn(Optional.of(inst));
+        when(repository.save(any(Instrument.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ApiDtos.InstrumentRequest req = new ApiDtos.InstrumentRequest(
+                "Manual Asset Updated", AssetClass.STOCK, "MAN", null, null, "USD", true
+        );
+
+        ApiDtos.InstrumentResponse res = service.update(id, req);
+        assertTrue(res.manualPriceOnly());
+    }
+
+    @Test
+    @DisplayName("toResponse ignores non-positive or null price in observation")
+    void toResponseIgnoresNonPositivePrice() {
+        UUID id = UUID.randomUUID();
+        Instrument inst = new Instrument("Zero Asset", AssetClass.STOCK, "ZERO", null, null, new Currency("USD"));
+        when(repository.findById(id)).thenReturn(Optional.of(inst));
+
+        MarketObservation zeroObs = new MarketObservation(inst, BigDecimal.ZERO, "USD", Instant.now(), ObservationSourceType.PROVIDER, "TEST");
+        when(marketObservationRepository.findFirstByInstrumentIdOrderByObservedAtDesc(inst.getId()))
+                .thenReturn(Optional.of(zeroObs));
+
+        ApiDtos.InstrumentResponse res = service.get(id);
+        org.junit.jupiter.api.Assertions.assertNull(res.latestPrice());
+    }
 }

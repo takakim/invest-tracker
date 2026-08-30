@@ -64,6 +64,9 @@ public class YahooFinanceMarketDataProvider implements MarketDataProvider {
         }
 
         BigDecimal price = meta.regularMarketPrice();
+        if (price.compareTo(BigDecimal.ZERO) <= 0) {
+            return Optional.empty();
+        }
         String responseCurrency = meta.currency();
         String instrumentCurrency = (instrument.getCurrency() != null) ? instrument.getCurrency().code() : "USD";
 
@@ -76,9 +79,9 @@ public class YahooFinanceMarketDataProvider implements MarketDataProvider {
             price = price.divide(new BigDecimal("100"), 4, RoundingMode.HALF_UP);
         }
 
-        Instant quoteTime = (meta.regularMarketTime() != null && meta.regularMarketTime() > 0)
-                ? Instant.ofEpochSecond(meta.regularMarketTime())
-                : (asOf != null ? asOf : Instant.now());
+        Instant quoteTime = (asOf != null)
+                ? asOf
+                : Instant.now();
 
         log.info("Successfully fetched Yahoo Finance quote for symbol '{}': {} {}", symbol, price, instrumentCurrency);
 

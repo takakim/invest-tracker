@@ -125,6 +125,21 @@ class FmpMarketDataProviderTests {
     }
 
     @Test
+    @DisplayName("fetchQuote returns empty when price is zero or negative")
+    void testZeroPrice() {
+        Instrument aapl = new Instrument("Apple Inc", AssetClass.STOCK, "AAPL", "US0378331005", "NASDAQ", new Currency("USD"));
+        String json = "[{\"symbol\": \"AAPL\", \"price\": 0.0}]";
+
+        mockServer.expect(requestTo("https://financialmodelingprep.com/stable/quote?symbol=AAPL&apikey=test-fmp-key"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(json, MediaType.APPLICATION_JSON));
+
+        Optional<PriceQuote> quoteOpt = provider.fetchQuote(aapl, Instant.now());
+        mockServer.verify();
+        assertTrue(quoteOpt.isEmpty());
+    }
+
+    @Test
     @DisplayName("Returns empty when unconfigured or ticker is missing")
     void testUnconfiguredOrMissingTicker() {
         properties.getFmp().setEnabled(false);

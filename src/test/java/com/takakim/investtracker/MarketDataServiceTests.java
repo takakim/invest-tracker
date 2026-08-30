@@ -88,7 +88,7 @@ class MarketDataServiceTests {
         UUID id = instrument.getId();
         when(instrumentRepository.findById(id)).thenReturn(Optional.of(instrument));
 
-        Instant oldTime = Instant.now().minus(48, ChronoUnit.HOURS);
+        Instant oldTime = Instant.now().minus(120, ChronoUnit.HOURS);
         MarketObservation manual = new MarketObservation(
                 instrument, new BigDecimal("180.00"), "USD",
                 oldTime, ObservationSourceType.MANUAL, null
@@ -132,7 +132,7 @@ class MarketDataServiceTests {
                 .thenReturn(Optional.empty());
         when(marketDataProvider.fetchQuote(eq(instrument), any())).thenReturn(Optional.empty());
 
-        Instant historical = Instant.now().minus(30, ChronoUnit.HOURS);
+        Instant historical = Instant.now().minus(120, ChronoUnit.HOURS);
         MarketObservation persisted = new MarketObservation(
                 instrument, new BigDecimal("175.00"), "USD", historical,
                 ObservationSourceType.PROVIDER, "PREV_FEED"
@@ -144,6 +144,36 @@ class MarketDataServiceTests {
         assertEquals(new BigDecimal("175.00"), quote.price());
         assertTrue(quote.isStale());
         assertTrue(quote.warning().contains("using latest persisted observation"));
+    }
+
+    @Test
+    @DisplayName("Persisted observation with zero price falls back to transaction trade price")
+    void testPersistedObservationZeroPriceFallsBackToTransaction() {
+        UUID id = instrument.getId();
+        when(instrumentRepository.findById(id)).thenReturn(Optional.of(instrument));
+        when(marketObservationRepository.findFirstByInstrumentIdAndSourceTypeOrderByObservedAtDesc(id, ObservationSourceType.MANUAL))
+                .thenReturn(Optional.empty());
+        when(marketDataProvider.fetchQuote(eq(instrument), any())).thenReturn(Optional.empty());
+
+        MarketObservation persistedZero = new MarketObservation(
+                instrument, BigDecimal.ZERO, "USD", Instant.now().minus(2, ChronoUnit.HOURS),
+                ObservationSourceType.PROVIDER, "FEED"
+        );
+        when(marketObservationRepository.findFirstByInstrumentIdOrderByObservedAtDesc(id))
+                .thenReturn(Optional.of(persistedZero));
+
+        com.takakim.investtracker.domain.Portfolio port = new com.takakim.investtracker.domain.Portfolio("Port", new Currency("USD"), com.takakim.investtracker.domain.CostBasisMethod.AVERAGE_COST, com.takakim.investtracker.domain.ReturnMethod.TWR);
+        com.takakim.investtracker.domain.Account account = new com.takakim.investtracker.domain.Account(port, "Acc", "Broker", new Currency("USD"));
+        com.takakim.investtracker.domain.Transaction tx = new com.takakim.investtracker.domain.Transaction(
+                account, instrument, com.takakim.investtracker.domain.TransactionType.BUY, Instant.now().minus(5, ChronoUnit.HOURS), null,
+                new BigDecimal("10"), new BigDecimal("165.00"), null, null, null, "USD",
+                null, null, null, null
+        );
+        when(transactionRepository.findByInstrumentIdOrderByTradeDateDesc(id)).thenReturn(List.of(tx));
+
+        PriceQuote quote = marketDataService.getLatestPrice(id, Instant.now());
+        assertEquals(new BigDecimal("165.00"), quote.price());
+        assertEquals("LAST_TRANSACTION_TRADE_PRICE", quote.sourceReference());
     }
 
     @Test
@@ -222,7 +252,7 @@ class MarketDataServiceTests {
                 .thenReturn(Optional.empty());
         when(marketDataProvider.fetchQuote(eq(instrument), any())).thenReturn(Optional.empty());
 
-        Instant oldTime = Instant.now().minus(48, ChronoUnit.HOURS);
+        Instant oldTime = Instant.now().minus(120, ChronoUnit.HOURS);
         MarketObservation obs = new MarketObservation(instrument, new BigDecimal("150.00"), "USD", oldTime, ObservationSourceType.PROVIDER, "FEED");
         when(marketObservationRepository.findFirstByInstrumentIdOrderByObservedAtDesc(id))
                 .thenReturn(Optional.of(obs));
@@ -395,5 +425,110 @@ class MarketDataServiceTests {
         assertEquals(new BigDecimal("50.00"), quote.price());
         // Verify external provider was NEVER called
         verify(marketDataProvider, never()).fetchQuote(eq(manualInst), any());
+    }
+
+    @Test
+    @DisplayName("Recent observation with zero price or mismatched currency is not returned from freshness cache")
+    void testRecentObservationWithZeroPriceOrDifferentCurrencyIgnored() {
+        UUID id = instrument.getId();
+        when(instrumentRepository.findById(id)).thenReturn(Optional.of(instrument));
+
+        MarketObservation zeroObs = new MarketObservation(instrument, BigDecimal.ZERO, "USD", Instant.now(), ObservationSourceType.PROVIDER, "FEED");
+        when(marketObservationRepository.findFirstByInstrumentIdOrderByObservedAtDesc(id)).thenReturn(Optional.of(zeroObs));
+
+        PriceQuote provQuote = new PriceQuote(id, new BigDecimal("190.00"), "USD", Instant.now(), ObservationSourceType.PROVIDER, "TEST_FEED", false, null);
+        when(marketDataProvider.fetchQuote(eq(instrument), any())).thenReturn(Optional.of(provQuote));
+
+        PriceQuote quote = marketDataService.getLatestPrice(id, null);
+        assertEquals(new BigDecimal("190.00"), quote.price());
+
+        // Test currency mismatch
+        MarketObservation gbpObs = new MarketObservation(instrument, new BigDecimal("150.00"), "GBP", Instant.now(), ObservationSourceType.PROVIDER, "FEED");
+        when(marketObservationRepository.findFirstByInstrumentIdOrderByObservedAtDesc(id)).thenReturn(Optional.of(gbpObs));
+        PriceQuote quoteAfterCurrencyMismatch = marketDataService.getLatestPrice(id, null);
+        assertEquals(new BigDecimal("190.00"), quoteAfterCurrencyMismatch.price());
+    }
+
+    @Test
+    @DisplayName("Provider quote with zero price is rejected and falls back")
+    void testProviderQuoteZeroPriceRejected() {
+        UUID id = instrument.getId();
+        when(instrumentRepository.findById(id)).thenReturn(Optional.of(instrument));
+        when(marketObservationRepository.findFirstByInstrumentIdOrderByObservedAtDesc(id)).thenReturn(Optional.empty());
+
+        PriceQuote zeroProvQuote = new PriceQuote(id, BigDecimal.ZERO, "USD", Instant.now(), ObservationSourceType.PROVIDER, "TEST_FEED", false, null);
+        when(marketDataProvider.fetchQuote(eq(instrument), any())).thenReturn(Optional.of(zeroProvQuote));
+
+        // When provider quote is zero and no observations exist, throws ResourceNotFoundException
+        assertThrows(ResourceNotFoundException.class, () -> marketDataService.getLatestPrice(id, Instant.now()));
+    }
+
+    @Test
+    @DisplayName("Weekend market detection and observation freshness logic")
+    void testWeekendMarketDetectionAndFreshness() {
+        // Saturday 2026-08-29 12:00 UTC
+        Instant saturday = Instant.parse("2026-08-29T12:00:00Z");
+        // Sunday 2026-08-30 15:00 UTC
+        Instant sunday = Instant.parse("2026-08-30T15:00:00Z");
+        // Monday 2026-08-31 06:00 UTC (pre-market)
+        Instant mondayEarly = Instant.parse("2026-08-31T06:00:00Z");
+        // Monday 2026-08-31 10:00 UTC (trading hours)
+        Instant mondayOpen = Instant.parse("2026-08-31T10:00:00Z");
+        // Tuesday 2026-09-01 14:00 UTC (trading session)
+        Instant tuesday = Instant.parse("2026-09-01T14:00:00Z");
+
+        // Null targetTime defaults to now
+        assertNotNull(MarketDataService.isWeekendMarketClosed(null, AssetClass.STOCK));
+
+        // Stocks/ETFs are closed on weekend, Crypto is never closed
+        assertTrue(MarketDataService.isWeekendMarketClosed(saturday, AssetClass.STOCK));
+        assertTrue(MarketDataService.isWeekendMarketClosed(sunday, AssetClass.ETF));
+        assertTrue(MarketDataService.isWeekendMarketClosed(mondayEarly, AssetClass.STOCK));
+        assertFalse(MarketDataService.isWeekendMarketClosed(mondayOpen, AssetClass.STOCK));
+        assertFalse(MarketDataService.isWeekendMarketClosed(tuesday, AssetClass.STOCK));
+        assertFalse(MarketDataService.isWeekendMarketClosed(saturday, AssetClass.CRYPTO));
+
+        // Friday 2026-08-28 20:00 UTC close observation
+        Instant fridayClose = Instant.parse("2026-08-28T20:00:00Z");
+        // Fresh observation within 5 min on Tuesday
+        Instant tuesdayFresh = tuesday.minus(2, ChronoUnit.MINUTES);
+        assertTrue(MarketDataService.isObservationFresh(tuesdayFresh, tuesday, AssetClass.STOCK));
+
+        // On Sunday (43 hours later), Friday close is fresh and not stale for stocks
+        assertTrue(MarketDataService.isObservationFresh(fridayClose, sunday, AssetClass.STOCK));
+        assertFalse(MarketDataService.isObservationStale(fridayClose, sunday, AssetClass.STOCK));
+
+        // Old observation (>80h on weekend) is stale and not fresh
+        Instant tuesdayBefore = Instant.parse("2026-08-25T12:00:00Z");
+        assertFalse(MarketDataService.isObservationFresh(tuesdayBefore, sunday, AssetClass.STOCK));
+        assertTrue(MarketDataService.isObservationStale(tuesdayBefore, sunday, AssetClass.STOCK));
+
+        // But for Crypto on Sunday, 43h observation is stale and not fresh (crypto trades 24/7)
+        assertFalse(MarketDataService.isObservationFresh(fridayClose, sunday, AssetClass.CRYPTO));
+        assertTrue(MarketDataService.isObservationStale(fridayClose, sunday, AssetClass.CRYPTO));
+
+        // Null checks
+        assertFalse(MarketDataService.isObservationFresh(null, sunday, AssetClass.STOCK));
+        assertFalse(MarketDataService.isObservationFresh(fridayClose, null, AssetClass.STOCK));
+        assertTrue(MarketDataService.isObservationStale(null, sunday, AssetClass.STOCK));
+        assertTrue(MarketDataService.isObservationStale(fridayClose, null, AssetClass.STOCK));
+    }
+
+    @Test
+    @DisplayName("Over the weekend, valid Friday close observation is reused without querying external provider")
+    void testWeekendReusesFridayCloseWithoutCallingProvider() {
+        UUID id = instrument.getId();
+        when(instrumentRepository.findById(id)).thenReturn(Optional.of(instrument));
+
+        // Mock current time on weekend (Sunday)
+        // If recent observation is from Friday (e.g. 2 days ago), isObservationFresh returns true over weekend
+        Instant fridayObs = Instant.now().minus(40, ChronoUnit.HOURS);
+        MarketObservation obs = new MarketObservation(instrument, new BigDecimal("185.00"), "USD", fridayObs, ObservationSourceType.PROVIDER, "YAHOO_FINANCE");
+        when(marketObservationRepository.findFirstByInstrumentIdOrderByObservedAtDesc(id)).thenReturn(Optional.of(obs));
+
+        // When asOf is null (live query)
+        PriceQuote quote = marketDataService.getLatestPrice(id, null);
+        assertNotNull(quote);
+        assertEquals(new BigDecimal("185.00"), quote.price());
     }
 }

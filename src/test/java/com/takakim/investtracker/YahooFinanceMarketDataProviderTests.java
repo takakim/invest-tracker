@@ -622,4 +622,32 @@ class YahooFinanceMarketDataProviderTests {
         assertTrue(provider.fetchHistoricalQuotes(aapl, null, null).isEmpty());
         mockServer.verify();
     }
+
+    @Test
+    @DisplayName("fetchQuote returns empty when regularMarketPrice is zero or negative")
+    void testZeroOrNegativeRegularMarketPrice() {
+        Instrument vwrl = new Instrument("Vanguard FTSE All-World", AssetClass.ETF, "VWRL", null, null, new Currency("USD"));
+        String jsonZero = """
+            {
+                "chart": {
+                    "result": [
+                        {
+                            "meta": {
+                                "currency": "USD",
+                                "symbol": "VWRL",
+                                "regularMarketPrice": 0.0,
+                                "regularMarketTime": 0
+                            }
+                        }
+                    ]
+                }
+            }
+            """;
+        mockServer.expect(requestTo("https://query1.finance.yahoo.com/v8/finance/chart/VWRL?interval=1d&range=1d"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(jsonZero, MediaType.APPLICATION_JSON));
+
+        assertTrue(provider.fetchQuote(vwrl, null).isEmpty());
+        mockServer.verify();
+    }
 }

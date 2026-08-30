@@ -62,7 +62,14 @@ public class InstrumentService {
                 new Currency(request.currency()),
                 manualOnly
         );
-        return toResponse(repository.save(instrument));
+        Instrument saved = repository.save(instrument);
+        if (marketDataService != null && !saved.isManualPriceOnly()) {
+            try {
+                marketDataService.getLatestPrice(saved.getId(), Instant.now());
+            } catch (Exception ignored) {
+            }
+        }
+        return toResponse(saved);
     }
 
     @Transactional(readOnly = true)
@@ -122,10 +129,12 @@ public class InstrumentService {
                     .findFirstByInstrumentIdOrderByObservedAtDesc(i.getId());
             if (latest.isPresent()) {
                 MarketObservation obs = latest.get();
-                price = obs.getPrice();
-                priceCurrency = obs.getCurrency();
-                priceAsOf = obs.getObservedAt();
-                isStale = Duration.between(obs.getObservedAt(), Instant.now()).abs().compareTo(Duration.ofHours(24)) > 0;
+                if (obs.getPrice() != null && obs.getPrice().compareTo(BigDecimal.ZERO) > 0) {
+                    price = obs.getPrice();
+                    priceCurrency = obs.getCurrency();
+                    priceAsOf = obs.getObservedAt();
+                    isStale = MarketDataService.isObservationStale(obs.getObservedAt(), Instant.now(), i.getAssetClass());
+                }
             }
         }
 

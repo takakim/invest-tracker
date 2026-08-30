@@ -94,6 +94,9 @@ public class TwelveDataMarketDataProvider implements MarketDataProvider {
             TwelveDataDtos.QuoteResponse response = responseOpt.get();
             if (response.isSuccess()) {
                 BigDecimal price = new BigDecimal(response.close());
+                if (price.compareTo(BigDecimal.ZERO) <= 0) {
+                    return Optional.empty();
+                }
                 String responseCurrency = response.currency() != null ? response.currency().toUpperCase() : instrument.getCurrency().code();
 
                 if ("GBX".equalsIgnoreCase(responseCurrency)) {
