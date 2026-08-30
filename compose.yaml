@@ -24,6 +24,9 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    env_file:
+      - path: .env
+        required: false
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-invest_tracker}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-invest_tracker}
@@ -31,6 +34,14 @@ services:
       SPRING_FLYWAY_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-invest_tracker}
       SPRING_FLYWAY_USER: ${POSTGRES_USER:-invest_tracker}
       SPRING_FLYWAY_PASSWORD: ${POSTGRES_PASSWORD:-invest_tracker}
+      TWELVEDATA_ENABLED: ${TWELVEDATA_ENABLED:-true}
+      TWELVEDATA_API_KEY: ${TWELVEDATA_API_KEY:-}
+      TWELVEDATA_BASE_URL: ${TWELVEDATA_BASE_URL:-https://api.twelvedata.com}
+      FMP_ENABLED: ${FMP_ENABLED:-true}
+      FMP_API_KEY: ${FMP_API_KEY:-}
+      FMP_BASE_URL: ${FMP_BASE_URL:-https://financialmodelingprep.com}
+      YAHOO_FINANCE_ENABLED: ${YAHOO_FINANCE_ENABLED:-true}
+      YAHOO_FINANCE_BASE_URL: ${YAHOO_FINANCE_BASE_URL:-https://query1.finance.yahoo.com}
     ports:
       - "127.0.0.1:8080:8080"
     volumes:

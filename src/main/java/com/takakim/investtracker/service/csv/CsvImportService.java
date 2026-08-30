@@ -277,12 +277,19 @@ public class CsvImportService {
 
         AssetClass inferredClass = inferAssetClass(name, row.ticker(), row.isin());
 
+        String inferredExchange = null;
+        if (row.isin() != null && row.isin().startsWith("GB")) {
+            inferredExchange = "LSE";
+        } else if ("GBP".equalsIgnoreCase(currencyCode) || "GBX".equalsIgnoreCase(currencyCode)) {
+            inferredExchange = "LSE";
+        }
+
         Instrument inst = new Instrument(
                 name,
                 inferredClass,
                 row.ticker(),
                 row.isin(),
-                null,
+                inferredExchange,
                 new Currency(currencyCode != null ? currencyCode : "GBP")
         );
         return instrumentRepository.save(inst);

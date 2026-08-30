@@ -180,4 +180,47 @@ class FreetradeCsvParserTest {
         assertFalse(parser.supports(List.of("Title", "Type", "Wrong", "D", "E", "Buy / Sell", "G", "H", "I", "J")));
         assertFalse(parser.supports(List.of("Title", "Type", "Timestamp", "D", "E", "Wrong", "G", "H", "I", "J")));
     }
+
+    @Test
+    @DisplayName("Freetrade parser parses STOCK_SPLIT and REVERSE_STOCK_SPLIT rows")
+    void testStockSplitAndReverseSplitParsing() {
+        String csv = """
+            Title,Type,Timestamp,Account Currency,Total Amount in Account Currency,Buy / Sell,Ticker,ISIN,Price per Share in Account Currency,Stamp Duty,Quantity,Venue,Order ID,Order Type,Instrument Currency,Total Amount in Instrument Currency,Price per Share,FX Rate,Base FX Rate,FX Fee (BPS),FX Fee Amount,Dividend Ex Date,Dividend Pay Date,Dividend Eligible Quantity,Dividend Amount Per Share,Dividend Gross Distribution Amount,Dividend Net Distribution Amount,Dividend Withheld Tax Percentage,Dividend Withheld Tax Amount,Stock Split Ex Date,Stock Split Pay Date,Stock Split New ISIN,Stock Split Rate of Share Outturn From,Stock Split Rate of Share Outturn To,Stock Split Maintain Holding of Initial ISIN,Stock Split New Share Quantity
+            Nvidia,STOCK_SPLIT,2024-06-07T21:00:00.000Z,GBP,0.00,,NVDA,US67066G1040,,,27.00000000,,,,USD,,,,,,,,,,,,,,,,,,,,,
+            Super Micro Computer,CORPORATE_ACTION,2024-10-01T08:00:00.000Z,GBP,0.00,STOCK_SPLIT,SMCI,US86800U1043,,,,,,,USD,,,,,,,,,,,,,,,,,,,,,36.00000000
+            Regional REIT,REVERSE_STOCK_SPLIT,2024-08-27T08:00:00.000Z,,0.00,,RGL,GG00BSY2LD72,,,1108.80000000,,,,GBP,,,,,,,,,,,,,,,,,,,,,
+            Regional REIT 2,CORPORATE_ACTION,2024-08-27T08:00:00.000Z,GBP,0.00,REVERSE_STOCK_SPLIT,RGL,GG00BSY2LD72,,,,,,,GBP,,,,,,,,,,,,,,,,,,,,,1108.80000000
+            BP,SPECIAL_DIVIDEND,2024-08-27T08:00:00.000Z,,10.00,,BP,GB0007980591,,,10.00,,,,GBP,,,,,,,,,,,,,,,,,,,,,
+            """;
+
+        List<ParsedTransactionRow> rows = parser.parse(csv);
+        assertEquals(5, rows.size());
+
+        // Row 1: STOCK_SPLIT with direct quantity
+        assertEquals(TransactionType.STOCK_SPLIT, rows.get(0).mappedType());
+        assertEquals("NVDA", rows.get(0).ticker());
+        assertEquals(new BigDecimal("27.00000000"), rows.get(0).quantity());
+        assertFalse(rows.get(0).isIgnored());
+
+        // Row 2: CORPORATE_ACTION forward split with col 35 fallback
+        assertEquals(TransactionType.STOCK_SPLIT, rows.get(1).mappedType());
+        assertEquals("SMCI", rows.get(1).ticker());
+        assertEquals(new BigDecimal("36.00000000"), rows.get(1).quantity());
+        assertFalse(rows.get(1).isIgnored());
+
+        // Row 3: REVERSE_STOCK_SPLIT with null accountCurrency and null orderId
+        assertEquals(TransactionType.REVERSE_STOCK_SPLIT, rows.get(2).mappedType());
+        assertEquals("RGL", rows.get(2).ticker());
+        assertEquals(new BigDecimal("1108.80000000"), rows.get(2).quantity());
+        assertEquals("GBP", rows.get(2).currency());
+        assertFalse(rows.get(2).isIgnored());
+
+        // Row 4: CORPORATE_ACTION REVERSE_STOCK_SPLIT with col 35 fallback
+        assertEquals(TransactionType.REVERSE_STOCK_SPLIT, rows.get(3).mappedType());
+        assertEquals(new BigDecimal("1108.80000000"), rows.get(3).quantity());
+
+        // Row 5: SPECIAL_DIVIDEND with null account currency
+        assertEquals(TransactionType.DIVIDEND, rows.get(4).mappedType());
+        assertEquals("GBP", rows.get(4).currency());
+    }
 }

@@ -195,20 +195,13 @@ public class PositionService {
                 continue;
             }
             if (tx.getType() == com.takakim.investtracker.domain.TransactionType.BUY) {
-                if (tx.getQuantity() != null) {
-                    totalBoughtQuantity = totalBoughtQuantity.add(tx.getQuantity());
-                }
-                BigDecimal net = tx.getNetAmount() != null ? tx.getNetAmount().abs() : (tx.getGrossAmount() != null ? tx.getGrossAmount().abs() : BigDecimal.ZERO);
-                totalInvestedAmount = totalInvestedAmount.add(net);
+                totalBoughtQuantity = totalBoughtQuantity.add(tx.getQuantity());
+                totalInvestedAmount = totalInvestedAmount.add(tx.getNetAmount().abs());
             } else if (tx.getType() == com.takakim.investtracker.domain.TransactionType.SELL) {
-                if (tx.getQuantity() != null) {
-                    totalSoldQuantity = totalSoldQuantity.add(tx.getQuantity());
-                }
-                BigDecimal net = tx.getNetAmount() != null ? tx.getNetAmount().abs() : (tx.getGrossAmount() != null ? tx.getGrossAmount().abs() : BigDecimal.ZERO);
-                totalProceedsAmount = totalProceedsAmount.add(net);
+                totalSoldQuantity = totalSoldQuantity.add(tx.getQuantity());
+                totalProceedsAmount = totalProceedsAmount.add(tx.getNetAmount().abs());
             } else if (tx.getType() == com.takakim.investtracker.domain.TransactionType.DIVIDEND) {
-                BigDecimal net = tx.getNetAmount() != null ? tx.getNetAmount().abs() : (tx.getGrossAmount() != null ? tx.getGrossAmount().abs() : BigDecimal.ZERO);
-                dividendIncome = dividendIncome.add(net);
+                dividendIncome = dividendIncome.add(tx.getNetAmount().abs());
             }
 
             if (tx.getFeeAmount() != null) {

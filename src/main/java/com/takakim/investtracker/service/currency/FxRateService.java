@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import com.takakim.investtracker.service.ResourceNotFoundException;
+import com.takakim.investtracker.service.market.ObservationStorageService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,17 +23,28 @@ import org.springframework.transaction.annotation.Transactional;
 public class FxRateService {
 
     private static final Duration STALE_THRESHOLD = Duration.ofHours(24);
+    private static final Duration FRESHNESS_THRESHOLD = Duration.ofMinutes(5);
     private static final int FX_SCALE = 8;
     private static final RoundingMode ROUNDING = RoundingMode.HALF_EVEN;
 
     private final FxObservationRepository fxObservationRepository;
     private final FxRateProvider fxRateProvider;
+    private final ObservationStorageService observationStorageService;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public FxRateService(
+            FxObservationRepository fxObservationRepository,
+            FxRateProvider fxRateProvider,
+            ObservationStorageService observationStorageService) {
+        this.fxObservationRepository = fxObservationRepository;
+        this.fxRateProvider = fxRateProvider;
+        this.observationStorageService = observationStorageService;
+    }
 
     public FxRateService(
             FxObservationRepository fxObservationRepository,
             FxRateProvider fxRateProvider) {
-        this.fxObservationRepository = fxObservationRepository;
-        this.fxRateProvider = fxRateProvider;
+        this(fxObservationRepository, fxRateProvider, null);
     }
 
     public FxRateQuote getRate(String baseCurrency, String quoteCurrency, Instant asOf) {
@@ -85,7 +97,19 @@ public class FxRateService {
             );
         }
 
-        // 4. Provider direct or inverse rate
+        // 4. Check for recent fresh persisted observation (within last 5 minutes)
+        if (asOf == null) {
+            Optional<FxObservation> recentDirect = fxObservationRepository
+                    .findFirstByBaseCurrencyAndQuoteCurrencyOrderByObservedAtDesc(base, quote);
+            if (recentDirect.isPresent()) {
+                FxObservation obs = recentDirect.get();
+                if (Duration.between(obs.getObservedAt(), targetTime).abs().compareTo(FRESHNESS_THRESHOLD) <= 0) {
+                    return toQuote(obs, targetTime, false);
+                }
+            }
+        }
+
+        // 5. Provider direct or inverse rate
         Optional<FxRateQuote> providerQuote = fxRateProvider.fetchRate(base, quote, targetTime);
         if (providerQuote.isPresent()) {
             FxRateQuote q = providerQuote.get();
@@ -93,7 +117,11 @@ public class FxRateService {
             FxObservation obs = new FxObservation(
                     base, quote, q.rate(), q.asOf(), ObservationSourceType.PROVIDER, q.sourceReference()
             );
-            fxObservationRepository.save(obs);
+            if (observationStorageService != null) {
+                observationStorageService.saveFxObservation(obs);
+            } else {
+                fxObservationRepository.save(obs);
+            }
             return q;
         }
 

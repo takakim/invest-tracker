@@ -586,6 +586,13 @@ Before changing the repository:
 - Phase 8 Advanced Analytics, Asset Allocation & Reporting implemented (Issue #30) and Phase 9 Performance & Analytics Integration (Issue #31) merged in PR #42 with `AnalyticsEngine`, `PortfolioExportService` (positions & transactions CSV statements), REST endpoints, OpenAPI update, frontend `ValuationMetricsCard`, `AssetAllocationCard`, and `ExportReportModal` UI components, and 138 backend + 31 frontend tests passing with >=90% coverage and 0 vulnerabilities.
 - Phase 10 Benchmarking & Performance Comparison implemented (Issue #32) and merged in PR #43 with `BenchmarkEngine` (period-aligned return comparisons for 1M, 3M, 6M, 1Y, YTD, ALL, multi-currency conversion to portfolio base currency, annualized benchmark returns, excess return / Alpha calculation, data quality warnings), `GET /api/v1/portfolios/{id}/benchmark-comparison` and `GET /api/v1/benchmarks` REST endpoints, OpenAPI 3.1.1 synchronization, frontend `BenchmarkComparisonCard` UI component, `useBenchmark` hooks, and 146 backend + 33 frontend tests passing with >=90% coverage and 0 vulnerabilities.
 - Phase 11 Frontend Completion implemented (Issue #33) on branch `phase-11-frontend-completion` with complete end-to-end workflows: `MarketRatesPage` (FX rates and live instruments matrix), updated responsive navigation (`Layout.tsx` with Market & FX routing), enhanced production dashboard (`DashboardPage.tsx`), comprehensive UI testing suite (34 tests covering all user journeys), and full verification passing with 0 vulnerabilities and >=90% coverage.
+- Twelve Data, FMP, and Yahoo Finance 4-Tier Market Data & FX Integration implemented on branch `feat/twelve-data-market-provider`:
+  - `CompositeMarketDataProvider`: 4-tier fallback routing (`Twelve Data` -> `FMP` -> `Yahoo Finance` -> `DefaultMarketDataProvider`).
+  - `TwelveDataGateway` & `TwelveDataMarketDataProvider`: Sliding-window rate pacing (8 req/min), 429 backoff, LSE ticker support, and `TwelveDataFxRateProvider`.
+  - `FmpGateway` & `FmpMarketDataProvider`: `/stable/quote` integration with rate pacing (5 req/min) and 429 backoff.
+  - `YahooFinanceGateway` & `YahooFinanceMarketDataProvider`: `/v8/finance/chart` integration with browser user-agent headers, 30 req/min rate pacing, 429 backoff, LSE `.L` suffixing, `BRK-B` translation, and automatic pence (`GBp`/`GBX`) to pound (`GBP`) division.
+  - `manualPriceOnly` flag on `Instrument` (`V7__instrument_manual_price_flag.sql`), OpenAPI 3.1.1 contract update, and frontend `InstrumentFormModal` + `InstrumentListPage` UI support.
+  - 340 backend tests and 39 frontend tests passing with >=90% coverage and 0 vulnerabilities.
 
 
 
