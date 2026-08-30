@@ -337,6 +337,64 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/DividendAnalytics' }
         '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/target-allocation:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+    get:
+      operationId: getTargetAllocation
+      summary: Get target asset allocation plan and items for a portfolio
+      responses:
+        '200':
+          description: Target allocation plan details
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TargetAllocationPlan' }
+        '404': { $ref: '#/components/responses/Problem' }
+    put:
+      operationId: saveTargetAllocation
+      summary: Create or update target asset allocation plan and items for a portfolio
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TargetAllocationPlanRequest' }
+      responses:
+        '200':
+          description: Saved target allocation plan
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TargetAllocationPlan' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+    delete:
+      operationId: deleteTargetAllocation
+      summary: Delete target asset allocation plan for a portfolio
+      responses:
+        '204':
+          description: Target allocation plan deleted successfully
+        '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/rebalancing:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+    get:
+      operationId: getRebalancingAnalysis
+      summary: Calculate portfolio drift and generate rebalancing trade orders
+      parameters:
+        - name: cashInjection
+          in: query
+          required: false
+          schema: { type: number, minimum: 0 }
+        - name: asOf
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Rebalancing analysis with recommended buy/sell/hold orders
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RebalanceAnalysis' }
+        '404': { $ref: '#/components/responses/Problem' }
   /portfolios/{portfolioId}/export/positions.csv:
     parameters:
       - { $ref: '#/components/parameters/PortfolioId' }
@@ -1379,6 +1437,88 @@ components:
         holdings:
           type: array
           items: { $ref: '#/components/schemas/HoldingDividendMetric' }
+    TargetAllocationItemRequest:
+      type: object
+      required: [categoryKey, categoryLabel, targetPercentage]
+      properties:
+        categoryKey: { type: string, example: "STOCK" }
+        categoryLabel: { type: string, example: "Equities" }
+        targetPercentage: { type: number, minimum: 0, maximum: 100, example: 60.00 }
+        instrumentId: { type: string, format: uuid, nullable: true }
+    TargetAllocationPlanRequest:
+      type: object
+      required: [name, allocationType, items]
+      properties:
+        name: { type: string, example: "Growth Strategy Target" }
+        allocationType: { type: string, enum: [ASSET_CLASS, INSTRUMENT] }
+        driftTolerancePercentage: { type: number, minimum: 0, maximum: 100, default: 5.00 }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/TargetAllocationItemRequest' }
+    TargetAllocationItem:
+      type: object
+      required: [id, categoryKey, categoryLabel, targetPercentage]
+      properties:
+        id: { type: string, format: uuid }
+        categoryKey: { type: string }
+        categoryLabel: { type: string }
+        targetPercentage: { type: number }
+        instrumentId: { type: string, format: uuid, nullable: true }
+        instrumentTicker: { type: string, nullable: true }
+        instrumentName: { type: string, nullable: true }
+    TargetAllocationPlan:
+      type: object
+      required: [id, portfolioId, name, allocationType, driftTolerancePercentage, items, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        portfolioId: { type: string, format: uuid }
+        name: { type: string }
+        allocationType: { type: string, enum: [ASSET_CLASS, INSTRUMENT] }
+        driftTolerancePercentage: { type: number }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/TargetAllocationItem' }
+        updatedAt: { type: string, format: date-time }
+    RebalanceOrderItem:
+      type: object
+      required: [categoryKey, categoryLabel, action, currentMarketValue, currentWeightPercentage, targetWeightPercentage, driftPercentage, driftStatus, isDriftExceeded, targetValue, orderAmount, projectedPostWeightPercentage, currency]
+      properties:
+        categoryKey: { type: string }
+        categoryLabel: { type: string }
+        instrumentId: { type: string, format: uuid, nullable: true }
+        instrumentTicker: { type: string, nullable: true }
+        instrumentName: { type: string, nullable: true }
+        action: { type: string, enum: [BUY, SELL, HOLD] }
+        currentMarketValue: { type: number }
+        currentWeightPercentage: { type: number }
+        targetWeightPercentage: { type: number }
+        driftPercentage: { type: number }
+        driftStatus: { type: string, enum: [IN_TOLERANCE, OVERWEIGHT, UNDERWEIGHT] }
+        isDriftExceeded: { type: boolean }
+        targetValue: { type: number }
+        orderAmount: { type: number }
+        estimatedPrice: { type: number, nullable: true }
+        estimatedQuantity: { type: number, nullable: true }
+        projectedPostWeightPercentage: { type: number }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+    RebalanceAnalysis:
+      type: object
+      required: [portfolioId, portfolioName, baseCurrency, asOf, allocationType, totalPortfolioValue, cashInjectionAmount, totalPostRebalanceValue, driftTolerancePercentage, hasDriftToleranceExceeded, items]
+      properties:
+        portfolioId: { type: string, format: uuid }
+        portfolioName: { type: string }
+        baseCurrency: { type: string, pattern: '^[A-Z]{3}$' }
+        asOf: { type: string, format: date-time }
+        allocationType: { type: string, enum: [ASSET_CLASS, INSTRUMENT] }
+        totalPortfolioValue: { type: number }
+        cashInjectionAmount: { type: number }
+        totalPostRebalanceValue: { type: number }
+        driftTolerancePercentage: { type: number }
+        hasDriftToleranceExceeded: { type: boolean }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/RebalanceOrderItem' }
+
 
 
 
