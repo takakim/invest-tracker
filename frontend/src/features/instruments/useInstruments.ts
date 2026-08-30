@@ -7,10 +7,12 @@ export const INSTRUMENT_QUERY_KEYS = {
   detail: (id: string) => ['instruments', id] as const,
 };
 
-export function useInstrumentsList() {
+export function useInstrumentsList(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: INSTRUMENT_QUERY_KEYS.all,
     queryFn: instrumentApi.list,
+    staleTime: 10 * 60 * 1000,
+    enabled: options?.enabled ?? true,
   });
 }
 

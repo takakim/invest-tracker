@@ -19,14 +19,12 @@ import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import AssessmentOutlinedIcon from '@mui/icons-material/AssessmentOutlined';
 
 import { usePortfoliosList, useCreatePortfolio } from '../portfolios/usePortfolios';
-import { useInstrumentsList } from '../instruments/useInstruments';
 import { PortfolioFormModal } from '../portfolios/PortfolioFormModal';
 import { EmptyState, ErrorAlert, LoadingState } from '../../components';
 import type { PortfolioCreateInput } from '../../types';
 
 export function DashboardPage() {
   const { data: portfolios = [], isLoading: isPortfoliosLoading, error: portfoliosError } = usePortfoliosList();
-  const { data: instruments = [], isLoading: isInstrumentsLoading } = useInstrumentsList();
   const createPortfolioMutation = useCreatePortfolio();
 
   const [portfolioModalOpen, setPortfolioModalOpen] = useState(false);
@@ -130,10 +128,10 @@ export function DashboardPage() {
                 </Box>
                 <Box>
                   <Typography variant="caption" color="text.secondary">
-                    Tracked Instruments
+                    Asset Master Data
                   </Typography>
-                  <Typography variant="h4" sx={{ fontWeight: 700 }}>
-                    {isInstrumentsLoading ? '—' : instruments.length}
+                  <Typography variant="h6" sx={{ fontWeight: 700, mt: 0.5 }}>
+                    Active & Tracked
                   </Typography>
                 </Box>
               </Stack>

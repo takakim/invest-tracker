@@ -384,15 +384,17 @@ export function PositionTable({
       )}
 
       {/* Position Create / Edit Modal */}
-      <PositionFormModal
-        open={formOpen}
-        position={editingPosition}
-        defaultCurrency={defaultCurrency}
-        isPending={createMutation.isPending || updateMutation.isPending}
-        error={createMutation.error || updateMutation.error}
-        onClose={() => setFormOpen(false)}
-        onSubmit={handleFormSubmit}
-      />
+      {formOpen && (
+        <PositionFormModal
+          open={formOpen}
+          position={editingPosition}
+          defaultCurrency={defaultCurrency}
+          isPending={createMutation.isPending || updateMutation.isPending}
+          error={createMutation.error || updateMutation.error}
+          onClose={() => setFormOpen(false)}
+          onSubmit={handleFormSubmit}
+        />
+      )}
 
       {/* Tax Lots Detail Modal */}
       <PositionLotsModal
