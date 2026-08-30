@@ -52,7 +52,7 @@ public class FmpMarketDataProvider implements MarketDataProvider {
         log.debug("Requesting quote from FMP Gateway for symbol: '{}'", symbol);
         Optional<FmpDtos.QuoteResponse> responseOpt = gateway.fetchQuote(symbol);
 
-        if (responseOpt.isEmpty() || responseOpt.get().price() == null) {
+        if (responseOpt.isEmpty() || responseOpt.get().price() == null || responseOpt.get().price().compareTo(BigDecimal.ZERO) <= 0) {
             return Optional.empty();
         }
 

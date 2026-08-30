@@ -182,7 +182,7 @@ class FxRateServiceTests {
     @DisplayName("Direct and inverse manual override with stale timestamp attach warning and default reference")
     void staleManualOverrides() {
         Instant now = Instant.now();
-        Instant staleTime = now.minus(30, ChronoUnit.HOURS);
+        Instant staleTime = now.minus(120, ChronoUnit.HOURS);
 
         // Stale direct override without reference
         FxObservation directStale = new FxObservation("EUR", "GBP", new BigDecimal("0.85000000"), staleTime, ObservationSourceType.MANUAL, null);
@@ -334,6 +334,52 @@ class FxRateServiceTests {
         assertNotNull(gbpToGbx);
         assertEquals(new BigDecimal("100.00000000"), gbpToGbx.rate());
         assertEquals("SUB_UNIT", gbpToGbx.sourceReference());
+    }
+
+    @Test
+    @DisplayName("Weekend FX detection and freshness logic")
+    void testWeekendFxDetectionAndFreshness() {
+        // Saturday 2026-08-29 12:00 UTC
+        Instant saturday = Instant.parse("2026-08-29T12:00:00Z");
+        // Sunday 2026-08-30 15:00 UTC (before 22:00 FX open)
+        Instant sunday = Instant.parse("2026-08-30T15:00:00Z");
+        // Sunday 2026-08-30 23:00 UTC (after FX open)
+        Instant sundayLate = Instant.parse("2026-08-30T23:00:00Z");
+        // Friday 2026-08-28 14:00 UTC (during FX trading)
+        Instant fridayDay = Instant.parse("2026-08-28T14:00:00Z");
+        // Friday 2026-08-28 23:00 UTC (after 22:00 FX close)
+        Instant fridayLate = Instant.parse("2026-08-28T23:00:00Z");
+        // Tuesday 2026-09-01 14:00 UTC (regular weekday)
+        Instant tuesday = Instant.parse("2026-09-01T14:00:00Z");
+
+        assertNotNull(FxRateService.isWeekendFxClosed(null));
+        assertTrue(FxRateService.isWeekendFxClosed(saturday));
+        assertTrue(FxRateService.isWeekendFxClosed(sunday));
+        assertTrue(FxRateService.isWeekendFxClosed(fridayLate));
+        assertFalse(FxRateService.isWeekendFxClosed(fridayDay));
+        assertFalse(FxRateService.isWeekendFxClosed(sundayLate));
+        assertFalse(FxRateService.isWeekendFxClosed(tuesday));
+
+        // Friday 20:00 UTC observation
+        Instant fridayObs = Instant.parse("2026-08-28T20:00:00Z");
+        // On Sunday afternoon, Friday observation (43 hours old) is fresh and not stale
+        assertTrue(FxRateService.isObservationFresh(fridayObs, sunday));
+        assertFalse(FxRateService.isObservationStale(fridayObs, sunday));
+
+        // Old observation (>60h on weekend) is stale and not fresh
+        Instant oldObs = Instant.parse("2026-08-25T12:00:00Z");
+        assertFalse(FxRateService.isObservationFresh(oldObs, sunday));
+        assertTrue(FxRateService.isObservationStale(oldObs, sunday));
+
+        // Fresh weekday observation (within 5 minutes)
+        Instant freshTuesday = tuesday.minus(2, ChronoUnit.MINUTES);
+        assertTrue(FxRateService.isObservationFresh(freshTuesday, tuesday));
+
+        // Null checks
+        assertFalse(FxRateService.isObservationFresh(null, sunday));
+        assertFalse(FxRateService.isObservationFresh(fridayObs, null));
+        assertTrue(FxRateService.isObservationStale(null, sunday));
+        assertTrue(FxRateService.isObservationStale(fridayObs, null));
     }
 }
 

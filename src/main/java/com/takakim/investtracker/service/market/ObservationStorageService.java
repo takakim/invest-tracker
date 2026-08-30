@@ -27,6 +27,9 @@ public class ObservationStorageService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void saveMarketObservation(MarketObservation obs) {
+        if (obs == null || obs.getPrice() == null || obs.getPrice().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            return;
+        }
         try {
             marketObservationRepository.save(obs);
         } catch (Exception e) {
@@ -36,6 +39,9 @@ public class ObservationStorageService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void saveFxObservation(FxObservation obs) {
+        if (obs == null) {
+            return;
+        }
         try {
             fxObservationRepository.save(obs);
         } catch (Exception e) {

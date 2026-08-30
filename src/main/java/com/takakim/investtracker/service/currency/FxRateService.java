@@ -47,6 +47,40 @@ public class FxRateService {
         this(fxObservationRepository, fxRateProvider, null);
     }
 
+    public static boolean isWeekendFxClosed(Instant targetTime) {
+        java.time.ZonedDateTime zdt = (targetTime != null ? targetTime : Instant.now()).atZone(java.time.ZoneOffset.UTC);
+        java.time.DayOfWeek day = zdt.getDayOfWeek();
+        if (day == java.time.DayOfWeek.SATURDAY) return true;
+        if (day == java.time.DayOfWeek.SUNDAY && zdt.getHour() < 22) return true;
+        if (day == java.time.DayOfWeek.FRIDAY && zdt.getHour() >= 22) return true;
+        return false;
+    }
+
+    public static boolean isObservationFresh(Instant observedAt, Instant targetTime) {
+        if (observedAt == null || targetTime == null) {
+            return false;
+        }
+        Duration diff = Duration.between(observedAt, targetTime).abs();
+        if (diff.compareTo(FRESHNESS_THRESHOLD) <= 0) {
+            return true;
+        }
+        if (isWeekendFxClosed(targetTime)) {
+            return diff.compareTo(Duration.ofHours(60)) <= 0;
+        }
+        return false;
+    }
+
+    public static boolean isObservationStale(Instant observedAt, Instant targetTime) {
+        if (observedAt == null || targetTime == null) {
+            return true;
+        }
+        Duration diff = Duration.between(observedAt, targetTime).abs();
+        if (isWeekendFxClosed(targetTime)) {
+            return diff.compareTo(Duration.ofHours(60)) > 0;
+        }
+        return diff.compareTo(STALE_THRESHOLD) > 0;
+    }
+
     public FxRateQuote getRate(String baseCurrency, String quoteCurrency, Instant asOf) {
         Objects.requireNonNull(baseCurrency, "baseCurrency must not be null");
         Objects.requireNonNull(quoteCurrency, "quoteCurrency must not be null");
@@ -89,7 +123,7 @@ public class FxRateService {
                 .findFirstByBaseCurrencyAndQuoteCurrencyAndSourceTypeOrderByObservedAtDesc(quote, base, ObservationSourceType.MANUAL);
         if (inverseManual.isPresent()) {
             BigDecimal invertedRate = BigDecimal.ONE.divide(inverseManual.get().getRate(), FX_SCALE, ROUNDING);
-            boolean isStale = Duration.between(inverseManual.get().getObservedAt(), targetTime).abs().compareTo(STALE_THRESHOLD) > 0;
+            boolean isStale = isObservationStale(inverseManual.get().getObservedAt(), targetTime);
             String warning = isStale ? "Manual FX override is older than 24 hours" : null;
             return new FxRateQuote(
                     base, quote, invertedRate, inverseManual.get().getObservedAt(),
@@ -97,13 +131,13 @@ public class FxRateService {
             );
         }
 
-        // 4. Check for recent fresh persisted observation (within last 5 minutes)
+        // 4. Check for recent fresh persisted observation (within last 5 minutes, or weekend close)
         if (asOf == null) {
             Optional<FxObservation> recentDirect = fxObservationRepository
                     .findFirstByBaseCurrencyAndQuoteCurrencyOrderByObservedAtDesc(base, quote);
             if (recentDirect.isPresent()) {
                 FxObservation obs = recentDirect.get();
-                if (Duration.between(obs.getObservedAt(), targetTime).abs().compareTo(FRESHNESS_THRESHOLD) <= 0) {
+                if (isObservationFresh(obs.getObservedAt(), targetTime)) {
                     return toQuote(obs, targetTime, false);
                 }
             }
@@ -206,7 +240,7 @@ public class FxRateService {
     }
 
     private FxRateQuote toQuote(FxObservation obs, Instant targetTime, boolean isDerived) {
-        boolean isStale = Duration.between(obs.getObservedAt(), targetTime).abs().compareTo(STALE_THRESHOLD) > 0;
+        boolean isStale = isObservationStale(obs.getObservedAt(), targetTime);
         String warning = isStale ? "Manual FX override is older than 24 hours" : null;
         return new FxRateQuote(
                 obs.getBaseCurrency(),

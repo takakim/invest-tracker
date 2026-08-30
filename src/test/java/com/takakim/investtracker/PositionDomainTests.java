@@ -565,7 +565,7 @@ class PositionDomainTests {
         org.mockito.Mockito.when(instRepo.findAllByOrderByNameAsc()).thenReturn(List.of(inst));
 
         var obs = new com.takakim.investtracker.domain.MarketObservation(
-                inst, new BigDecimal("225.00"), "USD", Instant.now().minus(java.time.Duration.ofHours(30)),
+                inst, new BigDecimal("225.00"), "USD", Instant.now().minus(java.time.Duration.ofHours(120)),
                 com.takakim.investtracker.domain.ObservationSourceType.PROVIDER, "REF"
         );
         org.mockito.Mockito.when(obsRepo.findFirstByInstrumentIdOrderByObservedAtDesc(org.mockito.Mockito.any()))
