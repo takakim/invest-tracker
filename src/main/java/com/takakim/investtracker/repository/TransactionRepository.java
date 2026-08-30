@@ -29,5 +29,11 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
     List<Transaction> findByAccountPortfolioIdOrderByTradeDateDesc(UUID portfolioId);
 
     @EntityGraph(attributePaths = {"account", "instrument"})
+    List<Transaction> findByAccountPortfolioIdAndTypeOrderByTradeDateDesc(UUID portfolioId, TransactionType type);
+
+    @EntityGraph(attributePaths = {"account", "instrument"})
+    List<Transaction> findByAccountPortfolioIdAndInstrumentIdAndTypeOrderByTradeDateDesc(UUID portfolioId, UUID instrumentId, TransactionType type);
+
+    @EntityGraph(attributePaths = {"account", "instrument"})
     List<Transaction> findByInstrumentIdOrderByTradeDateDesc(UUID instrumentId);
 }

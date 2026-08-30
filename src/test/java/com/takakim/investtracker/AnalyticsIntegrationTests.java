@@ -90,7 +90,16 @@ class AnalyticsIntegrationTests {
                         .content(buyJson))
                 .andExpect(status().isCreated());
 
-        // 6. Test Analytics Endpoint
+        // 6. Record a Dividend transaction for AAPL
+        String divJson = String.format("""
+            {"type":"DIVIDEND","instrumentId":"%s","tradeDate":"2026-08-22T12:00:00Z","quantity":10,"price":2.50,"grossAmount":25.00,"taxAmount":3.75,"currency":"USD"}
+            """, instrumentId);
+        mockMvc.perform(post("/api/v1/portfolios/{portfolioId}/accounts/{accountId}/transactions", portfolioId, accountId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(divJson))
+                .andExpect(status().isCreated());
+
+        // 7. Test Analytics Endpoint
         mockMvc.perform(get("/api/v1/portfolios/{portfolioId}/analytics", portfolioId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.portfolioId", is(portfolioId)))
@@ -102,7 +111,24 @@ class AnalyticsIntegrationTests {
                 .andExpect(jsonPath("$.topHoldings", hasSize(1)))
                 .andExpect(jsonPath("$.topHoldings[0].ticker", is("AAPL")));
 
-        // 7. Test Export Positions CSV Endpoint
+        // 8. Test Dividend Analytics Endpoint
+        mockMvc.perform(get("/api/v1/portfolios/{portfolioId}/analytics/dividends", portfolioId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.portfolioId", is(portfolioId)))
+                .andExpect(jsonPath("$.baseCurrency", is("GBP")))
+                .andExpect(jsonPath("$.totalDividendsAllTime", notNullValue()))
+                .andExpect(jsonPath("$.totalDividendsYtd", notNullValue()))
+                .andExpect(jsonPath("$.totalDividendsTtm", notNullValue()))
+                .andExpect(jsonPath("$.totalWithholdingTaxAllTime", notNullValue()))
+                .andExpect(jsonPath("$.projectedAnnualDividendIncome", notNullValue()))
+                .andExpect(jsonPath("$.monthlyHistory", hasSize(greaterThanOrEqualTo(1))))
+                .andExpect(jsonPath("$.yearlyHistory", hasSize(greaterThanOrEqualTo(1))))
+                .andExpect(jsonPath("$.projectedMonthlyCalendar", hasSize(12)))
+                .andExpect(jsonPath("$.holdings", hasSize(1)))
+                .andExpect(jsonPath("$.holdings[0].ticker", is("AAPL")))
+                .andExpect(jsonPath("$.holdings[0].currentShares", is(10.0)));
+
+        // 9. Test Export Positions CSV Endpoint
         mockMvc.perform(get("/api/v1/portfolios/{portfolioId}/export/positions.csv", portfolioId))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith("text/csv"))
@@ -111,13 +137,14 @@ class AnalyticsIntegrationTests {
                 .andExpect(content().string(containsString("Apple Inc")))
                 .andExpect(content().string(containsString("AAPL")));
 
-        // 8. Test Export Transactions CSV Endpoint
+        // 10. Test Export Transactions CSV Endpoint
         mockMvc.perform(get("/api/v1/portfolios/{portfolioId}/export/transactions.csv", portfolioId))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith("text/csv"))
                 .andExpect(header().string("Content-Disposition", containsString("attachment; filename=\"transactions-")))
                 .andExpect(content().string(containsString("Date,Type,Account,Instrument,Ticker")))
                 .andExpect(content().string(containsString("DEPOSIT")))
-                .andExpect(content().string(containsString("BUY")));
+                .andExpect(content().string(containsString("BUY")))
+                .andExpect(content().string(containsString("DIVIDEND")));
     }
 }

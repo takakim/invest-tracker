@@ -319,6 +319,24 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/PortfolioAnalytics' }
         '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/analytics/dividends:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+    get:
+      operationId: getDividendAnalytics
+      summary: Get dividend analytics, historical distributions, forward projected income, and yields
+      parameters:
+        - name: asOf
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Dividend analytics response with realized dividends and forward projected yields
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DividendAnalytics' }
+        '404': { $ref: '#/components/responses/Problem' }
   /portfolios/{portfolioId}/export/positions.csv:
     parameters:
       - { $ref: '#/components/parameters/PortfolioId' }
@@ -1291,6 +1309,77 @@ components:
         warnings:
           type: array
           items: { type: string }
+    MonthlyDividendHistory:
+      type: object
+      required: [yearMonth, netAmount, grossAmount, withholdingTax, currency]
+      properties:
+        yearMonth: { type: string, example: "2025-08" }
+        netAmount: { type: number }
+        grossAmount: { type: number }
+        withholdingTax: { type: number }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+    YearlyDividendHistory:
+      type: object
+      required: [year, netAmount, grossAmount, withholdingTax, currency]
+      properties:
+        year: { type: integer, example: 2025 }
+        netAmount: { type: number }
+        grossAmount: { type: number }
+        withholdingTax: { type: number }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+    HoldingDividendMetric:
+      type: object
+      required: [instrumentId, instrumentName, currentShares, totalReceivedAllTime, totalReceivedYtd, totalReceivedTtm, trailingTwelveMonthsDps, projectedAnnualIncome, currentYieldPercentage, yieldOnCostPercentage, currency]
+      properties:
+        instrumentId: { type: string, format: uuid }
+        instrumentName: { type: string }
+        ticker: { type: string, nullable: true }
+        isin: { type: string, nullable: true }
+        assetClass: { type: string, enum: [STOCK, ETF, MUTUAL_FUND, BOND, REIT, CRYPTO, CASH, OTHER], nullable: true }
+        currentShares: { type: number }
+        totalReceivedAllTime: { type: number }
+        totalReceivedYtd: { type: number }
+        totalReceivedTtm: { type: number }
+        trailingTwelveMonthsDps: { type: number }
+        projectedAnnualIncome: { type: number }
+        currentYieldPercentage: { type: number }
+        yieldOnCostPercentage: { type: number }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+    ProjectedMonthlyIncome:
+      type: object
+      required: [month, monthName, projectedAmount, currency]
+      properties:
+        month: { type: integer, minimum: 1, maximum: 12 }
+        monthName: { type: string, example: "August" }
+        projectedAmount: { type: number }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+    DividendAnalytics:
+      type: object
+      required: [portfolioId, asOf, baseCurrency, totalDividendsAllTime, totalDividendsYtd, totalDividendsTtm, totalWithholdingTaxAllTime, projectedAnnualDividendIncome, portfolioDividendYieldPercentage, portfolioYieldOnCostPercentage, monthlyHistory, yearlyHistory, projectedMonthlyCalendar, holdings]
+      properties:
+        portfolioId: { type: string, format: uuid }
+        asOf: { type: string, format: date-time }
+        baseCurrency: { type: string, pattern: '^[A-Z]{3}$' }
+        totalDividendsAllTime: { type: number }
+        totalDividendsYtd: { type: number }
+        totalDividendsTtm: { type: number }
+        totalWithholdingTaxAllTime: { type: number }
+        projectedAnnualDividendIncome: { type: number }
+        portfolioDividendYieldPercentage: { type: number }
+        portfolioYieldOnCostPercentage: { type: number }
+        monthlyHistory:
+          type: array
+          items: { $ref: '#/components/schemas/MonthlyDividendHistory' }
+        yearlyHistory:
+          type: array
+          items: { $ref: '#/components/schemas/YearlyDividendHistory' }
+        projectedMonthlyCalendar:
+          type: array
+          items: { $ref: '#/components/schemas/ProjectedMonthlyIncome' }
+        holdings:
+          type: array
+          items: { $ref: '#/components/schemas/HoldingDividendMetric' }
+
 
 
 

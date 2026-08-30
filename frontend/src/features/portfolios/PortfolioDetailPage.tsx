@@ -49,6 +49,7 @@ import { TransactionTable } from '../transactions/TransactionTable';
 import PerformanceSummaryCard from '../performance/PerformanceSummaryCard';
 import { ValuationMetricsCard } from '../analytics/ValuationMetricsCard';
 import { AssetAllocationCard } from '../analytics/AssetAllocationCard';
+import { DividendAnalyticsCard } from '../analytics/DividendAnalyticsCard';
 import { ExportReportModal } from '../analytics/ExportReportModal';
 import { BenchmarkComparisonCard } from '../benchmark/BenchmarkComparisonCard';
 import { ConfirmDialog, EmptyState, ErrorAlert, LoadingState } from '../../components';
@@ -300,6 +301,11 @@ export function PortfolioDetailPage() {
       {/* Benchmark Comparison & Alpha */}
       <Box sx={{ mb: 4 }}>
         <BenchmarkComparisonCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
+      </Box>
+
+      {/* Dividend Analytics & Income Projection */}
+      <Box sx={{ mb: 4 }}>
+        <DividendAnalyticsCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
       </Box>
 
       {/* Accounts Section */}
