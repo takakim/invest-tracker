@@ -396,6 +396,58 @@ public final class ApiDtos {
     public record DatabaseResetResponse(
         String message,
         Instant timestamp) { }
+
+    public record MonthlyDividendHistoryResponse(
+        String yearMonth,
+        java.math.BigDecimal netAmount,
+        java.math.BigDecimal grossAmount,
+        java.math.BigDecimal withholdingTax,
+        String currency) { }
+
+    public record YearlyDividendHistoryResponse(
+        int year,
+        java.math.BigDecimal netAmount,
+        java.math.BigDecimal grossAmount,
+        java.math.BigDecimal withholdingTax,
+        String currency) { }
+
+    public record HoldingDividendMetricResponse(
+        UUID instrumentId,
+        String instrumentName,
+        String ticker,
+        String isin,
+        AssetClass assetClass,
+        java.math.BigDecimal currentShares,
+        java.math.BigDecimal totalReceivedAllTime,
+        java.math.BigDecimal totalReceivedYtd,
+        java.math.BigDecimal totalReceivedTtm,
+        java.math.BigDecimal trailingTwelveMonthsDps,
+        java.math.BigDecimal projectedAnnualIncome,
+        java.math.BigDecimal currentYieldPercentage,
+        java.math.BigDecimal yieldOnCostPercentage,
+        String currency) { }
+
+    public record ProjectedMonthlyIncomeResponse(
+        int month,
+        String monthName,
+        java.math.BigDecimal projectedAmount,
+        String currency) { }
+
+    public record DividendAnalyticsResponse(
+        UUID portfolioId,
+        Instant asOf,
+        String baseCurrency,
+        java.math.BigDecimal totalDividendsAllTime,
+        java.math.BigDecimal totalDividendsYtd,
+        java.math.BigDecimal totalDividendsTtm,
+        java.math.BigDecimal totalWithholdingTaxAllTime,
+        java.math.BigDecimal projectedAnnualDividendIncome,
+        java.math.BigDecimal portfolioDividendYieldPercentage,
+        java.math.BigDecimal portfolioYieldOnCostPercentage,
+        List<MonthlyDividendHistoryResponse> monthlyHistory,
+        List<YearlyDividendHistoryResponse> yearlyHistory,
+        List<ProjectedMonthlyIncomeResponse> projectedMonthlyCalendar,
+        List<HoldingDividendMetricResponse> holdings) { }
 }
 
 
