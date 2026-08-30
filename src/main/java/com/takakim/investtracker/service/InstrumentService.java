@@ -133,7 +133,7 @@ public class InstrumentService {
                     price = obs.getPrice();
                     priceCurrency = obs.getCurrency();
                     priceAsOf = obs.getObservedAt();
-                    isStale = Duration.between(obs.getObservedAt(), Instant.now()).abs().compareTo(Duration.ofHours(24)) > 0;
+                    isStale = MarketDataService.isObservationStale(obs.getObservedAt(), Instant.now(), i.getAssetClass());
                 }
             }
         }
