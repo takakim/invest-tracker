@@ -75,4 +75,18 @@ class ObservationStorageServiceTests {
         service.saveFxObservation(obs);
         verify(fxObservationRepository).save(obs);
     }
+
+    @Test
+    void saveMarketObservation_skipsNullOrZero() {
+        service.saveMarketObservation(null);
+
+        Instrument instrument = new Instrument("Apple Inc", com.takakim.investtracker.domain.AssetClass.STOCK, "AAPL", "US0378331005", "NASDAQ", new Currency("USD"));
+        MarketObservation zeroPrice = new MarketObservation(instrument, BigDecimal.ZERO, "USD", Instant.now(), ObservationSourceType.PROVIDER, "TEST");
+        service.saveMarketObservation(zeroPrice);
+    }
+
+    @Test
+    void saveFxObservation_skipsNull() {
+        service.saveFxObservation(null);
+    }
 }

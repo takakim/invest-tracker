@@ -147,6 +147,36 @@ class MarketDataServiceTests {
     }
 
     @Test
+    @DisplayName("Persisted observation with zero price falls back to transaction trade price")
+    void testPersistedObservationZeroPriceFallsBackToTransaction() {
+        UUID id = instrument.getId();
+        when(instrumentRepository.findById(id)).thenReturn(Optional.of(instrument));
+        when(marketObservationRepository.findFirstByInstrumentIdAndSourceTypeOrderByObservedAtDesc(id, ObservationSourceType.MANUAL))
+                .thenReturn(Optional.empty());
+        when(marketDataProvider.fetchQuote(eq(instrument), any())).thenReturn(Optional.empty());
+
+        MarketObservation persistedZero = new MarketObservation(
+                instrument, BigDecimal.ZERO, "USD", Instant.now().minus(2, ChronoUnit.HOURS),
+                ObservationSourceType.PROVIDER, "FEED"
+        );
+        when(marketObservationRepository.findFirstByInstrumentIdOrderByObservedAtDesc(id))
+                .thenReturn(Optional.of(persistedZero));
+
+        com.takakim.investtracker.domain.Portfolio port = new com.takakim.investtracker.domain.Portfolio("Port", new Currency("USD"), com.takakim.investtracker.domain.CostBasisMethod.AVERAGE_COST, com.takakim.investtracker.domain.ReturnMethod.TWR);
+        com.takakim.investtracker.domain.Account account = new com.takakim.investtracker.domain.Account(port, "Acc", "Broker", new Currency("USD"));
+        com.takakim.investtracker.domain.Transaction tx = new com.takakim.investtracker.domain.Transaction(
+                account, instrument, com.takakim.investtracker.domain.TransactionType.BUY, Instant.now().minus(5, ChronoUnit.HOURS), null,
+                new BigDecimal("10"), new BigDecimal("165.00"), null, null, null, "USD",
+                null, null, null, null
+        );
+        when(transactionRepository.findByInstrumentIdOrderByTradeDateDesc(id)).thenReturn(List.of(tx));
+
+        PriceQuote quote = marketDataService.getLatestPrice(id, Instant.now());
+        assertEquals(new BigDecimal("165.00"), quote.price());
+        assertEquals("LAST_TRANSACTION_TRADE_PRICE", quote.sourceReference());
+    }
+
+    @Test
     @DisplayName("Reuses fresh (<5 min) persisted observation when asOf is null")
     void reusesFreshPersistedObservation() {
         UUID id = instrument.getId();
@@ -395,5 +425,41 @@ class MarketDataServiceTests {
         assertEquals(new BigDecimal("50.00"), quote.price());
         // Verify external provider was NEVER called
         verify(marketDataProvider, never()).fetchQuote(eq(manualInst), any());
+    }
+
+    @Test
+    @DisplayName("Recent observation with zero price or mismatched currency is not returned from freshness cache")
+    void testRecentObservationWithZeroPriceOrDifferentCurrencyIgnored() {
+        UUID id = instrument.getId();
+        when(instrumentRepository.findById(id)).thenReturn(Optional.of(instrument));
+
+        MarketObservation zeroObs = new MarketObservation(instrument, BigDecimal.ZERO, "USD", Instant.now(), ObservationSourceType.PROVIDER, "FEED");
+        when(marketObservationRepository.findFirstByInstrumentIdOrderByObservedAtDesc(id)).thenReturn(Optional.of(zeroObs));
+
+        PriceQuote provQuote = new PriceQuote(id, new BigDecimal("190.00"), "USD", Instant.now(), ObservationSourceType.PROVIDER, "TEST_FEED", false, null);
+        when(marketDataProvider.fetchQuote(eq(instrument), any())).thenReturn(Optional.of(provQuote));
+
+        PriceQuote quote = marketDataService.getLatestPrice(id, null);
+        assertEquals(new BigDecimal("190.00"), quote.price());
+
+        // Test currency mismatch
+        MarketObservation gbpObs = new MarketObservation(instrument, new BigDecimal("150.00"), "GBP", Instant.now(), ObservationSourceType.PROVIDER, "FEED");
+        when(marketObservationRepository.findFirstByInstrumentIdOrderByObservedAtDesc(id)).thenReturn(Optional.of(gbpObs));
+        PriceQuote quoteAfterCurrencyMismatch = marketDataService.getLatestPrice(id, null);
+        assertEquals(new BigDecimal("190.00"), quoteAfterCurrencyMismatch.price());
+    }
+
+    @Test
+    @DisplayName("Provider quote with zero price is rejected and falls back")
+    void testProviderQuoteZeroPriceRejected() {
+        UUID id = instrument.getId();
+        when(instrumentRepository.findById(id)).thenReturn(Optional.of(instrument));
+        when(marketObservationRepository.findFirstByInstrumentIdOrderByObservedAtDesc(id)).thenReturn(Optional.empty());
+
+        PriceQuote zeroProvQuote = new PriceQuote(id, BigDecimal.ZERO, "USD", Instant.now(), ObservationSourceType.PROVIDER, "TEST_FEED", false, null);
+        when(marketDataProvider.fetchQuote(eq(instrument), any())).thenReturn(Optional.of(zeroProvQuote));
+
+        // When provider quote is zero and no observations exist, throws ResourceNotFoundException
+        assertThrows(ResourceNotFoundException.class, () -> marketDataService.getLatestPrice(id, Instant.now()));
     }
 }
