@@ -141,29 +141,49 @@ public class MarketDataService {
                 Optional<PriceQuote> providerQuoteOpt = marketDataProvider.fetchQuote(instrument, targetTime);
                 if (providerQuoteOpt.isPresent()) {
                     PriceQuote quote = providerQuoteOpt.get();
+                    boolean isDefaultMock = "DEFAULT_PROVIDER".equalsIgnoreCase(quote.sourceReference());
+
                     if (quote.price() != null && quote.price().compareTo(BigDecimal.ZERO) > 0) {
-                        // Cache/persist observation
-                        MarketObservation obs = new MarketObservation(
-                                instrument,
-                                quote.price(),
-                                quote.currency(),
-                                quote.asOf(),
-                                ObservationSourceType.PROVIDER,
-                                quote.sourceReference()
-                        );
-                        if (observationStorageService != null) {
-                            observationStorageService.saveMarketObservation(obs);
-                        } else {
-                            marketObservationRepository.save(obs);
+                        if (!isDefaultMock) {
+                            // Genuine external provider quote: persist to database
+                            MarketObservation obs = new MarketObservation(
+                                    instrument,
+                                    quote.price(),
+                                    quote.currency(),
+                                    quote.asOf(),
+                                    ObservationSourceType.PROVIDER,
+                                    quote.sourceReference()
+                            );
+                            if (observationStorageService != null) {
+                                observationStorageService.saveMarketObservation(obs);
+                            } else {
+                                marketObservationRepository.save(obs);
+                            }
+                            return quote;
+                        } else if (marketObservationRepository.findFirstByInstrumentIdOrderByObservedAtDesc(instrumentId).isEmpty()) {
+                            // Only use and persist default dummy mock if there are NO prior real observations in DB
+                            MarketObservation obs = new MarketObservation(
+                                    instrument,
+                                    quote.price(),
+                                    quote.currency(),
+                                    quote.asOf(),
+                                    ObservationSourceType.PROVIDER,
+                                    quote.sourceReference()
+                            );
+                            if (observationStorageService != null) {
+                                observationStorageService.saveMarketObservation(obs);
+                            } else {
+                                marketObservationRepository.save(obs);
+                            }
+                            return quote;
                         }
-                        return quote;
                     }
                 }
             } catch (Exception ignored) {
             }
         }
 
-        // 4. Fallback to latest persisted observation
+        // 4. Fallback to latest persisted observation (e.g. from Friday close or last successful fetch)
         Optional<MarketObservation> latestPersisted = marketObservationRepository
                 .findFirstByInstrumentIdOrderByObservedAtDesc(instrumentId);
 

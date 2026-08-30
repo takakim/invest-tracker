@@ -228,14 +228,16 @@ export function TransactionTable({
       )}
 
       {/* Record Transaction Modal */}
-      <TransactionFormModal
-        open={formOpen}
-        defaultCurrency={defaultCurrency}
-        isPending={createMutation.isPending}
-        error={createMutation.error}
-        onClose={() => setFormOpen(false)}
-        onSubmit={handleFormSubmit}
-      />
+      {formOpen && (
+        <TransactionFormModal
+          open={formOpen}
+          defaultCurrency={defaultCurrency}
+          isPending={createMutation.isPending}
+          error={createMutation.error}
+          onClose={() => setFormOpen(false)}
+          onSubmit={handleFormSubmit}
+        />
+      )}
 
       {/* CSV Import Modal */}
       <CsvImportModal

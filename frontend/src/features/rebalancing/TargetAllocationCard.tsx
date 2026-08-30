@@ -89,12 +89,14 @@ export function TargetAllocationCard({ portfolioId, currency }: TargetAllocation
             </Stack>
           </CardContent>
         </Card>
-        <TargetAllocationModal
-          open={modalOpen}
-          onClose={() => setModalOpen(false)}
-          portfolioId={portfolioId}
-          existingPlan={null}
-        />
+        {modalOpen && (
+          <TargetAllocationModal
+            open={modalOpen}
+            onClose={() => setModalOpen(false)}
+            portfolioId={portfolioId}
+            existingPlan={null}
+          />
+        )}
       </>
     );
   }
@@ -233,12 +235,14 @@ export function TargetAllocationCard({ portfolioId, currency }: TargetAllocation
         </CardContent>
       </Card>
 
-      <TargetAllocationModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        portfolioId={portfolioId}
-        existingPlan={targetPlan}
-      />
+      {modalOpen && (
+        <TargetAllocationModal
+          open={modalOpen}
+          onClose={() => setModalOpen(false)}
+          portfolioId={portfolioId}
+          existingPlan={targetPlan}
+        />
+      )}
     </>
   );
 }
