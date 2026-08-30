@@ -51,6 +51,7 @@ import { ValuationMetricsCard } from '../analytics/ValuationMetricsCard';
 import { AssetAllocationCard } from '../analytics/AssetAllocationCard';
 import { DividendAnalyticsCard } from '../analytics/DividendAnalyticsCard';
 import { ExportReportModal } from '../analytics/ExportReportModal';
+import { TargetAllocationCard, RebalancingCalculatorCard } from '../rebalancing';
 import { BenchmarkComparisonCard } from '../benchmark/BenchmarkComparisonCard';
 import { ConfirmDialog, EmptyState, ErrorAlert, LoadingState } from '../../components';
 import type { Account, AccountCreateInput, PortfolioCreateInput } from '../../types';
@@ -306,6 +307,16 @@ export function PortfolioDetailPage() {
       {/* Dividend Analytics & Income Projection */}
       <Box sx={{ mb: 4 }}>
         <DividendAnalyticsCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
+      </Box>
+
+      {/* Target Asset Allocation Strategy */}
+      <Box sx={{ mb: 4 }}>
+        <TargetAllocationCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
+      </Box>
+
+      {/* Portfolio Rebalancing Calculator */}
+      <Box sx={{ mb: 4 }}>
+        <RebalancingCalculatorCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
       </Box>
 
       {/* Accounts Section */}

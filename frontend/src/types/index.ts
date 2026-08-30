@@ -525,3 +525,77 @@ export interface DividendAnalytics {
   holdings: HoldingDividendMetric[];
   projectedCalendar: ProjectedMonthlyIncome[];
 }
+
+export type AllocationType = 'ASSET_CLASS' | 'INSTRUMENT';
+export type DriftStatus = 'IN_TOLERANCE' | 'OVERWEIGHT' | 'UNDERWEIGHT';
+export type RebalanceAction = 'BUY' | 'SELL' | 'HOLD';
+
+export interface TargetAllocationItemInput {
+  categoryKey: string;
+  categoryLabel: string;
+  targetPercentage: number;
+  instrumentId?: string | null;
+}
+
+export interface TargetAllocationPlanInput {
+  name: string;
+  allocationType: AllocationType;
+  driftTolerancePercentage?: number;
+  items: TargetAllocationItemInput[];
+}
+
+export interface TargetAllocationItem {
+  id: string;
+  categoryKey: string;
+  categoryLabel: string;
+  targetPercentage: number;
+  instrumentId?: string | null;
+  instrumentTicker?: string | null;
+  instrumentName?: string | null;
+}
+
+export interface TargetAllocationPlan {
+  id: string;
+  portfolioId: string;
+  name: string;
+  allocationType: AllocationType;
+  driftTolerancePercentage: number;
+  items: TargetAllocationItem[];
+  updatedAt: string;
+}
+
+export interface RebalanceOrderItem {
+  categoryKey: string;
+  categoryLabel: string;
+  instrumentId?: string | null;
+  instrumentTicker?: string | null;
+  instrumentName?: string | null;
+  action: RebalanceAction;
+  currentMarketValue: number;
+  currentWeightPercentage: number;
+  targetWeightPercentage: number;
+  driftPercentage: number;
+  driftStatus: DriftStatus;
+  isDriftExceeded: boolean;
+  targetValue: number;
+  orderAmount: number;
+  estimatedPrice?: number | null;
+  estimatedQuantity?: number | null;
+  projectedPostWeightPercentage: number;
+  currency: string;
+}
+
+export interface RebalanceAnalysis {
+  portfolioId: string;
+  portfolioName: string;
+  baseCurrency: string;
+  asOf: string;
+  allocationType: AllocationType;
+  totalPortfolioValue: number;
+  cashInjectionAmount: number;
+  totalPostRebalanceValue: number;
+  driftTolerancePercentage: number;
+  hasDriftToleranceExceeded: boolean;
+  items: RebalanceOrderItem[];
+}
+

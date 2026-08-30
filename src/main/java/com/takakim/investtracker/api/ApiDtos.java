@@ -1,7 +1,10 @@
 package com.takakim.investtracker.api;
 
+import com.takakim.investtracker.domain.AllocationType;
 import com.takakim.investtracker.domain.AssetClass;
 import com.takakim.investtracker.domain.CostBasisMethod;
+import com.takakim.investtracker.domain.DriftStatus;
+import com.takakim.investtracker.domain.RebalanceAction;
 import com.takakim.investtracker.domain.ReturnMethod;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
@@ -448,7 +451,71 @@ public final class ApiDtos {
         List<YearlyDividendHistoryResponse> yearlyHistory,
         List<ProjectedMonthlyIncomeResponse> projectedMonthlyCalendar,
         List<HoldingDividendMetricResponse> holdings) { }
+
+    public record TargetAllocationItemRequest(
+        String categoryKey,
+        String categoryLabel,
+        java.math.BigDecimal targetPercentage,
+        UUID instrumentId) { }
+
+    public record TargetAllocationPlanRequest(
+        String name,
+        AllocationType allocationType,
+        java.math.BigDecimal driftTolerancePercentage,
+        List<TargetAllocationItemRequest> items) { }
+
+    public record TargetAllocationItemResponse(
+        UUID id,
+        String categoryKey,
+        String categoryLabel,
+        java.math.BigDecimal targetPercentage,
+        UUID instrumentId,
+        String instrumentTicker,
+        String instrumentName) { }
+
+    public record TargetAllocationPlanResponse(
+        UUID id,
+        UUID portfolioId,
+        String name,
+        AllocationType allocationType,
+        java.math.BigDecimal driftTolerancePercentage,
+        List<TargetAllocationItemResponse> items,
+        Instant updatedAt) { }
+
+    public record RebalanceOrderItemResponse(
+        String categoryKey,
+        String categoryLabel,
+        UUID instrumentId,
+        String instrumentTicker,
+        String instrumentName,
+        RebalanceAction action,
+        java.math.BigDecimal currentMarketValue,
+        java.math.BigDecimal currentWeightPercentage,
+        java.math.BigDecimal targetWeightPercentage,
+        java.math.BigDecimal driftPercentage,
+        DriftStatus driftStatus,
+        boolean isDriftExceeded,
+        java.math.BigDecimal targetValue,
+        java.math.BigDecimal orderAmount,
+        java.math.BigDecimal estimatedPrice,
+        java.math.BigDecimal estimatedQuantity,
+        java.math.BigDecimal projectedPostWeightPercentage,
+        String currency) { }
+
+    public record RebalanceAnalysisResponse(
+        UUID portfolioId,
+        String portfolioName,
+        String baseCurrency,
+        Instant asOf,
+        AllocationType allocationType,
+        java.math.BigDecimal totalPortfolioValue,
+        java.math.BigDecimal cashInjectionAmount,
+        java.math.BigDecimal totalPostRebalanceValue,
+        java.math.BigDecimal driftTolerancePercentage,
+        boolean hasDriftToleranceExceeded,
+        List<RebalanceOrderItemResponse> items) { }
 }
+
 
 
 
