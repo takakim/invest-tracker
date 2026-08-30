@@ -1,7 +1,7 @@
 import sys
 import xml.etree.ElementTree as ET
 
-def check_coverage(xml_path='target/site/jacoco/jacoco.xml'):
+def check_coverage(xml_path='target/site/jacoco/jacoco.xml', target_filter=None):
     try:
         tree = ET.parse(xml_path)
     except Exception as e:
@@ -33,21 +33,26 @@ def check_coverage(xml_path='target/site/jacoco/jacoco.xml'):
                         pct = (covered / total) * 100
                         print(f"{name}: {covered}/{total} ({pct:.1f}%) missed: {missed}")
 
-    print("\n--- Detailed Line Coverage for Target Source Files ---")
+    print("\n--- Detailed Missed Branches by Source File ---")
     for package in root.findall('package'):
         for sf in package.findall('sourcefile'):
             name = sf.get('name')
-            if any(t in name for t in ['TwelveData', 'InstrumentService', 'MarketData', 'FxRate']):
-                lines_with_misses = []
-                for line in sf.findall('line'):
-                    mb = int(line.get('mb'))
-                    cb = int(line.get('cb'))
-                    if mb > 0:
-                        lines_with_misses.append(f"Line {line.get('nr')}: missed {mb}, covered {cb}")
-                if lines_with_misses:
-                    print(f"=== {name} ===")
-                    for l in lines_with_misses:
-                        print(f"  {l}")
+            if target_filter and not any(t.lower() in name.lower() for t in target_filter):
+                continue
+            lines_with_misses = []
+            for line in sf.findall('line'):
+                mb = int(line.get('mb'))
+                cb = int(line.get('cb'))
+                mi = int(line.get('mi'))
+                ci = int(line.get('ci'))
+                if mb > 0 or mi > 0:
+                    lines_with_misses.append(f"Line {line.get('nr')}: missed branches={mb} (covered={cb}), missed instructions={mi}")
+            if lines_with_misses:
+                print(f"=== {name} ===")
+                for l in lines_with_misses:
+                    print(f"  {l}")
 
 if __name__ == '__main__':
-    check_coverage()
+    targets = sys.argv[1:] if len(sys.argv) > 1 else None
+    check_coverage(target_filter=targets)
+

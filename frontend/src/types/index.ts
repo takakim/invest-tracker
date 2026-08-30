@@ -472,5 +472,56 @@ export interface BenchmarkComparisonResult {
   warnings: string[];
 }
 
+export interface MonthlyDividendHistory {
+  yearMonth: string;
+  netAmount: number;
+  grossAmount: number;
+  taxAmount: number;
+}
 
+export interface YearlyDividendHistory {
+  year: number;
+  netAmount: number;
+  grossAmount: number;
+  taxAmount: number;
+}
 
+export interface HoldingDividendMetric {
+  instrumentId: string;
+  instrumentName: string;
+  ticker?: string | null;
+  isin?: string | null;
+  assetClass: AssetClass;
+  currentShares: number;
+  totalReceivedAllTime: number;
+  totalReceivedYtd: number;
+  totalReceivedTtm: number;
+  trailingTwelveMonthsDps: number;
+  projectedAnnualIncome: number;
+  currentYieldPercentage: number;
+  yieldOnCostPercentage: number;
+  currency: string;
+}
+
+export interface ProjectedMonthlyIncome {
+  month: number;
+  monthName: string;
+  projectedAmount: number;
+}
+
+export interface DividendAnalytics {
+  portfolioId: string;
+  asOf: string;
+  baseCurrency: string;
+  totalDividendsAllTime: number;
+  totalDividendsYtd: number;
+  totalDividendsTtm: number;
+  totalWithholdingTaxAllTime: number;
+  projectedAnnualDividendIncome: number;
+  portfolioDividendYieldPercentage: number;
+  portfolioYieldOnCostPercentage: number;
+  monthlyHistory: MonthlyDividendHistory[];
+  yearlyHistory: YearlyDividendHistory[];
+  holdings: HoldingDividendMetric[];
+  projectedCalendar: ProjectedMonthlyIncome[];
+}

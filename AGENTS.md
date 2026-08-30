@@ -112,6 +112,9 @@ mvn -B verify && npm --prefix frontend run build && npm --prefix frontend test &
 ```bash
 # Run unit & Testcontainers integration tests, JaCoCo coverage check, OWASP check, and SBOM
 mvn clean verify
+
+# Inspect JaCoCo branch coverage and identify any missed branches by class/source file
+python3 scripts/check_coverage.py
 ```
 
 ### Frontend-Only Verification

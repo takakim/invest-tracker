@@ -3,8 +3,10 @@ package com.takakim.investtracker.api;
 import com.takakim.investtracker.api.ApiDtos.AllocationItemResponse;
 import com.takakim.investtracker.api.ApiDtos.HoldingExposureResponse;
 import com.takakim.investtracker.api.ApiDtos.PortfolioAnalyticsResponse;
+import com.takakim.investtracker.api.ApiDtos.DividendAnalyticsResponse;
 import com.takakim.investtracker.service.analytics.AllocationItem;
 import com.takakim.investtracker.service.analytics.AnalyticsEngine;
+import com.takakim.investtracker.service.analytics.DividendAnalyticsService;
 import com.takakim.investtracker.service.analytics.HoldingExposure;
 import com.takakim.investtracker.service.analytics.PortfolioAnalytics;
 import java.time.Instant;
@@ -18,9 +20,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class AnalyticsController {
 
     private final AnalyticsEngine analyticsEngine;
+    private final DividendAnalyticsService dividendAnalyticsService;
 
-    public AnalyticsController(AnalyticsEngine analyticsEngine) {
+    public AnalyticsController(
+            AnalyticsEngine analyticsEngine,
+            DividendAnalyticsService dividendAnalyticsService) {
         this.analyticsEngine = analyticsEngine;
+        this.dividendAnalyticsService = dividendAnalyticsService;
     }
 
     @GetMapping("/api/v1/portfolios/{portfolioId}/analytics")
@@ -29,6 +35,13 @@ public class AnalyticsController {
             @RequestParam(required = false) Instant asOf) {
         PortfolioAnalytics analytics = analyticsEngine.calculate(portfolioId, asOf);
         return toResponse(analytics);
+    }
+
+    @GetMapping("/api/v1/portfolios/{portfolioId}/analytics/dividends")
+    public DividendAnalyticsResponse getDividendAnalytics(
+            @PathVariable UUID portfolioId,
+            @RequestParam(required = false) Instant asOf) {
+        return dividendAnalyticsService.calculate(portfolioId, asOf);
     }
 
     private PortfolioAnalyticsResponse toResponse(PortfolioAnalytics a) {
