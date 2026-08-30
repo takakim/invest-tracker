@@ -22,21 +22,34 @@ import org.springframework.transaction.annotation.Transactional;
 public class MarketDataService {
 
     private static final Duration STALE_THRESHOLD = Duration.ofHours(24);
+    private static final Duration FRESHNESS_THRESHOLD = Duration.ofMinutes(5);
 
     private final MarketObservationRepository marketObservationRepository;
     private final InstrumentRepository instrumentRepository;
     private final MarketDataProvider marketDataProvider;
     private final com.takakim.investtracker.repository.TransactionRepository transactionRepository;
+    private final ObservationStorageService observationStorageService;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public MarketDataService(
+            MarketObservationRepository marketObservationRepository,
+            InstrumentRepository instrumentRepository,
+            MarketDataProvider marketDataProvider,
+            com.takakim.investtracker.repository.TransactionRepository transactionRepository,
+            ObservationStorageService observationStorageService) {
+        this.marketObservationRepository = marketObservationRepository;
+        this.instrumentRepository = instrumentRepository;
+        this.marketDataProvider = marketDataProvider;
+        this.transactionRepository = transactionRepository;
+        this.observationStorageService = observationStorageService;
+    }
 
     public MarketDataService(
             MarketObservationRepository marketObservationRepository,
             InstrumentRepository instrumentRepository,
             MarketDataProvider marketDataProvider,
             com.takakim.investtracker.repository.TransactionRepository transactionRepository) {
-        this.marketObservationRepository = marketObservationRepository;
-        this.instrumentRepository = instrumentRepository;
-        this.marketDataProvider = marketDataProvider;
-        this.transactionRepository = transactionRepository;
+        this(marketObservationRepository, instrumentRepository, marketDataProvider, transactionRepository, null);
     }
 
     public PriceQuote getLatestPrice(UUID instrumentId, Instant asOf) {
@@ -65,24 +78,51 @@ public class MarketDataService {
             );
         }
 
-        // 2. Fetch from market data provider
-        try {
-            Optional<PriceQuote> providerQuoteOpt = marketDataProvider.fetchQuote(instrument, targetTime);
-            if (providerQuoteOpt.isPresent()) {
-                PriceQuote quote = providerQuoteOpt.get();
-                // Cache/persist observation
-                MarketObservation obs = new MarketObservation(
-                        instrument,
-                        quote.price(),
-                        quote.currency(),
-                        quote.asOf(),
-                        ObservationSourceType.PROVIDER,
-                        quote.sourceReference()
-                );
-                marketObservationRepository.save(obs);
-                return quote;
+        // 2. Check for recent fresh persisted observation (within last 5 minutes) to prioritize stale instruments
+        if (asOf == null) {
+            Optional<MarketObservation> recentObsOpt = marketObservationRepository
+                    .findFirstByInstrumentIdOrderByObservedAtDesc(instrumentId);
+            if (recentObsOpt.isPresent()) {
+                MarketObservation recent = recentObsOpt.get();
+                if (Duration.between(recent.getObservedAt(), targetTime).abs().compareTo(FRESHNESS_THRESHOLD) <= 0) {
+                    return new PriceQuote(
+                            instrumentId,
+                            recent.getPrice(),
+                            recent.getCurrency(),
+                            recent.getObservedAt(),
+                            recent.getSourceType(),
+                            recent.getSourceReference(),
+                            false,
+                            null
+                    );
+                }
             }
-        } catch (Exception ignored) {
+        }
+
+        // 3. Fetch from market data provider for stale or unobserved instruments (unless manual-only)
+        if (!instrument.isManualPriceOnly()) {
+            try {
+                Optional<PriceQuote> providerQuoteOpt = marketDataProvider.fetchQuote(instrument, targetTime);
+                if (providerQuoteOpt.isPresent()) {
+                    PriceQuote quote = providerQuoteOpt.get();
+                    // Cache/persist observation
+                    MarketObservation obs = new MarketObservation(
+                            instrument,
+                            quote.price(),
+                            quote.currency(),
+                            quote.asOf(),
+                            ObservationSourceType.PROVIDER,
+                            quote.sourceReference()
+                    );
+                    if (observationStorageService != null) {
+                        observationStorageService.saveMarketObservation(obs);
+                    } else {
+                        marketObservationRepository.save(obs);
+                    }
+                    return quote;
+                }
+            } catch (Exception ignored) {
+            }
         }
 
         // 3. Fallback to latest persisted observation

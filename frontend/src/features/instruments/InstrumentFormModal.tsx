@@ -8,13 +8,16 @@ import {
   DialogContent,
   DialogTitle,
   FormControl,
+  FormControlLabel,
   FormHelperText,
   Grid,
   InputLabel,
   MenuItem,
   Select,
   Stack,
+  Switch,
   TextField,
+  Typography,
 } from '@mui/material';
 import { instrumentSchema, type InstrumentFormData } from '../../forms/schemas';
 import { ErrorAlert } from '../../components';
@@ -55,6 +58,7 @@ export function InstrumentFormModal({
       isin: '',
       exchange: '',
       currency: 'USD',
+      manualPriceOnly: false,
     },
   });
 
@@ -68,6 +72,7 @@ export function InstrumentFormModal({
           isin: instrument.isin || '',
           exchange: instrument.exchange || '',
           currency: instrument.currency,
+          manualPriceOnly: Boolean(instrument.manualPriceOnly),
         });
       } else {
         reset({
@@ -77,6 +82,7 @@ export function InstrumentFormModal({
           isin: '',
           exchange: '',
           currency: 'USD',
+          manualPriceOnly: false,
         });
       }
     }
@@ -185,6 +191,32 @@ export function InstrumentFormModal({
               helperText={errors.exchange?.message || 'Optional trading exchange'}
               slotProps={{ htmlInput: { maxLength: 80 } }}
               {...register('exchange')}
+            />
+
+            <Controller
+              name="manualPriceOnly"
+              control={control}
+              render={({ field }) => (
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={Boolean(field.value)}
+                      onChange={(e) => field.onChange(e.target.checked)}
+                      color="primary"
+                    />
+                  }
+                  label={
+                    <Stack>
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                        Manual Price Only
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Disable automated external API price polling for this asset.
+                      </Typography>
+                    </Stack>
+                  }
+                />
+              )}
             />
           </Stack>
         </DialogContent>

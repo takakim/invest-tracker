@@ -832,6 +832,7 @@ components:
         isin: { type: string, maxLength: 12, nullable: true }
         exchange: { type: string, maxLength: 80, nullable: true }
         currency: { type: string, pattern: '^[A-Z]{3}$' }
+        manualPriceOnly: { type: boolean, default: false }
         latestPrice: { type: number, nullable: true }
         priceCurrency: { type: string, pattern: '^[A-Za-z]{3}$', nullable: true }
         priceAsOf: { type: string, format: date-time, nullable: true }
@@ -848,6 +849,7 @@ components:
         isin: { type: string, maxLength: 12, nullable: true }
         exchange: { type: string, maxLength: 80, nullable: true }
         currency: { type: string, pattern: '^[A-Za-z]{3}$' }
+        manualPriceOnly: { type: boolean, default: false }
     Position:
       type: object
       required: [id, accountId, instrumentId, instrumentName, assetClass, quantity, status, createdAt, updatedAt]

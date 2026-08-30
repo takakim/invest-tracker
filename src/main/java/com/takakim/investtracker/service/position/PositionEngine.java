@@ -132,7 +132,11 @@ public class PositionEngine {
                     .filter(tx -> tx.getInstrument() != null)
                     .collect(Collectors.groupingBy(Transaction::getInstrument));
 
-            for (Map.Entry<Instrument, List<Transaction>> entry : txsByInstrument.entrySet()) {
+            // Sort entries deterministically by instrument ID to prevent PostgreSQL deadlocks on positions table
+            List<Map.Entry<Instrument, List<Transaction>>> sortedEntries = new java.util.ArrayList<>(txsByInstrument.entrySet());
+            sortedEntries.sort(java.util.Comparator.comparing(e -> e.getKey().getId()));
+
+            for (Map.Entry<Instrument, List<Transaction>> entry : sortedEntries) {
                 PositionCalculationResult res = recalculateAndSync(account, entry.getKey());
                 if (res != null) {
                     results.add(res);

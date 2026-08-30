@@ -457,10 +457,75 @@ class CostBasisStrategyTests {
         // LIFO: same scenario
         PositionCalculationResult lifoRes = lifo.calculate(account, instrument, List.of(buy1, sell1, buy2, sell2));
         assertEquals(new BigDecimal("5.00000000"), lifoRes.quantity());
-
         // AVERAGE_COST
         PositionCalculationResult avgRes = avgCost.calculate(account, instrument, List.of(buy1, sell1, buy2, sell2));
         assertEquals(new BigDecimal("5.00000000"), avgRes.quantity());
     }
-}
 
+    @Test
+    @DisplayName("costBasisCurrency is derived from BUY transaction currency, not instrument native currency (Freetrade GBP scenario)")
+    void costBasisCurrencyDerivedFromTransactionCurrency() {
+        Portfolio gbpPortfolio = new Portfolio("ISA", new Currency("GBP"), CostBasisMethod.AVERAGE_COST, ReturnMethod.XIRR);
+        Account gbpAccount = new Account(gbpPortfolio, "Freetrade ISA", "Freetrade", new Currency("GBP"));
+        Instrument usdStock = new Instrument("Nvidia", AssetClass.STOCK, "NVDA", "US67066G1040", "NASDAQ", new Currency("USD"));
+        Instant t = Instant.parse("2026-01-01T10:00:00Z");
+
+        Transaction gbpBuy1 = new Transaction(
+                gbpAccount, usdStock, TransactionType.BUY,
+                t, null, new BigDecimal("10.0"),
+                new BigDecimal("112.70"), new BigDecimal("1127.00"),
+                new BigDecimal("4.50"), BigDecimal.ZERO,
+                "GBP", new BigDecimal("1.28"), "USD", "Order ABC", null
+        );
+        Transaction gbpBuy2 = new Transaction(
+                gbpAccount, usdStock, TransactionType.BUY,
+                t.plus(5, ChronoUnit.DAYS), null, new BigDecimal("5.0"),
+                new BigDecimal("125.00"), new BigDecimal("625.00"),
+                new BigDecimal("2.50"), BigDecimal.ZERO,
+                "GBP", new BigDecimal("1.28"), "USD", "Order DEF", null
+        );
+
+        PositionCalculationResult avgResult = avgCost.calculate(gbpAccount, usdStock, List.of(gbpBuy1, gbpBuy2));
+        assertEquals("GBP", avgResult.costBasisCurrency(),
+                "AVERAGE_COST: costBasisCurrency must be GBP (tx), not USD (instrument)");
+        assertEquals(new BigDecimal("1759.0000"), avgResult.costBasisAmount());
+
+        PositionCalculationResult fifoResult = fifo.calculate(gbpAccount, usdStock, List.of(gbpBuy1, gbpBuy2));
+        assertEquals("GBP", fifoResult.costBasisCurrency(),
+                "FIFO: costBasisCurrency must be GBP (tx), not USD (instrument)");
+
+        PositionCalculationResult lifoResult = lifo.calculate(gbpAccount, usdStock, List.of(gbpBuy1, gbpBuy2));
+        assertEquals("GBP", lifoResult.costBasisCurrency(),
+                "LIFO: costBasisCurrency must be GBP (tx), not USD (instrument)");
+    }
+
+    @Test
+    @DisplayName("costBasisCurrency falls back to account currency when no BUY transactions exist")
+    void costBasisCurrencyFallsBackWhenNoBuys() {
+        Portfolio gbpPortfolio = new Portfolio("ISA", new Currency("GBP"), CostBasisMethod.AVERAGE_COST, ReturnMethod.XIRR);
+        Account gbpAccount = new Account(gbpPortfolio, "Freetrade ISA", "Freetrade", new Currency("GBP"));
+        Instrument usdStock = new Instrument("Nvidia", AssetClass.STOCK, "NVDA", "US67066G1040", "NASDAQ", new Currency("USD"));
+        Instant t = Instant.parse("2026-01-01T10:00:00Z");
+
+        // Only a SELL transaction — no BUY in the list so currency loop exits without matching
+        Transaction gbpSell = new Transaction(
+                gbpAccount, usdStock, TransactionType.SELL,
+                t.plus(3, ChronoUnit.DAYS), null, new BigDecimal("10.0"),
+                new BigDecimal("120.00"), new BigDecimal("1200.00"),
+                BigDecimal.ZERO, BigDecimal.ZERO,
+                "GBP", null, null, null, null
+        );
+
+        PositionCalculationResult avgSellOnly = avgCost.calculate(gbpAccount, usdStock, List.of(gbpSell));
+        assertEquals("GBP", avgSellOnly.costBasisCurrency(),
+                "AVERAGE_COST: no BUY found, falls back to account currency GBP");
+
+        PositionCalculationResult fifoSellOnly = fifo.calculate(gbpAccount, usdStock, List.of(gbpSell));
+        assertEquals("GBP", fifoSellOnly.costBasisCurrency(),
+                "FIFO: no BUY found, falls back to account currency GBP");
+
+        PositionCalculationResult lifoSellOnly = lifo.calculate(gbpAccount, usdStock, List.of(gbpSell));
+        assertEquals("GBP", lifoSellOnly.costBasisCurrency(),
+                "LIFO: no BUY found, falls back to account currency GBP");
+    }
+}

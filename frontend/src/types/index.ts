@@ -55,6 +55,7 @@ export interface Instrument {
   isin?: string | null;
   exchange?: string | null;
   currency: string;
+  manualPriceOnly?: boolean;
   latestPrice?: number | null;
   priceCurrency?: string | null;
   priceAsOf?: string | null;
@@ -70,6 +71,7 @@ export interface InstrumentCreateInput {
   isin?: string | null;
   exchange?: string | null;
   currency: string;
+  manualPriceOnly?: boolean;
 }
 
 export interface Position {

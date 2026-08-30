@@ -18,10 +18,27 @@ spring:
       include-stacktrace: never
       include-binding-errors: never
 
-server:
-  error:
-    include-message: never
-    include-stacktrace: never
+app:
+  market-data:
+    twelvedata:
+      enabled: ${TWELVEDATA_ENABLED:true}
+      api-key: ${TWELVEDATA_API_KEY:}
+      base-url: ${TWELVEDATA_BASE_URL:https://api.twelvedata.com}
+      connect-timeout-seconds: 5
+      read-timeout-seconds: 10
+    fmp:
+      enabled: ${FMP_ENABLED:true}
+      api-key: ${FMP_API_KEY:}
+      base-url: ${FMP_BASE_URL:https://financialmodelingprep.com}
+      connect-timeout-seconds: 5
+      read-timeout-seconds: 10
+      max-requests-per-minute: 5
+    yahoo:
+      enabled: ${YAHOO_FINANCE_ENABLED:true}
+      base-url: ${YAHOO_FINANCE_BASE_URL:https://query1.finance.yahoo.com}
+      connect-timeout-seconds: 5
+      read-timeout-seconds: 10
+      max-requests-per-minute: 30
 
 management:
   endpoints:
@@ -36,4 +53,8 @@ logging:
   file:
     name: ${LOGGING_FILE_NAME:logs/backend.log}
   pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
     file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+  level:
+    root: ${LOGGING_LEVEL_ROOT:INFO}
+    com.takakim.investtracker: ${LOGGING_LEVEL_APP:DEBUG}

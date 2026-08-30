@@ -147,6 +147,29 @@ class MarketDataServiceTests {
     }
 
     @Test
+    @DisplayName("Reuses fresh (<5 min) persisted observation when asOf is null")
+    void reusesFreshPersistedObservation() {
+        UUID id = instrument.getId();
+        when(instrumentRepository.findById(id)).thenReturn(Optional.of(instrument));
+        when(marketObservationRepository.findFirstByInstrumentIdAndSourceTypeOrderByObservedAtDesc(id, ObservationSourceType.MANUAL))
+                .thenReturn(Optional.empty());
+
+        Instant freshTime = Instant.now().minus(2, ChronoUnit.MINUTES);
+        MarketObservation freshObs = new MarketObservation(
+                instrument, new BigDecimal("195.00"), "USD",
+                freshTime, ObservationSourceType.PROVIDER, "TWELVE_DATA"
+        );
+        when(marketObservationRepository.findFirstByInstrumentIdOrderByObservedAtDesc(id))
+                .thenReturn(Optional.of(freshObs));
+
+        PriceQuote quote = marketDataService.getLatestPrice(id, null);
+        assertEquals(new BigDecimal("195.00"), quote.price());
+        assertEquals("TWELVE_DATA", quote.sourceReference());
+        assertFalse(quote.isStale());
+        verifyNoInteractions(marketDataProvider);
+    }
+
+    @Test
     @DisplayName("Throws ResourceNotFoundException when neither provider, persisted observation, nor transaction price is available")
     void noPriceAvailableThrows() {
         UUID id = instrument.getId();
@@ -234,6 +257,60 @@ class MarketDataServiceTests {
         );
         assertEquals("USD", defaultObs.getCurrency());
         assertEquals("MANUAL_OVERRIDE", defaultObs.getSourceReference());
+
+        // Blank reason test
+        MarketObservation blankReasonObs = marketDataService.recordManualOverride(
+                id, new BigDecimal("215.00"), "USD", now, "   "
+        );
+        assertEquals("MANUAL_OVERRIDE", blankReasonObs.getSourceReference());
+    }
+
+    @Test
+    @DisplayName("Falls back to persisted quote when provider throws an exception")
+    void fallbackWhenProviderThrowsException() {
+        UUID id = instrument.getId();
+        when(instrumentRepository.findById(id)).thenReturn(Optional.of(instrument));
+        when(marketObservationRepository.findFirstByInstrumentIdAndSourceTypeOrderByObservedAtDesc(id, ObservationSourceType.MANUAL))
+                .thenReturn(Optional.empty());
+        when(marketDataProvider.fetchQuote(eq(instrument), any())).thenThrow(new RuntimeException("API timeout"));
+
+        MarketObservation persisted = new MarketObservation(
+                instrument, new BigDecimal("170.00"), "USD", Instant.now(),
+                ObservationSourceType.PROVIDER, "CACHED"
+        );
+        when(marketObservationRepository.findFirstByInstrumentIdOrderByObservedAtDesc(id))
+                .thenReturn(Optional.of(persisted));
+
+        PriceQuote quote = marketDataService.getLatestPrice(id, Instant.now());
+        assertEquals(new BigDecimal("170.00"), quote.price());
+    }
+
+    @Test
+    @DisplayName("Transaction price fallback skips transactions with null or zero prices")
+    void transactionFallbackSkipsZeroOrNullPrices() {
+        UUID id = instrument.getId();
+        when(instrumentRepository.findById(id)).thenReturn(Optional.of(instrument));
+        when(marketObservationRepository.findFirstByInstrumentIdAndSourceTypeOrderByObservedAtDesc(id, ObservationSourceType.MANUAL))
+                .thenReturn(Optional.empty());
+        when(marketDataProvider.fetchQuote(eq(instrument), any())).thenReturn(Optional.empty());
+        when(marketObservationRepository.findFirstByInstrumentIdOrderByObservedAtDesc(id))
+                .thenReturn(Optional.empty());
+
+        com.takakim.investtracker.domain.Portfolio portfolio = new com.takakim.investtracker.domain.Portfolio("P", new Currency("USD"), com.takakim.investtracker.domain.CostBasisMethod.FIFO, com.takakim.investtracker.domain.ReturnMethod.TWR);
+        com.takakim.investtracker.domain.Account acct = new com.takakim.investtracker.domain.Account(portfolio, "Trading", "Broker", new Currency("USD"));
+        com.takakim.investtracker.domain.Transaction txNullPrice = new com.takakim.investtracker.domain.Transaction(
+                acct, instrument, com.takakim.investtracker.domain.TransactionType.DIVIDEND, Instant.now().minus(10, ChronoUnit.DAYS),
+                null, null, null, new BigDecimal("50.00"), null, null, "USD", null, null, null, null
+        );
+        com.takakim.investtracker.domain.Transaction txValid = new com.takakim.investtracker.domain.Transaction(
+                acct, instrument, com.takakim.investtracker.domain.TransactionType.BUY, Instant.now().minus(2, ChronoUnit.DAYS),
+                null, new BigDecimal("10"), new BigDecimal("150.00"), new BigDecimal("1500.00"), null, null, "USD", null, null, null, null
+        );
+        when(transactionRepository.findByInstrumentIdOrderByTradeDateDesc(id))
+                .thenReturn(List.of(txNullPrice, txValid));
+
+        PriceQuote quote = marketDataService.getLatestPrice(id, Instant.now());
+        assertEquals(new BigDecimal("150.00"), quote.price());
     }
 
 
@@ -300,5 +377,23 @@ class MarketDataServiceTests {
 
         when(instrumentRepository.findById(id)).thenReturn(Optional.empty());
         assertThrows(ResourceNotFoundException.class, () -> marketDataService.syncHistoricalPrices(id, now.minus(30, ChronoUnit.DAYS), now));
+    }
+
+    @Test
+    @DisplayName("manualPriceOnly instrument skips external marketDataProvider and uses persisted/trade price")
+    void testManualPriceOnlyBypassesExternalProvider() {
+        Instrument manualInst = new Instrument("Private Asset", AssetClass.OTHER, "PRIV", null, null, new Currency("USD"), true);
+        UUID id = manualInst.getId();
+        when(instrumentRepository.findById(id)).thenReturn(Optional.of(manualInst));
+
+        MarketObservation obs = new MarketObservation(manualInst, new BigDecimal("50.00"), "USD", Instant.now(), ObservationSourceType.PROVIDER, "PREV");
+        when(marketObservationRepository.findFirstByInstrumentIdOrderByObservedAtDesc(id))
+                .thenReturn(Optional.of(obs));
+
+        PriceQuote quote = marketDataService.getLatestPrice(id, Instant.now());
+        assertNotNull(quote);
+        assertEquals(new BigDecimal("50.00"), quote.price());
+        // Verify external provider was NEVER called
+        verify(marketDataProvider, never()).fetchQuote(eq(manualInst), any());
     }
 }

@@ -101,6 +101,25 @@ class FxRateServiceTests {
     }
 
     @Test
+    @DisplayName("Reuses fresh (<5 min) persisted FX observation when asOf is null")
+    void reusesFreshPersistedFxObservation() {
+        when(fxObservationRepository.findFirstByBaseCurrencyAndQuoteCurrencyAndSourceTypeOrderByObservedAtDesc("EUR", "USD", ObservationSourceType.MANUAL))
+                .thenReturn(Optional.empty());
+        when(fxObservationRepository.findFirstByBaseCurrencyAndQuoteCurrencyAndSourceTypeOrderByObservedAtDesc("USD", "EUR", ObservationSourceType.MANUAL))
+                .thenReturn(Optional.empty());
+
+        Instant freshTime = Instant.now().minus(2, ChronoUnit.MINUTES);
+        FxObservation obs = new FxObservation("EUR", "USD", new BigDecimal("1.08900000"), freshTime, ObservationSourceType.PROVIDER, "TWELVE_DATA");
+        when(fxObservationRepository.findFirstByBaseCurrencyAndQuoteCurrencyOrderByObservedAtDesc("EUR", "USD"))
+                .thenReturn(Optional.of(obs));
+
+        FxRateQuote quote = fxRateService.getRate("EUR", "USD", null);
+        assertEquals(new BigDecimal("1.08900000"), quote.rate());
+        assertEquals("TWELVE_DATA", quote.sourceReference());
+        verifyNoInteractions(fxRateProvider);
+    }
+
+    @Test
     @DisplayName("Triangulates through USD when non-USD direct rate is not available")
     void triangulateThroughUsd() {
         Instant now = Instant.now();
@@ -140,6 +159,23 @@ class FxRateServiceTests {
         FxRateQuote quote = fxRateService.getRate("GBP", "CHF", now);
         assertEquals(new BigDecimal("1.15000000"), quote.rate());
         assertNotNull(quote.warning());
+    }
+
+    @Test
+    @DisplayName("Partial triangulation failure when baseToUsd is empty")
+    void partialTriangulationBaseMissing() {
+        Instant now = Instant.now();
+        when(fxObservationRepository.findFirstByBaseCurrencyAndQuoteCurrencyAndSourceTypeOrderByObservedAtDesc(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        when(fxRateProvider.fetchRate("GBP", "CHF", now)).thenReturn(Optional.empty());
+        when(fxRateProvider.fetchRate("GBP", "USD", now)).thenReturn(Optional.empty());
+
+        FxObservation obs = new FxObservation("GBP", "CHF", new BigDecimal("1.15000000"), now.minus(2, ChronoUnit.HOURS), ObservationSourceType.PROVIDER, "FEED");
+        when(fxObservationRepository.findFirstByBaseCurrencyAndQuoteCurrencyOrderByObservedAtDesc("GBP", "CHF"))
+                .thenReturn(Optional.of(obs));
+
+        FxRateQuote quote = fxRateService.getRate("GBP", "CHF", now);
+        assertEquals(new BigDecimal("1.15000000"), quote.rate());
     }
 
     @Test
@@ -228,13 +264,29 @@ class FxRateServiceTests {
     void recordManualOverrideValidatesAndPersists() {
         when(fxObservationRepository.save(any(FxObservation.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        FxObservation obs = fxRateService.recordManualOverride("GBP", "USD", new BigDecimal("1.31000000"), null, "Broker fill rate");
-        assertNotNull(obs);
-        assertEquals("GBP", obs.getBaseCurrency());
-        assertEquals("USD", obs.getQuoteCurrency());
-        assertEquals(new BigDecimal("1.31000000"), obs.getRate());
-        assertEquals(ObservationSourceType.MANUAL, obs.getSourceType());
-        assertEquals("Broker fill rate", obs.getSourceReference());
+        Instant specificTime = Instant.now().minus(1, ChronoUnit.HOURS);
+        FxObservation obs1 = fxRateService.recordManualOverride("GBP", "USD", new BigDecimal("1.31000000"), specificTime, "Broker fill rate");
+        assertNotNull(obs1);
+        assertEquals("GBP", obs1.getBaseCurrency());
+        assertEquals("USD", obs1.getQuoteCurrency());
+        assertEquals(new BigDecimal("1.31000000"), obs1.getRate());
+        assertEquals(ObservationSourceType.MANUAL, obs1.getSourceType());
+        assertEquals("Broker fill rate", obs1.getSourceReference());
+        assertEquals(specificTime, obs1.getObservedAt());
+
+        // Null reason and null observedAt
+        FxObservation obs2 = fxRateService.recordManualOverride("GBP", "USD", new BigDecimal("1.31000000"), null, null);
+        assertEquals("MANUAL_OVERRIDE", obs2.getSourceReference());
+        assertNotNull(obs2.getObservedAt());
+
+        // Blank reason
+        FxObservation obs3 = fxRateService.recordManualOverride("GBP", "USD", new BigDecimal("1.31000000"), specificTime, "   ");
+        assertEquals("MANUAL_OVERRIDE", obs3.getSourceReference());
+
+        // Null checks
+        assertThrows(NullPointerException.class, () -> fxRateService.recordManualOverride(null, "USD", BigDecimal.ONE, null, null));
+        assertThrows(NullPointerException.class, () -> fxRateService.recordManualOverride("GBP", null, BigDecimal.ONE, null, null));
+        assertThrows(NullPointerException.class, () -> fxRateService.recordManualOverride("GBP", "USD", null, null, null));
 
         // Identical currencies throw IllegalArgumentException
         assertThrows(IllegalArgumentException.class,

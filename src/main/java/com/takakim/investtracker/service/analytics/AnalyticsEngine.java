@@ -117,12 +117,15 @@ public class AnalyticsEngine {
                     warnings.add(instrument.getName() + " (" + instrument.getTicker() + "): " + quote.warning());
                 }
             } catch (ResourceNotFoundException e) {
-                // If price unavailable, fallback to average unit cost if available
+                // If price unavailable, build a proxy from cost basis in the cost basis currency
+                String posFallbackCurr = pos.getCostBasisCurrency() != null
+                        ? pos.getCostBasisCurrency()
+                        : instrument.getCurrency().code();
                 BigDecimal fallbackPrice = pos.getCostBasisAmount() != null && qty.compareTo(BigDecimal.ZERO) > 0
                         ? pos.getCostBasisAmount().divide(qty, SCALE, ROUNDING)
                         : BigDecimal.ZERO;
                 quote = new PriceQuote(
-                        instrument.getId(), fallbackPrice, instrument.getCurrency().code(),
+                        instrument.getId(), fallbackPrice, posFallbackCurr,
                         targetTime, com.takakim.investtracker.domain.ObservationSourceType.PROVIDER,
                         "COST_PROXY", true, "Price quote unavailable; using cost basis proxy"
                 );
