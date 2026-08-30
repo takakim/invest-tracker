@@ -37,7 +37,8 @@ public class InstrumentService {
         if (request.isin() != null && !request.isin().isBlank() && repository.existsByIsinIgnoreCase(request.isin())) {
             throw new ConflictException("Instrument ISIN already exists");
         }
-        return toResponse(repository.save(new Instrument(request.name(), request.assetClass(), request.ticker(), request.isin(), request.exchange(), new Currency(request.currency()))));
+        boolean manualOnly = Boolean.TRUE.equals(request.manualPriceOnly());
+        return toResponse(repository.save(new Instrument(request.name(), request.assetClass(), request.ticker(), request.isin(), request.exchange(), new Currency(request.currency()), manualOnly)));
     }
 
     public ApiDtos.InstrumentResponse update(UUID id, ApiDtos.InstrumentRequest request) {
@@ -51,13 +52,15 @@ public class InstrumentService {
                         }
                     });
         }
+        boolean manualOnly = Boolean.TRUE.equals(request.manualPriceOnly());
         instrument.update(
                 request.name(),
                 request.assetClass(),
                 request.ticker(),
                 request.isin(),
                 request.exchange(),
-                new Currency(request.currency())
+                new Currency(request.currency()),
+                manualOnly
         );
         return toResponse(repository.save(instrument));
     }
@@ -75,7 +78,18 @@ public class InstrumentService {
     public List<ApiDtos.InstrumentResponse> refreshAllPrices() {
         List<Instrument> instruments = repository.findAllByOrderByNameAsc();
         if (marketDataService != null) {
-            for (Instrument inst : instruments) {
+            // Prioritize stalest or unobserved instruments first
+            java.util.List<Instrument> prioritized = new java.util.ArrayList<>(instruments);
+            prioritized.sort(java.util.Comparator.comparing((Instrument inst) -> {
+                if (marketObservationRepository == null) {
+                    return Instant.MIN;
+                }
+                return marketObservationRepository.findFirstByInstrumentIdOrderByObservedAtDesc(inst.getId())
+                        .map(MarketObservation::getObservedAt)
+                        .orElse(Instant.MIN);
+            }));
+
+            for (Instrument inst : prioritized) {
                 try {
                     marketDataService.getLatestPrice(inst.getId(), Instant.now());
                 } catch (Exception ignored) {
@@ -117,7 +131,7 @@ public class InstrumentService {
 
         return new ApiDtos.InstrumentResponse(
                 i.getId(), i.getName(), i.getAssetClass(), i.getTicker(), i.getIsin(),
-                i.getExchange(), i.getCurrency().code(), i.getCreatedAt(), i.getUpdatedAt(),
+                i.getExchange(), i.getCurrency().code(), i.isManualPriceOnly(), i.getCreatedAt(), i.getUpdatedAt(),
                 price, priceCurrency, priceAsOf, isStale
         );
     }

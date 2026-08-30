@@ -40,18 +40,25 @@ public final class ApiDtos {
         @Size(max = 32) String ticker,
         @Size(max = 12) String isin,
         @Size(max = 80) String exchange,
-        @NotBlank @Pattern(regexp = "[A-Za-z]{3}") String currency) { }
+        @NotBlank @Pattern(regexp = "[A-Za-z]{3}") String currency,
+        Boolean manualPriceOnly) {
+        public InstrumentRequest(
+            String name, AssetClass assetClass, String ticker, String isin, String exchange, String currency
+        ) {
+            this(name, assetClass, ticker, isin, exchange, currency, false);
+        }
+    }
 
     public record InstrumentResponse(
         UUID id, String name, AssetClass assetClass, String ticker, String isin,
-        String exchange, String currency, Instant createdAt, Instant updatedAt,
+        String exchange, String currency, Boolean manualPriceOnly, Instant createdAt, Instant updatedAt,
         java.math.BigDecimal latestPrice, String priceCurrency, Instant priceAsOf,
         Boolean isStale) {
         public InstrumentResponse(
             UUID id, String name, AssetClass assetClass, String ticker, String isin,
             String exchange, String currency, Instant createdAt, Instant updatedAt
         ) {
-            this(id, name, assetClass, ticker, isin, exchange, currency, createdAt, updatedAt, null, null, null, null);
+            this(id, name, assetClass, ticker, isin, exchange, currency, false, createdAt, updatedAt, null, null, null, null);
         }
     }
 

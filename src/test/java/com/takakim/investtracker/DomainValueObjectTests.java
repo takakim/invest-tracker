@@ -17,9 +17,11 @@ import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DomainValueObjectTests {
     @Test
@@ -233,9 +235,20 @@ class DomainValueObjectTests {
         assertEquals("Name Up", res1.name());
         assertEquals(AssetClass.ETF, res1.assetClass());
 
-        // 4. Successful update with blank isin
-        var res2 = service.update(id1, new com.takakim.investtracker.api.ApiDtos.InstrumentRequest("Name Up 2", AssetClass.BOND, "TCK", "   ", "LSE", "USD"));
+        // 4. Successful update with blank isin and manualPriceOnly
+        var res2 = service.update(id1, new com.takakim.investtracker.api.ApiDtos.InstrumentRequest("Name Up 2", AssetClass.BOND, "TCK", "   ", "LSE", "USD", true));
         assertEquals(AssetClass.BOND, res2.assetClass());
+        assertTrue(res2.manualPriceOnly());
+
+        // Instrument direct entity methods
+        Instrument direct = new Instrument("Direct", AssetClass.CRYPTO, "BTC", null, null, new Currency("USD"), true);
+        assertTrue(direct.isManualPriceOnly());
+        direct.setManualPriceOnly(false);
+        assertFalse(direct.isManualPriceOnly());
+        direct.update("Direct 2", AssetClass.CRYPTO, "BTC", null, null, new Currency("USD"), true);
+        assertTrue(direct.isManualPriceOnly());
+        direct.update("Direct 3", AssetClass.CRYPTO, "BTC", null, null, new Currency("USD"));
+        assertTrue(direct.isManualPriceOnly());
     }
 }
 

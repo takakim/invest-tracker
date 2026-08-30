@@ -205,35 +205,62 @@ public class FreetradeCsvParser implements BrokerCsvParser {
 
         // 3. DIVIDEND or SPECIAL_DIVIDEND
         if ("DIVIDEND".equalsIgnoreCase(rawType) || "SPECIAL_DIVIDEND".equalsIgnoreCase(rawType)) {
+            String effectiveCurrency = (accountCurrency != null && !accountCurrency.isBlank()) ? accountCurrency : "GBP";
             return new ParsedTransactionRow(
                     rowNumber, timestamp, rawType, TransactionType.DIVIDEND, title, ticker, isin,
                     instrumentCurrency, quantity, null,
                     totalAccountAmount != null ? totalAccountAmount : BigDecimal.ZERO,
                     BigDecimal.ZERO, divTaxAmount != null ? divTaxAmount : BigDecimal.ZERO,
-                    accountCurrency != null ? accountCurrency : "GBP", fxRate, instrumentCurrency,
+                    effectiveCurrency, fxRate, instrumentCurrency,
                     orderId, "Freetrade Dividend", false, null, rawLine
             );
         }
 
         // 4. INTEREST_FROM_CASH
         if ("INTEREST_FROM_CASH".equalsIgnoreCase(rawType)) {
+            String effectiveCurrency = (accountCurrency != null && !accountCurrency.isBlank()) ? accountCurrency : "GBP";
             return new ParsedTransactionRow(
                     rowNumber, timestamp, rawType, TransactionType.INTEREST, title, null, null,
                     null, null, null,
                     totalAccountAmount != null ? totalAccountAmount : BigDecimal.ZERO,
-                    BigDecimal.ZERO, BigDecimal.ZERO, accountCurrency != null ? accountCurrency : "GBP",
+                    BigDecimal.ZERO, BigDecimal.ZERO, effectiveCurrency,
                     null, null, null, "Freetrade Cash Interest", false, null, rawLine
             );
         }
 
         // 5. TOP_UP
         if ("TOP_UP".equalsIgnoreCase(rawType)) {
+            String effectiveCurrency = (accountCurrency != null && !accountCurrency.isBlank()) ? accountCurrency : "GBP";
             return new ParsedTransactionRow(
                     rowNumber, timestamp, rawType, TransactionType.DEPOSIT, title, null, null,
                     null, null, null,
                     totalAccountAmount != null ? totalAccountAmount : BigDecimal.ZERO,
-                    BigDecimal.ZERO, BigDecimal.ZERO, accountCurrency != null ? accountCurrency : "GBP",
+                    BigDecimal.ZERO, BigDecimal.ZERO, effectiveCurrency,
                     null, null, null, "Freetrade Cash Top Up", false, null, rawLine
+            );
+        }
+
+        // 6. STOCK_SPLIT or CORPORATE_ACTION (forward stock split)
+        if ("STOCK_SPLIT".equalsIgnoreCase(rawType) || ("CORPORATE_ACTION".equalsIgnoreCase(rawType) && "STOCK_SPLIT".equalsIgnoreCase(buySell))) {
+            BigDecimal splitQty = quantity != null && quantity.compareTo(BigDecimal.ZERO) > 0 ? quantity : parseDecimal(col(cols, 35));
+            String effectiveCurrency = (accountCurrency != null && !accountCurrency.isBlank()) ? accountCurrency : "GBP";
+            return new ParsedTransactionRow(
+                    rowNumber, timestamp, rawType, TransactionType.STOCK_SPLIT, title, ticker, isin,
+                    instrumentCurrency, splitQty, null,
+                    BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, effectiveCurrency,
+                    fxRate, instrumentCurrency, orderId, "Freetrade Stock Split " + (orderId != null ? orderId : ""), false, null, rawLine
+            );
+        }
+
+        // 7. REVERSE_STOCK_SPLIT
+        if ("REVERSE_STOCK_SPLIT".equalsIgnoreCase(rawType) || ("CORPORATE_ACTION".equalsIgnoreCase(rawType) && "REVERSE_STOCK_SPLIT".equalsIgnoreCase(buySell))) {
+            BigDecimal revQty = quantity != null && quantity.compareTo(BigDecimal.ZERO) > 0 ? quantity : parseDecimal(col(cols, 35));
+            String effectiveCurrency = (accountCurrency != null && !accountCurrency.isBlank()) ? accountCurrency : "GBP";
+            return new ParsedTransactionRow(
+                    rowNumber, timestamp, rawType, TransactionType.REVERSE_STOCK_SPLIT, title, ticker, isin,
+                    instrumentCurrency, revQty, null,
+                    BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, effectiveCurrency,
+                    fxRate, instrumentCurrency, orderId, "Freetrade Reverse Stock Split " + (orderId != null ? orderId : ""), false, null, rawLine
             );
         }
 

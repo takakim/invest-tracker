@@ -54,6 +54,50 @@ public class DefaultMarketDataProvider implements MarketDataProvider {
         tickerPriceMap.put("NVO", new BigDecimal("136.2000"));
         tickerPriceMap.put("HON", new BigDecimal("212.0000"));
         tickerPriceMap.put("QS", new BigDecimal("5.8500"));
+        tickerPriceMap.put("RPI", new BigDecimal("5.7986"));
+        tickerPriceMap.put("GB00BS3DYQ52", new BigDecimal("5.7986"));
+        tickerPriceMap.put("IQE", new BigDecimal("0.4797"));
+        tickerPriceMap.put("GB0009619924", new BigDecimal("0.4797"));
+        tickerPriceMap.put("BKCN", new BigDecimal("46.2750"));
+        tickerPriceMap.put("CHTE", new BigDecimal("6.0230"));
+        tickerPriceMap.put("CYSE", new BigDecimal("19.9780"));
+        tickerPriceMap.put("INTL", new BigDecimal("63.8200"));
+        tickerPriceMap.put("KLWD", new BigDecimal("20.8150"));
+        tickerPriceMap.put("QWTM", new BigDecimal("24.7850"));
+        tickerPriceMap.put("WBIO", new BigDecimal("13.9380"));
+        tickerPriceMap.put("WTNR", new BigDecimal("22.2300"));
+        tickerPriceMap.put("HNSS", new BigDecimal("35.5050"));
+        tickerPriceMap.put("SMGB", new BigDecimal("43.2800"));
+        tickerPriceMap.put("BRK.B", new BigDecimal("327.3600"));
+        tickerPriceMap.put("BRK/B", new BigDecimal("327.3600"));
+        tickerPriceMap.put("BNPP", new BigDecimal("54.7367"));
+        tickerPriceMap.put("BNP", new BigDecimal("54.7367"));
+        tickerPriceMap.put("AMD", new BigDecimal("128.6150"));
+        tickerPriceMap.put("COIN", new BigDecimal("209.9200"));
+        tickerPriceMap.put("CRWD", new BigDecimal("253.1250"));
+        tickerPriceMap.put("COST", new BigDecimal("549.5749"));
+        tickerPriceMap.put("NET", new BigDecimal("41.8400"));
+        tickerPriceMap.put("PLTR", new BigDecimal("17.0313"));
+        tickerPriceMap.put("BBD", new BigDecimal("2.2600"));
+        tickerPriceMap.put("BIRD", new BigDecimal("2.4314"));
+        tickerPriceMap.put("SMCI", new BigDecimal("588.5600"));
+        tickerPriceMap.put("SMLR", new BigDecimal("25.1600"));
+        tickerPriceMap.put("SOUN", new BigDecimal("3.8996"));
+        tickerPriceMap.put("SPOT", new BigDecimal("220.7000"));
+        tickerPriceMap.put("STLA", new BigDecimal("21.8564"));
+        tickerPriceMap.put("TM", new BigDecimal("190.3900"));
+        tickerPriceMap.put("LUNR", new BigDecimal("8.0050"));
+        tickerPriceMap.put("MRNA", new BigDecimal("109.3150"));
+        tickerPriceMap.put("NU", new BigDecimal("8.0988"));
+        tickerPriceMap.put("QBTS", new BigDecimal("24.7000"));
+        tickerPriceMap.put("QCOM", new BigDecimal("96.7280"));
+        tickerPriceMap.put("QUBT", new BigDecimal("10.0500"));
+        tickerPriceMap.put("RDDT", new BigDecimal("40.4050"));
+        tickerPriceMap.put("RGTI", new BigDecimal("21.2700"));
+        tickerPriceMap.put("BWXT", new BigDecimal("188.0000"));
+        tickerPriceMap.put("CEG", new BigDecimal("253.4900"));
+        tickerPriceMap.put("PSIX", new BigDecimal("40.7400"));
+        tickerPriceMap.put("IONQ", new BigDecimal("59.5000"));
     }
 
     public void setPrice(String ticker, BigDecimal price) {
@@ -112,19 +156,28 @@ public class DefaultMarketDataProvider implements MarketDataProvider {
 
     private BigDecimal resolveBasePrice(Instrument instrument) {
         String ticker = instrument.getTicker() != null ? instrument.getTicker().toUpperCase() : null;
-        if (ticker != null && tickerPriceMap.containsKey(ticker)) {
-            return tickerPriceMap.get(ticker);
+        if (ticker != null) {
+            String clean = ticker.endsWith(".") ? ticker.substring(0, ticker.length() - 1) : ticker;
+            BigDecimal price = tickerPriceMap.get(clean);
+            if (price != null) {
+                return price;
+            }
         }
         String isin = instrument.getIsin() != null ? instrument.getIsin().toUpperCase() : null;
-        if (isin != null && tickerPriceMap.containsKey(isin)) {
-            return tickerPriceMap.get(isin);
+        if (isin != null) {
+            BigDecimal isinPrice = tickerPriceMap.get(isin);
+            if (isinPrice != null) {
+                return isinPrice;
+            }
         }
-        // Treasury bills pattern matching (UK T-Bills price near par ~99.85)
-        if (isin != null && isin.startsWith("GB00") && (isin.contains("BS") || isin.contains("BP") || isin.contains("BX"))) {
-            return new BigDecimal("99.8500");
-        }
-        if (instrument.getName() != null && instrument.getName().toUpperCase().contains("T-BILL")) {
-            return new BigDecimal("99.8500");
+        // Treasury bills pattern matching (UK T-Bills price near par ~99.85) - only for bonds
+        if (instrument.getAssetClass() == com.takakim.investtracker.domain.AssetClass.BOND) {
+            if (instrument.getName() != null && instrument.getName().toUpperCase().contains("T-BILL")) {
+                return new BigDecimal("99.8500");
+            }
+            if (isin != null && isin.startsWith("GB00") && (isin.contains("BS") || isin.contains("BP") || isin.contains("BX"))) {
+                return new BigDecimal("99.8500");
+            }
         }
         return null;
     }

@@ -232,7 +232,20 @@ export function InstrumentListPage() {
             <TableBody>
               {sortedInstruments.map((instrument) => (
                 <TableRow key={instrument.id} hover>
-                  <TableCell sx={{ fontWeight: 600 }}>{instrument.name}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <span>{instrument.name}</span>
+                      {instrument.manualPriceOnly && (
+                        <Chip
+                          label="Manual Only"
+                          size="small"
+                          color="default"
+                          variant="outlined"
+                          sx={{ fontSize: '0.65rem', height: 20 }}
+                        />
+                      )}
+                    </Box>
+                  </TableCell>
                   <TableCell>
                     <Chip
                       label={ASSET_CLASS_LABELS[instrument.assetClass] || instrument.assetClass}

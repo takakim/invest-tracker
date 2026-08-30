@@ -32,9 +32,10 @@ public class FifoCostBasisStrategy implements CostBasisStrategy {
 
     @Override
     public PositionCalculationResult calculate(Account account, Instrument instrument, List<Transaction> transactions) {
-        String currency = (instrument != null && instrument.getCurrency() != null)
-                ? instrument.getCurrency().code()
-                : (account != null && account.getAccountCurrency() != null ? account.getAccountCurrency().code() : "USD");
+        // Default currency fallback — will be overridden by actual transaction currency below
+        String currency = (account != null && account.getAccountCurrency() != null)
+                ? account.getAccountCurrency().code()
+                : (instrument != null && instrument.getCurrency() != null ? instrument.getCurrency().code() : "USD");
 
         UUID instId = instrument != null ? instrument.getId() : UUID.randomUUID();
         UUID accId = account != null ? account.getId() : UUID.randomUUID();
@@ -60,6 +61,16 @@ public class FifoCostBasisStrategy implements CostBasisStrategy {
                         .thenComparing(Transaction::getCreatedAt)
                         .thenComparing(Transaction::getId))
                 .toList();
+
+        // Derive cost basis currency from the first BUY transaction's actual settled currency.
+        // Freetrade and other brokers settle in account currency (GBP) even for USD-denominated stocks.
+        // Note: BUY transactions always have a non-null currency enforced by the Transaction constructor.
+        for (Transaction tx : sortedTxs) {
+            if (tx.getType() == TransactionType.BUY) {
+                currency = tx.getCurrency();
+                break;
+            }
+        }
 
         List<PositionLot> lots = new ArrayList<>();
         List<LotDisposal> disposals = new ArrayList<>();

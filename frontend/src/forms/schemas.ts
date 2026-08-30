@@ -79,6 +79,7 @@ export const instrumentSchema = z.object({
     .or(z.literal(''))
     .transform((v) => (v && v.trim() ? v.trim() : undefined)),
   currency: currencyCodeSchema,
+  manualPriceOnly: z.boolean().optional(),
 });
 
 export type InstrumentFormData = z.input<typeof instrumentSchema>;

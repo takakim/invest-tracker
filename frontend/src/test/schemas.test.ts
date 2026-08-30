@@ -141,6 +141,7 @@ describe('instrumentSchema', () => {
       isin: ' US0378331005 ',
       exchange: ' NASDAQ ',
       currency: 'usd',
+      manualPriceOnly: true,
     });
 
     expect(result.success).toBe(true);
@@ -151,6 +152,7 @@ describe('instrumentSchema', () => {
       expect(result.data.isin).toBe('US0378331005');
       expect(result.data.exchange).toBe('NASDAQ');
       expect(result.data.currency).toBe('USD');
+      expect(result.data.manualPriceOnly).toBe(true);
     }
   });
 

@@ -34,6 +34,9 @@ public class Instrument {
     @Column(nullable = false, length = 3)
     private String currency;
 
+    @Column(name = "manual_price_only", nullable = false)
+    private boolean manualPriceOnly;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -43,6 +46,10 @@ public class Instrument {
     protected Instrument() { }
 
     public Instrument(String name, AssetClass assetClass, String ticker, String isin, String exchange, Currency currency) {
+        this(name, assetClass, ticker, isin, exchange, currency, false);
+    }
+
+    public Instrument(String name, AssetClass assetClass, String ticker, String isin, String exchange, Currency currency, boolean manualPriceOnly) {
         this.id = UUID.randomUUID();
         this.name = requireName(name);
         this.assetClass = java.util.Objects.requireNonNull(assetClass, "assetClass");
@@ -50,17 +57,23 @@ public class Instrument {
         this.isin = normalize(isin);
         this.exchange = normalize(exchange);
         this.currency = java.util.Objects.requireNonNull(currency, "currency").code();
+        this.manualPriceOnly = manualPriceOnly;
         this.createdAt = Instant.now();
         this.updatedAt = this.createdAt;
     }
 
     public void update(String name, AssetClass assetClass, String ticker, String isin, String exchange, Currency currency) {
+        update(name, assetClass, ticker, isin, exchange, currency, this.manualPriceOnly);
+    }
+
+    public void update(String name, AssetClass assetClass, String ticker, String isin, String exchange, Currency currency, boolean manualPriceOnly) {
         this.name = requireName(name);
         this.assetClass = java.util.Objects.requireNonNull(assetClass, "assetClass");
         this.ticker = normalize(ticker);
         this.isin = normalize(isin);
         this.exchange = normalize(exchange);
         this.currency = java.util.Objects.requireNonNull(currency, "currency").code();
+        this.manualPriceOnly = manualPriceOnly;
         this.updatedAt = Instant.now();
     }
 
@@ -78,6 +91,11 @@ public class Instrument {
     public String getIsin() { return isin; }
     public String getExchange() { return exchange; }
     public Currency getCurrency() { return new Currency(currency); }
+    public boolean isManualPriceOnly() { return manualPriceOnly; }
+    public void setManualPriceOnly(boolean manualPriceOnly) {
+        this.manualPriceOnly = manualPriceOnly;
+        this.updatedAt = Instant.now();
+    }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
 }

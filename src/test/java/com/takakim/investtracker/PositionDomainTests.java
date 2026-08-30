@@ -584,4 +584,98 @@ class PositionDomainTests {
         List<ApiDtos.InstrumentResponse> allResp = service.refreshAllPrices();
         assertEquals(1, allResp.size());
     }
+
+    @Test
+    @DisplayName("PositionService computePositionPerformance handles all transaction null branches and native return conversion")
+    void computePositionPerformanceEdgeBranches() {
+        var portRepo = org.mockito.Mockito.mock(com.takakim.investtracker.repository.PortfolioRepository.class);
+        var accRepo = org.mockito.Mockito.mock(com.takakim.investtracker.repository.AccountRepository.class);
+        var instRepo = org.mockito.Mockito.mock(com.takakim.investtracker.repository.InstrumentRepository.class);
+        var posRepo = org.mockito.Mockito.mock(com.takakim.investtracker.repository.PositionRepository.class);
+        var posEngine = org.mockito.Mockito.mock(com.takakim.investtracker.service.position.PositionEngine.class);
+        var txRepo = org.mockito.Mockito.mock(com.takakim.investtracker.repository.TransactionRepository.class);
+        var marketService = org.mockito.Mockito.mock(com.takakim.investtracker.service.market.MarketDataService.class);
+        var fxService = org.mockito.Mockito.mock(com.takakim.investtracker.service.currency.FxRateService.class);
+
+        var service = new com.takakim.investtracker.service.PositionService(
+                portRepo, accRepo, instRepo, posRepo, posEngine, txRepo, marketService, fxService
+        );
+
+        Currency gbp = new Currency("GBP");
+        Currency usd = new Currency("USD");
+        Portfolio portfolio = new Portfolio("Main", gbp, CostBasisMethod.AVERAGE_COST, ReturnMethod.XIRR);
+        Account account = new Account(portfolio, "ISA Account", "Broker", gbp);
+        Instrument instrument = new Instrument("Nvidia", AssetClass.STOCK, "NVDA", "US67066G1040", "NASDAQ", usd);
+
+        // 1. Transaction with valid quantity for BUY, null fee/tax
+        Transaction txBuy = new Transaction(
+                account, instrument, TransactionType.BUY,
+                Instant.now(), Instant.now(), new BigDecimal("5.0"),
+                new BigDecimal("20.00"), new BigDecimal("100.00"),
+                null, null,
+                "GBP", null, null, null, null
+        );
+        // 2. Transaction with valid quantity for SELL, null fee/tax
+        Transaction txSell = new Transaction(
+                account, instrument, TransactionType.SELL,
+                Instant.now(), Instant.now(), new BigDecimal("2.0"),
+                new BigDecimal("25.00"), new BigDecimal("50.00"),
+                null, null,
+                "GBP", null, null, null, null
+        );
+        // 3. Transaction for DIVIDEND with null fee/tax
+        Transaction txDiv = new Transaction(
+                account, instrument, TransactionType.DIVIDEND,
+                Instant.now(), Instant.now(), null,
+                null, new BigDecimal("10.00"),
+                null, null,
+                "GBP", null, null, null, null
+        );
+        // 4. Transaction with non-null netAmount, non-null fee, non-null tax
+        Transaction txFull = new Transaction(
+                account, instrument, TransactionType.BUY,
+                Instant.now(), Instant.now(), new BigDecimal("10"),
+                new BigDecimal("10.00"), new BigDecimal("100.00"),
+                new BigDecimal("2.00"), new BigDecimal("1.00"),
+                "GBP", null, null, null, null
+        );
+
+        org.mockito.Mockito.when(txRepo.findByAccountIdAndInstrumentIdOrderByTradeDateAsc(account.getId(), instrument.getId()))
+                .thenReturn(List.of(txBuy, txSell, txDiv, txFull));
+
+        var calc = new com.takakim.investtracker.service.position.PositionCalculationResult(
+                account.getId(), instrument.getId(), CostBasisMethod.AVERAGE_COST,
+                new BigDecimal("10.0"), new BigDecimal("200.00"), "GBP",
+                new BigDecimal("20.00"), new BigDecimal("15.00"), List.of(), List.of()
+        );
+        org.mockito.Mockito.when(posEngine.calculate(org.mockito.Mockito.eq(account), org.mockito.Mockito.eq(instrument), org.mockito.Mockito.any(), org.mockito.Mockito.any()))
+                .thenReturn(calc);
+
+        org.mockito.Mockito.when(marketService.getLatestPrice(org.mockito.Mockito.eq(instrument.getId()), org.mockito.Mockito.any()))
+                .thenReturn(new com.takakim.investtracker.service.market.PriceQuote(
+                        instrument.getId(), new BigDecimal("25.00"), "USD", Instant.now(),
+                        com.takakim.investtracker.domain.ObservationSourceType.PROVIDER, "REF", false, null
+                ));
+
+        // FX mock for price and return conversion
+        org.mockito.Mockito.when(fxService.convert(org.mockito.Mockito.any(), org.mockito.Mockito.eq(gbp), org.mockito.Mockito.any()))
+                .thenReturn(new Money(new BigDecimal("20.00"), gbp));
+        org.mockito.Mockito.when(fxService.convert(org.mockito.Mockito.any(), org.mockito.Mockito.eq(usd), org.mockito.Mockito.any()))
+                .thenReturn(new Money(new BigDecimal("15.00"), usd));
+
+        ApiDtos.PositionPerformanceResponse perf = service.computePositionPerformance(account, instrument, UUID.randomUUID());
+        assertNotNull(perf);
+        assertEquals("ACTIVE", perf.status());
+        assertEquals(new BigDecimal("15.0"), perf.totalBoughtQuantity());
+        assertEquals(new BigDecimal("2.0"), perf.totalSoldQuantity());
+
+        // Also test same currency quote
+        org.mockito.Mockito.when(marketService.getLatestPrice(org.mockito.Mockito.eq(instrument.getId()), org.mockito.Mockito.any()))
+                .thenReturn(new com.takakim.investtracker.service.market.PriceQuote(
+                        instrument.getId(), new BigDecimal("25.00"), "GBP", Instant.now(),
+                        com.takakim.investtracker.domain.ObservationSourceType.PROVIDER, "REF", false, null
+                ));
+        ApiDtos.PositionPerformanceResponse perfSameCurr = service.computePositionPerformance(account, instrument, UUID.randomUUID());
+        assertNotNull(perfSameCurr);
+    }
 }
