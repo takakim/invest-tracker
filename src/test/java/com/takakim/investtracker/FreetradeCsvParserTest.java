@@ -52,7 +52,7 @@ class FreetradeCsvParserTest {
         assertEquals("FIG", r1.ticker());
         assertEquals("US3168411052", r1.isin());
         assertEquals(0, new BigDecimal("50.00000000").compareTo(r1.quantity()));
-        assertEquals(0, new BigDecimal("824.19").compareTo(r1.grossAmount()));
+        assertEquals(0, new BigDecimal("829.08").compareTo(r1.grossAmount()));
         assertEquals(0, new BigDecimal("4.89").compareTo(r1.feeAmount()));
         assertFalse(r1.isIgnored());
 
@@ -60,14 +60,15 @@ class FreetradeCsvParserTest {
         ParsedTransactionRow r2 = rows.get(1);
         assertEquals(TransactionType.BUY, r2.mappedType());
         assertEquals("CBRS", r2.ticker());
-        assertEquals(0, new BigDecimal("494.33").compareTo(r2.grossAmount()));
+        assertEquals(0, new BigDecimal("491.43").compareTo(r2.grossAmount()));
+        assertEquals(0, new BigDecimal("2.90").compareTo(r2.feeAmount()));
 
         // Row 3: Apple DIVIDEND
         ParsedTransactionRow r3 = rows.get(2);
         assertEquals(TransactionType.DIVIDEND, r3.mappedType());
         assertEquals("AAPL", r3.ticker());
-        assertEquals(0, new BigDecimal("14.78").compareTo(r3.grossAmount()));
-        assertEquals(0, new BigDecimal("3.52").compareTo(r3.taxAmount()));
+        assertEquals(0, new BigDecimal("17.3866").compareTo(r3.grossAmount()));
+        assertEquals(0, new BigDecimal("2.6066").compareTo(r3.taxAmount()));
 
         // Row 4: Interest
         ParsedTransactionRow r4 = rows.get(3);
