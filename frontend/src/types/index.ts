@@ -599,3 +599,39 @@ export interface RebalanceAnalysis {
   items: RebalanceOrderItem[];
 }
 
+export interface HistoricalValuationPoint {
+  timestamp: string;
+  marketValue: number;
+  costBasis: number;
+  cashValue: number;
+  investedCapital: number;
+  unrealizedGainLoss: number;
+  portfolioReturnPercentage: number;
+  benchmarkReturnPercentage?: number | null;
+}
+
+export interface HistoricalPerformanceSummary {
+  startingValue: number;
+  endingValue: number;
+  netCashFlows: number;
+  totalGainLoss: number;
+  portfolioReturnPercentage: number;
+  benchmarkReturnPercentage?: number | null;
+  excessReturnPercentage?: number | null;
+  maxDrawdownPercentage: number;
+}
+
+export interface PortfolioHistory {
+  portfolioId: string;
+  portfolioName: string;
+  baseCurrency: string;
+  period: string;
+  interval: string;
+  periodStart: string;
+  periodEnd: string;
+  benchmarkId?: string | null;
+  benchmarkTicker?: string | null;
+  benchmarkName?: string | null;
+  summary: HistoricalPerformanceSummary;
+  dataPoints: HistoricalValuationPoint[];
+}

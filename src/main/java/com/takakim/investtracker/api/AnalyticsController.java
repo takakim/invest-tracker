@@ -33,16 +33,28 @@ public class AnalyticsController {
     private final DividendAnalyticsService dividendAnalyticsService;
     private final TargetAllocationService targetAllocationService;
     private final RebalancingService rebalancingService;
+    private final com.takakim.investtracker.service.analytics.PortfolioHistoryService portfolioHistoryService;
 
     public AnalyticsController(
             AnalyticsEngine analyticsEngine,
             DividendAnalyticsService dividendAnalyticsService,
             TargetAllocationService targetAllocationService,
-            RebalancingService rebalancingService) {
+            RebalancingService rebalancingService,
+            com.takakim.investtracker.service.analytics.PortfolioHistoryService portfolioHistoryService) {
         this.analyticsEngine = analyticsEngine;
         this.dividendAnalyticsService = dividendAnalyticsService;
         this.targetAllocationService = targetAllocationService;
         this.rebalancingService = rebalancingService;
+        this.portfolioHistoryService = portfolioHistoryService;
+    }
+
+    @GetMapping("/api/v1/portfolios/{portfolioId}/history")
+    public ApiDtos.PortfolioHistoryResponse getPortfolioHistory(
+            @PathVariable UUID portfolioId,
+            @RequestParam(required = false) String period,
+            @RequestParam(required = false) String interval,
+            @RequestParam(required = false) UUID benchmarkId) {
+        return portfolioHistoryService.generateHistory(portfolioId, period, interval, benchmarkId);
     }
 
     @GetMapping("/api/v1/portfolios/{portfolioId}/analytics")

@@ -514,8 +514,38 @@ public final class ApiDtos {
         java.math.BigDecimal driftTolerancePercentage,
         boolean hasDriftToleranceExceeded,
         List<RebalanceOrderItemResponse> items) { }
+
+    public record HistoricalValuationPoint(
+        Instant timestamp,
+        java.math.BigDecimal marketValue,
+        java.math.BigDecimal costBasis,
+        java.math.BigDecimal cashValue,
+        java.math.BigDecimal investedCapital,
+        java.math.BigDecimal unrealizedGainLoss,
+        java.math.BigDecimal portfolioReturnPercentage,
+        java.math.BigDecimal benchmarkReturnPercentage) { }
+
+    public record HistoricalPerformanceSummary(
+        java.math.BigDecimal startingValue,
+        java.math.BigDecimal endingValue,
+        java.math.BigDecimal netCashFlows,
+        java.math.BigDecimal totalGainLoss,
+        java.math.BigDecimal portfolioReturnPercentage,
+        java.math.BigDecimal benchmarkReturnPercentage,
+        java.math.BigDecimal excessReturnPercentage,
+        java.math.BigDecimal maxDrawdownPercentage) { }
+
+    public record PortfolioHistoryResponse(
+        UUID portfolioId,
+        String portfolioName,
+        String baseCurrency,
+        String period,
+        String interval,
+        Instant periodStart,
+        Instant periodEnd,
+        UUID benchmarkId,
+        String benchmarkTicker,
+        String benchmarkName,
+        HistoricalPerformanceSummary summary,
+        List<HistoricalValuationPoint> dataPoints) { }
 }
-
-
-
-

@@ -41,7 +41,7 @@ export function PositionFormModal({
   onSubmit,
 }: PositionFormModalProps) {
   const isEditing = Boolean(position);
-  const { data: instruments = [] } = useInstrumentsList();
+  const { data: instruments = [] } = useInstrumentsList({ enabled: open });
 
   const {
     register,

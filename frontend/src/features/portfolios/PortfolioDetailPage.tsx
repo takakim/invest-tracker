@@ -50,6 +50,7 @@ import PerformanceSummaryCard from '../performance/PerformanceSummaryCard';
 import { ValuationMetricsCard } from '../analytics/ValuationMetricsCard';
 import { AssetAllocationCard } from '../analytics/AssetAllocationCard';
 import { DividendAnalyticsCard } from '../analytics/DividendAnalyticsCard';
+import { PortfolioHistoryCard } from '../analytics/PortfolioHistoryCard';
 import { ExportReportModal } from '../analytics/ExportReportModal';
 import { TargetAllocationCard, RebalancingCalculatorCard } from '../rebalancing';
 import { BenchmarkComparisonCard } from '../benchmark/BenchmarkComparisonCard';
@@ -297,6 +298,11 @@ export function PortfolioDetailPage() {
       {/* Portfolio Performance */}
       <Box sx={{ mb: 4 }}>
         <PerformanceSummaryCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
+      </Box>
+
+      {/* Historical Valuation & Performance Charting */}
+      <Box sx={{ mb: 4 }}>
+        <PortfolioHistoryCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
       </Box>
 
       {/* Benchmark Comparison & Alpha */}
