@@ -17,9 +17,13 @@ import com.takakim.investtracker.service.ResourceNotFoundException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -86,8 +90,12 @@ public class TargetAllocationService {
                 request.driftTolerancePercentage()
         );
 
-        plan.clearItems();
+        Map<String, TargetAllocationItem> existingByCategory = new HashMap<>();
+        for (TargetAllocationItem existing : plan.getItems()) {
+            existingByCategory.put(existing.getCategoryKey().toUpperCase(), existing);
+        }
 
+        Set<String> seenCategories = new HashSet<>();
         for (TargetAllocationItemRequest itemReq : request.items()) {
             Instrument instrument = null;
             if (itemReq.instrumentId() != null) {
@@ -95,7 +103,11 @@ public class TargetAllocationService {
                         .orElseThrow(() -> new ResourceNotFoundException("Instrument not found with ID: " + itemReq.instrumentId()));
             }
 
-            String categoryKey = itemReq.categoryKey();
+            String categoryKey = itemReq.categoryKey() != null ? itemReq.categoryKey().trim() : "";
+            if (!seenCategories.add(categoryKey.toUpperCase())) {
+                throw new IllegalArgumentException("Duplicate category key in allocation plan: " + categoryKey);
+            }
+
             if (plan.getAllocationType() == AllocationType.ASSET_CLASS) {
                 // Validate AssetClass enum name if not CASH
                 if (!"CASH".equalsIgnoreCase(categoryKey)) {
@@ -107,15 +119,26 @@ public class TargetAllocationService {
                 }
             }
 
-            TargetAllocationItem item = new TargetAllocationItem(
-                    plan,
-                    categoryKey,
-                    itemReq.categoryLabel() != null ? itemReq.categoryLabel() : categoryKey,
-                    itemReq.targetPercentage(),
-                    instrument
-            );
-            plan.addItem(item);
+            TargetAllocationItem existing = existingByCategory.get(categoryKey.toUpperCase());
+            if (existing != null) {
+                existing.update(
+                        itemReq.categoryLabel() != null ? itemReq.categoryLabel() : categoryKey,
+                        itemReq.targetPercentage(),
+                        instrument
+                );
+            } else {
+                TargetAllocationItem newItem = new TargetAllocationItem(
+                        plan,
+                        categoryKey,
+                        itemReq.categoryLabel() != null ? itemReq.categoryLabel() : categoryKey,
+                        itemReq.targetPercentage(),
+                        instrument
+                );
+                plan.addItem(newItem);
+            }
         }
+
+        plan.removeItemsNotIn(seenCategories);
 
         TargetAllocationPlan saved = planRepository.save(plan);
         return toResponse(saved);
