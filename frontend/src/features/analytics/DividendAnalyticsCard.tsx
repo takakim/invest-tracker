@@ -73,8 +73,13 @@ export function DividendAnalyticsCard({ portfolioId, currency }: DividendAnalyti
   const currentYield = formatPct(analytics.portfolioDividendYieldPercentage);
   const yieldOnCost = formatPct(analytics.portfolioYieldOnCostPercentage);
 
+  const projectedCalendar = analytics.projectedMonthlyCalendar || analytics.projectedCalendar || [];
+  const holdings = analytics.holdings || [];
+  const monthlyHistory = analytics.monthlyHistory || [];
+  const yearlyHistory = analytics.yearlyHistory || [];
+
   const maxMonthVal = Math.max(
-    ...analytics.projectedCalendar.map((m) => Number(m.projectedAmount)),
+    ...projectedCalendar.map((m) => Number(m.projectedAmount || 0)),
     1
   );
 
@@ -218,7 +223,7 @@ export function DividendAnalyticsCard({ portfolioId, currency }: DividendAnalyti
               variant="scrollable"
               scrollButtons="auto"
             >
-              <Tab label={`Holdings Breakdown (${analytics.holdings.length})`} value="holdings" sx={{ textTransform: 'none', fontWeight: 600 }} />
+              <Tab label={`Holdings Breakdown (${holdings.length})`} value="holdings" sx={{ textTransform: 'none', fontWeight: 600 }} />
               <Tab label="12-Month Projected Calendar" value="calendar" sx={{ textTransform: 'none', fontWeight: 600 }} />
               <Tab label="Monthly History" value="monthly" sx={{ textTransform: 'none', fontWeight: 600 }} />
               <Tab label="Yearly History" value="yearly" sx={{ textTransform: 'none', fontWeight: 600 }} />
@@ -228,7 +233,7 @@ export function DividendAnalyticsCard({ portfolioId, currency }: DividendAnalyti
           {/* Tab 1: Holdings Breakdown Table */}
           {historyTab === 'holdings' && (
             <Box>
-              {analytics.holdings.length === 0 ? (
+              {holdings.length === 0 ? (
                 <Typography variant="body2" color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
                   No dividend-bearing instruments or dividend payouts recorded for this portfolio yet.
                 </Typography>
@@ -248,7 +253,7 @@ export function DividendAnalyticsCard({ portfolioId, currency }: DividendAnalyti
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {analytics.holdings.map((h) => (
+                      {holdings.map((h) => (
                         <TableRow key={h.instrumentId} hover>
                           <TableCell>
                             <Typography variant="body2" sx={{ fontWeight: 700 }}>
@@ -295,8 +300,8 @@ export function DividendAnalyticsCard({ portfolioId, currency }: DividendAnalyti
                 Estimated monthly cashflows over the next 12 months based on historical distribution schedules:
               </Typography>
               <Grid container spacing={1.5}>
-                {analytics.projectedCalendar.map((m) => {
-                  const amt = Number(m.projectedAmount);
+                {projectedCalendar.map((m) => {
+                  const amt = Number(m.projectedAmount || 0);
                   const isPositive = amt > 0;
                   const barPct = Math.min((amt / maxMonthVal) * 100, 100);
 
@@ -349,7 +354,7 @@ export function DividendAnalyticsCard({ portfolioId, currency }: DividendAnalyti
           {/* Tab 3: Monthly History */}
           {historyTab === 'monthly' && (
             <Box>
-              {analytics.monthlyHistory.length === 0 ? (
+              {monthlyHistory.length === 0 ? (
                 <Typography variant="body2" color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
                   No historical dividend payments logged yet.
                 </Typography>
@@ -365,7 +370,7 @@ export function DividendAnalyticsCard({ portfolioId, currency }: DividendAnalyti
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {analytics.monthlyHistory.map((row) => (
+                      {monthlyHistory.map((row) => (
                         <TableRow key={row.yearMonth} hover>
                           <TableCell sx={{ fontWeight: 600 }}>{row.yearMonth}</TableCell>
                           <TableCell align="right" sx={{ fontWeight: 700, color: 'success.main', fontFamily: 'monospace' }}>
@@ -389,7 +394,7 @@ export function DividendAnalyticsCard({ portfolioId, currency }: DividendAnalyti
           {/* Tab 4: Yearly History */}
           {historyTab === 'yearly' && (
             <Box>
-              {analytics.yearlyHistory.length === 0 ? (
+              {yearlyHistory.length === 0 ? (
                 <Typography variant="body2" color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
                   No historical dividend payments logged yet.
                 </Typography>
@@ -405,7 +410,7 @@ export function DividendAnalyticsCard({ portfolioId, currency }: DividendAnalyti
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {analytics.yearlyHistory.map((row) => (
+                      {yearlyHistory.map((row) => (
                         <TableRow key={row.year} hover>
                           <TableCell sx={{ fontWeight: 700 }}>{row.year}</TableCell>
                           <TableCell align="right" sx={{ fontWeight: 700, color: 'success.main', fontFamily: 'monospace' }}>

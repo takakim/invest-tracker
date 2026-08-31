@@ -122,8 +122,8 @@ class InstrumentServiceTests {
 
         List<ApiDtos.InstrumentResponse> result = service.refreshAllPrices();
         assertNotNull(result);
-        verify(marketDataService).getLatestPrice(eq(inst2.getId()), any());
-        verify(marketDataService).getLatestPrice(eq(inst1.getId()), any());
+        verify(marketDataService).refreshPrice(eq(inst2.getId()));
+        verify(marketDataService).refreshPrice(eq(inst1.getId()));
     }
 
     @Test
@@ -135,7 +135,7 @@ class InstrumentServiceTests {
 
         ApiDtos.InstrumentResponse res = service.refreshPrice(id);
         assertNotNull(res);
-        verify(marketDataService).getLatestPrice(eq(inst.getId()), any());
+        verify(marketDataService).refreshPrice(eq(inst.getId()));
     }
 
     @Test

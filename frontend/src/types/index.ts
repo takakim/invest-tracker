@@ -535,7 +535,8 @@ export interface DividendAnalytics {
   monthlyHistory: MonthlyDividendHistory[];
   yearlyHistory: YearlyDividendHistory[];
   holdings: HoldingDividendMetric[];
-  projectedCalendar: ProjectedMonthlyIncome[];
+  projectedMonthlyCalendar: ProjectedMonthlyIncome[];
+  projectedCalendar?: ProjectedMonthlyIncome[];
 }
 
 export type AllocationType = 'ASSET_CLASS' | 'INSTRUMENT';

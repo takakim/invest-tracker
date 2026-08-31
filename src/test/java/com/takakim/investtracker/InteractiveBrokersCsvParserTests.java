@@ -250,4 +250,42 @@ class InteractiveBrokersCsvParserTests {
         assertFalse(parser.supports(List.of("Proceeds", "None")));
         assertFalse(parser.supports(List.of("Conid", "None")));
     }
+
+    @Test
+    @DisplayName("Tests parseAmount edge cases with parentheses, commas, currencies and dashes")
+    void testParseAmountEdgeCases() {
+        String csv = """
+            Symbol,Date/Time,Quantity,Price,Proceeds,Comm/Fee,Currency
+            AAPL,"2026-01-15 10:00:00",(10.50),150.00,"(1,575.00)",$2.50,USD
+            MSFT,"2026/01/16 11:00:00",5.00," $400.00 ",2000.00,-,USD
+            GOOG,"17/01/2026 12:00:00",2,100.00,200.00,0.00,
+            """;
+        List<ParsedTransactionRow> rows = parser.parse(csv);
+        assertEquals(3, rows.size());
+
+        assertEquals(new BigDecimal("10.50"), rows.get(0).quantity());
+        assertEquals(TransactionType.SELL, rows.get(0).mappedType());
+        assertEquals(new BigDecimal("2.50"), rows.get(0).feeAmount());
+
+        assertEquals(new BigDecimal("400.00"), rows.get(1).price());
+        assertEquals(BigDecimal.ZERO, rows.get(1).feeAmount());
+
+        assertEquals("USD", rows.get(2).currency());
+    }
+
+    @Test
+    @DisplayName("Tests statement rows with empty or malformed tokens")
+    void testStatementMalformedRows() {
+        String csv = """
+            Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,Proceeds,Comm/Fee
+            Trades,Data,Order,Stocks,USD,AAPL,"",10,185.50,-1855.00,-1.00
+            Trades,Data,Order,Stocks,USD,,2026-01-15,10,185.50,-1855.00,-1.00
+            Trades,Data,Order,Stocks,USD,MSFT,2026-01-15,-,-,-,-
+            Deposits & Withdrawals,Data
+            Dividends,Data
+            Cash Report,Data
+            """;
+        List<ParsedTransactionRow> rows = parser.parse(csv);
+        assertNotNull(rows);
+    }
 }
