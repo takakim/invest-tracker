@@ -161,4 +161,36 @@ class PortfolioExportServiceTests {
         assertTrue(csv.contains("5000.00"));
         assertTrue(csv.contains("\"First acquisition, broker order #1234\nSecond line\""));
     }
+
+    @Test
+    void exportPositionsCsv_withNullCostBasisAndCurrency_handlesDefaults() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(portfolio));
+
+        Position pos = new Position(account, unlisted, new Quantity(new BigDecimal("5.00")), new Money(new BigDecimal("500.00"), new Currency("GBP")));
+        // Clear cost basis amount/currency via reflection to test null fallback
+        try {
+            var f1 = Position.class.getDeclaredField("costBasisAmount");
+            f1.setAccessible(true);
+            f1.set(pos, null);
+            var f2 = Position.class.getDeclaredField("costBasisCurrency");
+            f2.setAccessible(true);
+            f2.set(pos, null);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
+        when(positionRepository.findByAccountPortfolioIdAndStatus(portfolioId, PositionStatus.ACTIVE))
+                .thenReturn(List.of(pos));
+
+        PortfolioAnalytics analytics = new PortfolioAnalytics(
+                portfolioId, Instant.now(), "GBP", BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                List.of(), List.of(), List.of(), List.of(), List.of()
+        );
+        when(analyticsEngine.calculate(eq(portfolioId), any())).thenReturn(analytics);
+
+        String csv = exportService.exportPositionsCsv(portfolioId);
+        assertNotNull(csv);
+        assertTrue(csv.contains("0.0000"));
+    }
 }

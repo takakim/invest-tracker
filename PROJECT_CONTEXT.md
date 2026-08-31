@@ -592,8 +592,21 @@ Before changing the repository:
   - `FmpGateway` & `FmpMarketDataProvider`: `/stable/quote` integration with rate pacing (5 req/min) and 429 backoff.
   - `YahooFinanceGateway` & `YahooFinanceMarketDataProvider`: `/v8/finance/chart` integration with browser user-agent headers, 30 req/min rate pacing, 429 backoff, LSE `.L` suffixing, `BRK-B` translation, and automatic pence (`GBp`/`GBX`) to pound (`GBP`) division.
   - `manualPriceOnly` flag on `Instrument` (`V7__instrument_manual_price_flag.sql`), OpenAPI 3.1.1 contract update, and frontend `InstrumentFormModal` + `InstrumentListPage` UI support.
-  - 340 backend tests and 39 frontend tests passing with >=90% coverage and 0 vulnerabilities.
-
-
-
-
+- Phase 12 Option C Dividend Analytics, Yield Tracking & Forward Income Engine implemented and merged in PR #51:
+  - `DividendAnalyticsService`: forward dividend yield, trailing 12M income, annual projected cash flows, monthly income breakdown, and portfolio-level yield calculation.
+  - REST endpoint: `GET /api/v1/portfolios/{id}/dividend-analytics` (`DividendAnalyticsController`).
+  - Frontend `DividendAnalyticsCard` and tabs integrated with TanStack Query.
+- Phase 12 Option D Target Asset Allocation & Portfolio Rebalancing Calculator implemented and merged in PR #52:
+  - `V8__target_allocations.sql`: target allocation plan schemas.
+  - `TargetAllocationService` & `RebalancingService`: drift detection, shortfall/excess identification, buy/sell action generation with minimum trade filters.
+  - REST endpoints: `/api/v1/portfolios/{id}/target-allocations`, `/api/v1/portfolios/{id}/rebalancing`.
+  - Frontend `TargetAllocationCard` and `RebalancingModal`.
+- Phase 12 Option A Historical Portfolio Valuation & Benchmark Performance Charting implemented and merged in PR #53:
+  - `PortfolioHistoryService`: daily historical portfolio equity curve reconstruction, cash balance tracking, invested capital aggregation, and period-aligned benchmark relative performance index.
+  - REST endpoint: `GET /api/v1/portfolios/{id}/history` (`PortfolioHistoryController`).
+  - Frontend `HistoricalPerformanceCard` with 1M, 3M, 6M, 1Y, YTD, ALL time horizon selectors and mode toggles (Valuation vs. Benchmark Relative %).
+- Phase 12 Option E Additional Broker CSV Parsers & Auto-Format Detection implemented on branch `feat/phase-12-broker-parsers`:
+  - 4 new broker parsers: `VanguardUkCsvParser`, `InteractiveBrokersCsvParser`, `DegiroCsvParser`, and `AjBellCsvParser` alongside `FreetradeCsvParser`, `Trading212CsvParser`, and `InvestEngineCsvParser`.
+  - Auto-detection endpoint `POST /api/v1/csv-imports/detect-broker` and supported brokers catalog `GET /api/v1/csv-imports/supported-brokers`.
+  - Frontend `CsvImportModal` auto-detect preview, broker badge selector, and dynamic sample format hints.
+  - 455 backend tests and 54 frontend tests passing with >=90% line and branch coverage and 0 vulnerabilities.

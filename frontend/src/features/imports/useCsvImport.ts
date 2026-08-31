@@ -21,6 +21,20 @@ export function useExecuteCsvImport(portfolioId: string, accountId: string) {
   });
 }
 
+export function useSupportedBrokers() {
+  return useQuery({
+    queryKey: ['supportedBrokers'],
+    queryFn: () => importApi.getSupportedBrokers(),
+    staleTime: 60 * 60 * 1000,
+  });
+}
+
+export function useDetectBroker() {
+  return useMutation({
+    mutationFn: (csvContent: string) => importApi.detectBroker(csvContent),
+  });
+}
+
 export function useImportBatchesList(portfolioId: string, accountId: string) {
   return useQuery({
     queryKey: ['imports', portfolioId, accountId],
