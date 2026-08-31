@@ -156,10 +156,13 @@ public class Trading212CsvParser implements BrokerCsvParser {
 
         // 4. DIVIDEND
         if (action.startsWith("Dividend")) {
+            BigDecimal netDiv = total != null ? total : BigDecimal.ZERO;
+            BigDecimal tax = withholdingTax != null ? withholdingTax : BigDecimal.ZERO;
+            BigDecimal grossDiv = netDiv.add(tax);
             return new ParsedTransactionRow(
                     rowNumber, timestamp, action, TransactionType.DIVIDEND, name.isEmpty() ? ticker : name, ticker, isin,
-                    instrumentCurrency, noOfShares, null, total != null ? total : BigDecimal.ZERO,
-                    fee, withholdingTax != null ? withholdingTax : BigDecimal.ZERO,
+                    instrumentCurrency, noOfShares, null, grossDiv,
+                    fee, tax,
                     accountCurrency, exchangeRate, instrumentCurrency,
                     orderId, "Trading 212 Dividend", false, null, rawLine
             );
@@ -167,9 +170,11 @@ public class Trading212CsvParser implements BrokerCsvParser {
 
         // 5. BUY ORDERS
         if (action.toLowerCase().contains("buy")) {
+            BigDecimal netOutlay = total != null ? total : BigDecimal.ZERO;
+            BigDecimal grossTrade = netOutlay.subtract(fee).max(BigDecimal.ZERO);
             return new ParsedTransactionRow(
                     rowNumber, timestamp, action, TransactionType.BUY, name.isEmpty() ? ticker : name, ticker, isin,
-                    instrumentCurrency, noOfShares, adjustedPrice, total != null ? total : BigDecimal.ZERO,
+                    instrumentCurrency, noOfShares, adjustedPrice, grossTrade,
                     fee, BigDecimal.ZERO, accountCurrency, exchangeRate, instrumentCurrency,
                     orderId, "Trading 212 Order " + orderId, false, null, rawLine
             );
@@ -177,9 +182,11 @@ public class Trading212CsvParser implements BrokerCsvParser {
 
         // 6. SELL ORDERS
         if (action.toLowerCase().contains("sell")) {
+            BigDecimal netProceeds = total != null ? total : BigDecimal.ZERO;
+            BigDecimal grossTrade = netProceeds.add(fee);
             return new ParsedTransactionRow(
                     rowNumber, timestamp, action, TransactionType.SELL, name.isEmpty() ? ticker : name, ticker, isin,
-                    instrumentCurrency, noOfShares, adjustedPrice, total != null ? total : BigDecimal.ZERO,
+                    instrumentCurrency, noOfShares, adjustedPrice, grossTrade,
                     fee, BigDecimal.ZERO, accountCurrency, exchangeRate, instrumentCurrency,
                     orderId, "Trading 212 Order " + orderId, false, null, rawLine
             );

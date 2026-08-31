@@ -155,6 +155,9 @@ public class FreetradeCsvParser implements BrokerCsvParser {
         BigDecimal totalInstrumentAmount = parseDecimal(col(cols, 15));
         BigDecimal pricePerShare = parseDecimal(col(cols, 16));
         BigDecimal fxRate = parseDecimal(col(cols, 17));
+        if (fxRate == null) {
+            fxRate = parseDecimal(col(cols, 18));
+        }
         BigDecimal fxFeeAmount = parseDecimal(col(cols, 20));
         BigDecimal divTaxAmount = parseDecimal(col(cols, 28));
 
@@ -194,10 +197,22 @@ public class FreetradeCsvParser implements BrokerCsvParser {
                 finalQuantity = new BigDecimal("1232.00000000");
             }
 
+            BigDecimal netAccountAmount = totalAccountAmount != null ? totalAccountAmount : BigDecimal.ZERO;
+            BigDecimal grossTradeAmount;
+            if (mappedType == TransactionType.BUY) {
+                // In Freetrade, totalAccountAmount is the total outlay (gross trade + stamp duty + FX fee)
+                // Gross trade = totalAccountAmount - fee so Transaction computes netAmount = gross + fee = totalAccountAmount
+                grossTradeAmount = netAccountAmount.subtract(fee).max(BigDecimal.ZERO);
+            } else {
+                // In Freetrade, totalAccountAmount is the net proceeds (gross trade - FX fee)
+                // Gross trade = totalAccountAmount + fee so Transaction computes netAmount = gross - fee = totalAccountAmount
+                grossTradeAmount = netAccountAmount.add(fee);
+            }
+
             return new ParsedTransactionRow(
                     rowNumber, timestamp, rawType, mappedType, title, ticker, isin,
                     instrumentCurrency, finalQuantity, pricePerShare != null ? pricePerShare : pricePerShareAccount,
-                    totalAccountAmount != null ? totalAccountAmount : BigDecimal.ZERO,
+                    grossTradeAmount,
                     fee, BigDecimal.ZERO, accountCurrency != null ? accountCurrency : "GBP",
                     fxRate, instrumentCurrency, orderId, "Freetrade Order " + orderId, false, null, rawLine
             );
@@ -206,11 +221,18 @@ public class FreetradeCsvParser implements BrokerCsvParser {
         // 3. DIVIDEND or SPECIAL_DIVIDEND
         if ("DIVIDEND".equalsIgnoreCase(rawType) || "SPECIAL_DIVIDEND".equalsIgnoreCase(rawType)) {
             String effectiveCurrency = (accountCurrency != null && !accountCurrency.isBlank()) ? accountCurrency : "GBP";
+            BigDecimal netDiv = totalAccountAmount != null ? totalAccountAmount : BigDecimal.ZERO;
+            BigDecimal rawTax = divTaxAmount != null ? divTaxAmount : BigDecimal.ZERO;
+            BigDecimal taxInAccount = (rawTax.compareTo(BigDecimal.ZERO) > 0 && fxRate != null && fxRate.compareTo(BigDecimal.ZERO) > 0)
+                    ? rawTax.multiply(fxRate).setScale(4, java.math.RoundingMode.HALF_UP)
+                    : rawTax;
+            BigDecimal grossDiv = netDiv.add(taxInAccount);
+
             return new ParsedTransactionRow(
                     rowNumber, timestamp, rawType, TransactionType.DIVIDEND, title, ticker, isin,
                     instrumentCurrency, quantity, null,
-                    totalAccountAmount != null ? totalAccountAmount : BigDecimal.ZERO,
-                    BigDecimal.ZERO, divTaxAmount != null ? divTaxAmount : BigDecimal.ZERO,
+                    grossDiv,
+                    BigDecimal.ZERO, taxInAccount,
                     effectiveCurrency, fxRate, instrumentCurrency,
                     orderId, "Freetrade Dividend", false, null, rawLine
             );
