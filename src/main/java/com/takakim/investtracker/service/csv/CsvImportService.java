@@ -326,13 +326,8 @@ public class CsvImportService {
                 : row.currency();
 
         AssetClass inferredClass = inferAssetClass(name, ticker, row.isin());
-
-        String inferredExchange = null;
-        if (row.isin() != null && (row.isin().startsWith("GB") || row.isin().startsWith("IE") || row.isin().startsWith("LU") || row.isin().startsWith("GG"))) {
-            inferredExchange = "LSE";
-        } else if ("GBP".equalsIgnoreCase(currencyCode) || "GBX".equalsIgnoreCase(currencyCode)) {
-            inferredExchange = "LSE";
-        }
+        String nativeCurrency = inferNativeCurrency(ticker, row.isin(), row.instrumentCurrency(), row.currency());
+        String inferredExchange = inferExchange(ticker, row.isin(), name, nativeCurrency);
 
         Instrument inst = new Instrument(
                 name,
@@ -340,9 +335,121 @@ public class CsvImportService {
                 ticker,
                 row.isin(),
                 inferredExchange,
-                new Currency(currencyCode != null ? currencyCode : "GBP")
+                new Currency(nativeCurrency)
         );
         return instrumentRepository.save(inst);
+    }
+
+    private static final java.util.Map<String, String> KNOWN_TICKER_EXCHANGES = java.util.Map.ofEntries(
+            java.util.Map.entry("AAPL", "NASDAQ"),
+            java.util.Map.entry("AMD", "NASDAQ"),
+            java.util.Map.entry("AMZN", "NASDAQ"),
+            java.util.Map.entry("ALAB", "NASDAQ"),
+            java.util.Map.entry("BBAI", "NASDAQ"),
+            java.util.Map.entry("BIRD", "NASDAQ"),
+            java.util.Map.entry("CARL", "NASDAQ"),
+            java.util.Map.entry("CBRS", "NASDAQ"),
+            java.util.Map.entry("COIN", "NASDAQ"),
+            java.util.Map.entry("COST", "NASDAQ"),
+            java.util.Map.entry("CRWD", "NASDAQ"),
+            java.util.Map.entry("FIG", "NASDAQ"),
+            java.util.Map.entry("FLY", "NASDAQ"),
+            java.util.Map.entry("GOOG", "NASDAQ"),
+            java.util.Map.entry("HOOD", "NASDAQ"),
+            java.util.Map.entry("HON", "NASDAQ"),
+            java.util.Map.entry("HONA", "NASDAQ"),
+            java.util.Map.entry("LUNR", "NASDAQ"),
+            java.util.Map.entry("MRNA", "NASDAQ"),
+            java.util.Map.entry("MRVL", "NASDAQ"),
+            java.util.Map.entry("MSFT", "NASDAQ"),
+            java.util.Map.entry("MU", "NASDAQ"),
+            java.util.Map.entry("NET", "NASDAQ"),
+            java.util.Map.entry("NTDOY", "OTC"),
+            java.util.Map.entry("NVDA", "NASDAQ"),
+            java.util.Map.entry("QBTS", "NASDAQ"),
+            java.util.Map.entry("QCOM", "NASDAQ"),
+            java.util.Map.entry("QS", "NASDAQ"),
+            java.util.Map.entry("RDDT", "NYSE"),
+            java.util.Map.entry("RIVN", "NASDAQ"),
+            java.util.Map.entry("SFTBY", "OTC"),
+            java.util.Map.entry("SMCI", "NASDAQ"),
+            java.util.Map.entry("SMLR", "NASDAQ"),
+            java.util.Map.entry("SOLS", "OTC"),
+            java.util.Map.entry("SOUN", "NASDAQ"),
+            java.util.Map.entry("SPCX", "OTC"),
+            java.util.Map.entry("STX", "NASDAQ"),
+            java.util.Map.entry("TSLA", "NASDAQ"),
+            java.util.Map.entry("BBD", "NYSE"),
+            java.util.Map.entry("BRK.B", "NYSE"),
+            java.util.Map.entry("LUMN", "NYSE"),
+            java.util.Map.entry("NU", "NYSE"),
+            java.util.Map.entry("NVO", "NYSE"),
+            java.util.Map.entry("ORCL", "NYSE"),
+            java.util.Map.entry("PLTR", "NYSE"),
+            java.util.Map.entry("RTX", "NYSE"),
+            java.util.Map.entry("SPOT", "NYSE"),
+            java.util.Map.entry("STLA", "NYSE"),
+            java.util.Map.entry("TM", "NYSE"),
+            java.util.Map.entry("VALE", "NYSE"),
+            java.util.Map.entry("BNPP", "EURONEXT")
+    );
+
+    private static final java.util.Map<String, String> PREFIX_EXCHANGES = java.util.Map.of(
+            "GB", "LSE",
+            "GG", "LSE",
+            "IE", "LSE",
+            "LU", "LSE",
+            "US", "NASDAQ",
+            "FR", "EURONEXT",
+            "DE", "EURONEXT",
+            "NL", "EURONEXT",
+            "KY", "NYSE"
+    );
+
+    private static final java.util.Map<String, String> PREFIX_CURRENCIES = java.util.Map.of(
+            "GB", "GBP",
+            "GG", "GBP",
+            "US", "USD",
+            "KY", "USD",
+            "FR", "EUR",
+            "DE", "EUR",
+            "NL", "EUR"
+    );
+
+    public static String inferExchange(String ticker, String isin, String title, String currencyCode) {
+        if (ticker != null) {
+            String known = KNOWN_TICKER_EXCHANGES.get(ticker.trim().toUpperCase());
+            if (known != null) return known;
+        }
+        if (isin != null && isin.length() >= 2) {
+            String prefix = isin.trim().substring(0, 2).toUpperCase();
+            String exch = PREFIX_EXCHANGES.get(prefix);
+            if (exch != null) return exch;
+        }
+        if ("USD".equalsIgnoreCase(currencyCode)) return "NASDAQ";
+        if ("EUR".equalsIgnoreCase(currencyCode)) return "EURONEXT";
+        return "LSE";
+    }
+
+    public static String inferNativeCurrency(String ticker, String isin, String rawInstCurrency, String rawAccCurrency) {
+        if (ticker != null) {
+            String upperTicker = ticker.trim().toUpperCase();
+            if ("SGLD".equals(upperTicker)) return "USD";
+            String exch = KNOWN_TICKER_EXCHANGES.get(upperTicker);
+            if (exch != null) {
+                if ("EURONEXT".equals(exch)) return "EUR";
+                return "USD";
+            }
+        }
+        if (isin != null && isin.length() >= 2) {
+            String prefix = isin.trim().substring(0, 2).toUpperCase();
+            String curr = PREFIX_CURRENCIES.get(prefix);
+            if (curr != null) return curr;
+        }
+        if (rawInstCurrency != null && !rawInstCurrency.isBlank() && !"GBP/USD".equalsIgnoreCase(rawInstCurrency)) {
+            return rawInstCurrency.trim().toUpperCase();
+        }
+        return (rawAccCurrency != null && !rawAccCurrency.isBlank()) ? rawAccCurrency.trim().toUpperCase() : "GBP";
     }
 
     private static final java.util.Map<String, String> KNOWN_ISIN_TICKERS = java.util.Map.ofEntries(

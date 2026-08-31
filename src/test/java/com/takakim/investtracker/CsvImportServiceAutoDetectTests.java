@@ -258,6 +258,31 @@ class CsvImportServiceAutoDetectTests {
         assertEquals("VUAG", CsvImportService.inferTicker("IE00BFMXXD54", null));
         assertNull(CsvImportService.inferTicker("UNKNOWN_ISIN", null));
         assertNull(CsvImportService.inferTicker(null, null));
+
+        // Test inferExchange
+        assertEquals("NASDAQ", CsvImportService.inferExchange("AAPL", "US0378331005", "Apple", "USD"));
+        assertEquals("NYSE", CsvImportService.inferExchange("PLTR", "US69608A1088", "Palantir", "USD"));
+        assertEquals("NYSE", CsvImportService.inferExchange("SPOT", "LU1778762911", "Spotify", "USD"));
+        assertEquals("NASDAQ", CsvImportService.inferExchange("STX", "IE00BKVD2N49", "Seagate", "USD"));
+        assertEquals("OTC", CsvImportService.inferExchange("NTDOY", "US6544453037", "Nintendo ADR", "USD"));
+        assertEquals("LSE", CsvImportService.inferExchange("LLOY", "GB0008706128", "Lloyds", "GBP"));
+        assertEquals("LSE", CsvImportService.inferExchange("VWRP", "IE00BK5BQT80", "Vanguard FTSE All-World", "GBP"));
+        assertEquals("EURONEXT", CsvImportService.inferExchange("BNPP", "FR0000131104", "BNP Paribas", "EUR"));
+        assertEquals("NYSE", CsvImportService.inferExchange("NU", "KYG6683N1034", "Nubank", "USD"));
+        assertEquals("LSE", CsvImportService.inferExchange(null, null, null, "GBP"));
+        assertEquals("NASDAQ", CsvImportService.inferExchange(null, null, null, "USD"));
+        assertEquals("EURONEXT", CsvImportService.inferExchange(null, null, null, "EUR"));
+        assertEquals("LSE", CsvImportService.inferExchange(null, null, null, null));
+
+        // Test inferNativeCurrency
+        assertEquals("USD", CsvImportService.inferNativeCurrency("AAPL", "US0378331005", "USD", "GBP"));
+        assertEquals("USD", CsvImportService.inferNativeCurrency("SGLD", "IE00B579F325", "USD", "GBP"));
+        assertEquals("GBP", CsvImportService.inferNativeCurrency("VUSA", "IE00B3XXRP09", "GBP/USD", "GBP"));
+        assertEquals("GBP", CsvImportService.inferNativeCurrency("LLOY", "GB0008706128", "GBP", "GBP"));
+        assertEquals("EUR", CsvImportService.inferNativeCurrency("BNPP", "FR0000131104", "EUR", "GBP"));
+        assertEquals("USD", CsvImportService.inferNativeCurrency("NU", "KYG6683N1034", "USD", "GBP"));
+        assertEquals("EUR", CsvImportService.inferNativeCurrency("CUSTOM", "DE0001234567", null, "EUR"));
+        assertEquals("GBP", CsvImportService.inferNativeCurrency(null, null, null, null));
     }
 
     @Test
