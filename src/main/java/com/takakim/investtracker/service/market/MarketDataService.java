@@ -112,86 +112,16 @@ public class MarketDataService {
             );
         }
 
-        // 2. Check for recent fresh persisted observation (or weekend Friday close) to avoid redundant polling
-        if (asOf == null) {
-            Optional<MarketObservation> recentObsOpt = marketObservationRepository
-                    .findFirstByInstrumentIdOrderByObservedAtDesc(instrumentId);
-            if (recentObsOpt.isPresent()) {
-                MarketObservation recent = recentObsOpt.get();
-                if (recent.getPrice() != null && recent.getPrice().compareTo(BigDecimal.ZERO) > 0
-                        && (instrument.getCurrency() == null || instrument.getCurrency().code().equalsIgnoreCase(recent.getCurrency()))
-                        && isObservationFresh(recent.getObservedAt(), targetTime, instrument.getAssetClass())) {
-                    return new PriceQuote(
-                            instrumentId,
-                            recent.getPrice(),
-                            recent.getCurrency(),
-                            recent.getObservedAt(),
-                            recent.getSourceType(),
-                            recent.getSourceReference(),
-                            false,
-                            null
-                    );
-                }
-            }
-        }
-
-        // 3. Fetch from market data provider for stale, missing, or unobserved instruments (unless manual-only)
-        if (!instrument.isManualPriceOnly()) {
-            try {
-                Optional<PriceQuote> providerQuoteOpt = marketDataProvider.fetchQuote(instrument, targetTime);
-                if (providerQuoteOpt.isPresent()) {
-                    PriceQuote quote = providerQuoteOpt.get();
-                    boolean isDefaultMock = "DEFAULT_PROVIDER".equalsIgnoreCase(quote.sourceReference());
-
-                    if (quote.price() != null && quote.price().compareTo(BigDecimal.ZERO) > 0) {
-                        if (!isDefaultMock) {
-                            // Genuine external provider quote: persist to database
-                            MarketObservation obs = new MarketObservation(
-                                    instrument,
-                                    quote.price(),
-                                    quote.currency(),
-                                    quote.asOf(),
-                                    ObservationSourceType.PROVIDER,
-                                    quote.sourceReference()
-                            );
-                            if (observationStorageService != null) {
-                                observationStorageService.saveMarketObservation(obs);
-                            } else {
-                                marketObservationRepository.save(obs);
-                            }
-                            return quote;
-                        } else if (marketObservationRepository.findFirstByInstrumentIdOrderByObservedAtDesc(instrumentId).isEmpty()) {
-                            // Only use and persist default dummy mock if there are NO prior real observations in DB
-                            MarketObservation obs = new MarketObservation(
-                                    instrument,
-                                    quote.price(),
-                                    quote.currency(),
-                                    quote.asOf(),
-                                    ObservationSourceType.PROVIDER,
-                                    quote.sourceReference()
-                            );
-                            if (observationStorageService != null) {
-                                observationStorageService.saveMarketObservation(obs);
-                            } else {
-                                marketObservationRepository.save(obs);
-                            }
-                            return quote;
-                        }
-                    }
-                }
-            } catch (Exception ignored) {
-            }
-        }
-
-        // 4. Fallback to latest persisted observation (e.g. from Friday close or last successful fetch)
+        // 2. Check for latest persisted observation in DB (used for all portfolio views without polling external providers)
         Optional<MarketObservation> latestPersisted = marketObservationRepository
                 .findFirstByInstrumentIdOrderByObservedAtDesc(instrumentId);
 
         if (latestPersisted.isPresent()) {
             MarketObservation obs = latestPersisted.get();
-            if (obs.getPrice() != null && obs.getPrice().compareTo(BigDecimal.ZERO) > 0) {
+            if (obs.getPrice() != null && obs.getPrice().compareTo(BigDecimal.ZERO) > 0
+                    && (instrument.getCurrency() == null || instrument.getCurrency().code().equalsIgnoreCase(obs.getCurrency()))) {
                 boolean isStale = isObservationStale(obs.getObservedAt(), targetTime, instrument.getAssetClass());
-                String warning = "Live price unavailable; using latest persisted observation from " + obs.getObservedAt();
+                String warning = isStale ? "Observation is older than 24 hours (last observed " + obs.getObservedAt() + ")" : null;
                 return new PriceQuote(
                         instrumentId,
                         obs.getPrice(),
@@ -205,7 +135,7 @@ public class MarketDataService {
             }
         }
 
-        // 5. Fallback to latest transaction trade price if available
+        // 3. Fallback to latest transaction trade price if available
         List<com.takakim.investtracker.domain.Transaction> txs = transactionRepository.findByInstrumentIdOrderByTradeDateDesc(instrumentId);
         for (com.takakim.investtracker.domain.Transaction tx : txs) {
             if (tx.getPrice() != null && tx.getPrice().compareTo(BigDecimal.ZERO) > 0) {
@@ -237,8 +167,73 @@ public class MarketDataService {
             }
         }
 
+        // 4. If brand new instrument with zero observations and zero transactions, fetch initial quote if provider available
+        if (!instrument.isManualPriceOnly()) {
+            try {
+                Optional<PriceQuote> providerQuoteOpt = marketDataProvider.fetchQuote(instrument, targetTime);
+                if (providerQuoteOpt.isPresent()) {
+                    PriceQuote quote = providerQuoteOpt.get();
+                    if (quote.price() != null && quote.price().compareTo(BigDecimal.ZERO) > 0) {
+                        MarketObservation obs = new MarketObservation(
+                                instrument,
+                                quote.price(),
+                                quote.currency(),
+                                quote.asOf(),
+                                ObservationSourceType.PROVIDER,
+                                quote.sourceReference()
+                        );
+                        if (observationStorageService != null) {
+                            observationStorageService.saveMarketObservation(obs);
+                        } else {
+                            marketObservationRepository.save(obs);
+                        }
+                        return quote;
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+
         throw new ResourceNotFoundException(
                 "No market price available for instrument: " + instrument.getTicker() + " (" + instrumentId + ")");
+    }
+
+    public PriceQuote refreshPrice(UUID instrumentId) {
+        Instrument instrument = instrumentRepository.findById(instrumentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Instrument not found: " + instrumentId));
+
+        if (instrument.isManualPriceOnly()) {
+            return getLatestPrice(instrumentId, Instant.now());
+        }
+
+        Instant targetTime = Instant.now();
+        try {
+            Optional<PriceQuote> providerQuoteOpt = marketDataProvider.fetchQuote(instrument, targetTime);
+            if (providerQuoteOpt.isPresent()) {
+                PriceQuote quote = providerQuoteOpt.get();
+                boolean isDefaultMock = "DEFAULT_PROVIDER".equalsIgnoreCase(quote.sourceReference());
+
+                if (quote.price() != null && quote.price().compareTo(BigDecimal.ZERO) > 0 && !isDefaultMock) {
+                    MarketObservation obs = new MarketObservation(
+                            instrument,
+                            quote.price(),
+                            quote.currency(),
+                            quote.asOf(),
+                            ObservationSourceType.PROVIDER,
+                            quote.sourceReference()
+                    );
+                    if (observationStorageService != null) {
+                        observationStorageService.saveMarketObservation(obs);
+                    } else {
+                        marketObservationRepository.save(obs);
+                    }
+                    return quote;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+
+        return getLatestPrice(instrumentId, targetTime);
     }
 
     public MarketObservation recordManualOverride(

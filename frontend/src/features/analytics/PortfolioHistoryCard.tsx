@@ -26,7 +26,7 @@ import AccountBalanceWalletOutlinedIcon from '@mui/icons-material/AccountBalance
 import QueryStatsOutlinedIcon from '@mui/icons-material/QueryStatsOutlined';
 import LayersOutlinedIcon from '@mui/icons-material/LayersOutlined';
 import { usePortfolioHistory } from './useAnalytics';
-import { useInstrumentsList } from '../instruments/useInstruments';
+import { useBenchmarkList } from '../benchmark/useBenchmark';
 import type { HistoricalValuationPoint } from '../../types';
 
 interface PortfolioHistoryCardProps {
@@ -43,13 +43,8 @@ export function PortfolioHistoryCard({ portfolioId, currency }: PortfolioHistory
   const [benchmarkId, setBenchmarkId] = useState<string>('');
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
-  // Fetch benchmark instruments list (only ETFs/Indices)
-  const { data: instruments = [] } = useInstrumentsList({ enabled: true });
-  const benchmarkOptions = useMemo(() => {
-    return instruments.filter(
-      (inst) => inst.assetClass === 'ETF' || inst.assetClass === 'MUTUAL_FUND' || inst.assetClass === 'OTHER'
-    );
-  }, [instruments]);
+  // Fetch benchmark instruments list (only predefined benchmarks)
+  const { data: benchmarkOptions = [] } = useBenchmarkList();
 
   const { data: history, isLoading, error } = usePortfolioHistory(portfolioId, {
     period,

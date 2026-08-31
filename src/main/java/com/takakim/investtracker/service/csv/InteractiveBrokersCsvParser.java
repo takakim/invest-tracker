@@ -283,20 +283,14 @@ public class InteractiveBrokersCsvParser implements BrokerCsvParser {
         }
 
         List<String> headers = FreetradeCsvParser.parseCsvLine(lines[headerIndex]);
-        int symbolIdx = Math.max(0, findCol(headers, "Symbol", "Ticker"));
-        int dateIdx = findCol(headers, "Date/Time");
-        if (dateIdx < 0) dateIdx = findCol(headers, "Date");
-        dateIdx = Math.max(1, dateIdx);
-        int typeIdx = Math.max(2, findCol(headers, "Type", "Action", "Description"));
-        int qtyIdx = Math.max(3, findCol(headers, "Quantity", "Shares"));
-        int priceIdx = Math.max(4, findCol(headers, "Price", "T. Price"));
-        int amountIdx = findCol(headers, "Amount");
-        if (amountIdx < 0) amountIdx = findCol(headers, "Proceeds");
-        amountIdx = Math.max(5, amountIdx);
-        int commIdx = findCol(headers, "Commission");
-        if (commIdx < 0) commIdx = findCol(headers, "Fee", "Comm/Fee");
-        commIdx = Math.max(6, commIdx);
-        int currIdx = Math.max(7, findCol(headers, "Currency", "Ccy"));
+        int symbolIdx = findCol(headers, "Symbol", "Ticker");
+        int dateIdx = findCol(headers, "Date/Time", "Date", "Time");
+        int typeIdx = findCol(headers, "Type", "Action", "Description");
+        int qtyIdx = findCol(headers, "Quantity", "Shares", "Qty");
+        int priceIdx = findCol(headers, "Price", "T. Price");
+        int amountIdx = findCol(headers, "Amount", "Proceeds");
+        int commIdx = findCol(headers, "Commission", "Fee", "Comm/Fee");
+        int currIdx = findCol(headers, "Currency", "Ccy");
 
         for (int i = headerIndex + 1; i < lines.length; i++) {
             String line = lines[i].trim();
@@ -355,28 +349,33 @@ public class InteractiveBrokersCsvParser implements BrokerCsvParser {
     }
 
     private TransactionType mapStandardType(String rawType, BigDecimal qty) {
-        String t = rawType.toLowerCase();
-        if (t.contains("buy") || t.contains("bot")) return TransactionType.BUY;
-        if (t.contains("sell") || t.contains("sld")) return TransactionType.SELL;
-        if (t.contains("dividend")) return TransactionType.DIVIDEND;
-        if (t.contains("deposit")) return TransactionType.DEPOSIT;
-        if (t.contains("withdrawal")) return TransactionType.WITHDRAWAL;
-        if (qty != null && qty.compareTo(BigDecimal.ZERO) < 0) return TransactionType.SELL;
+        if (rawType != null && !rawType.isBlank()) {
+            String upper = rawType.toUpperCase();
+            if (upper.contains("BUY") || upper.contains("BOT")) return TransactionType.BUY;
+            if (upper.contains("SELL") || upper.contains("SLD")) return TransactionType.SELL;
+            if (upper.contains("DIV")) return TransactionType.DIVIDEND;
+            if (upper.contains("DEP")) return TransactionType.DEPOSIT;
+            if (upper.contains("WITH")) return TransactionType.WITHDRAWAL;
+        }
+        if (qty != null) {
+            return qty.compareTo(BigDecimal.ZERO) < 0 ? TransactionType.SELL : TransactionType.BUY;
+        }
         return TransactionType.BUY;
     }
 
     private Instant parseDateTime(String dateStr) {
         if (dateStr == null || dateStr.isBlank()) {
-            return null;
+            throw new IllegalArgumentException("Empty IBKR date");
         }
+        String clean = dateStr.trim().replace("\"", "").replace("'", "");
         for (DateTimeFormatter fmt : DATE_TIME_FORMATTERS) {
             try {
-                if (dateStr.contains(":") || dateStr.contains(";")) {
-                    LocalDateTime ldt = LocalDateTime.parse(dateStr.trim(), fmt);
-                    return ldt.toInstant(ZoneOffset.UTC);
-                } else {
-                    LocalDate ld = LocalDate.parse(dateStr.trim(), fmt);
+                if (clean.length() <= 10) {
+                    LocalDate ld = LocalDate.parse(clean, fmt);
                     return ld.atStartOfDay(ZoneOffset.UTC).toInstant();
+                } else {
+                    LocalDateTime ldt = LocalDateTime.parse(clean, fmt);
+                    return ldt.toInstant(ZoneOffset.UTC);
                 }
             } catch (Exception ignored) {
             }
@@ -400,8 +399,15 @@ public class InteractiveBrokersCsvParser implements BrokerCsvParser {
         if (val == null || val.isBlank() || "-".equals(val.trim())) {
             return null;
         }
+        String clean = val.replace(",", "").replace("$", "").replace("£", "").replace("€", "").trim();
+        boolean isNegative = false;
+        if (clean.startsWith("(") && clean.endsWith(")")) {
+            isNegative = true;
+            clean = clean.substring(1, clean.length() - 1).trim();
+        }
         try {
-            return new BigDecimal(val.replace(",", "").replace("$", "").replace("£", "").trim());
+            BigDecimal res = new BigDecimal(clean);
+            return isNegative ? res.negate() : res;
         } catch (NumberFormatException e) {
             return null;
         }
