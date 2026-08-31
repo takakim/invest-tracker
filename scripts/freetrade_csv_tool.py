@@ -92,7 +92,9 @@ def audit_freetrade_csv(csv_path):
     rows_parsed = 0
 
     with open(csv_path, mode="r", encoding="utf-8-sig") as f:
-        reader = csv.DictReader(f)
+        reader = list(csv.DictReader(f))
+        # Sort chronologically ascending by Timestamp
+        reader.sort(key=lambda r: r.get("Timestamp", "") or "")
         for row in reader:
             rows_parsed += 1
             ticker = row.get("Ticker", "").strip()
