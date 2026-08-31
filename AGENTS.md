@@ -128,3 +128,49 @@ npm --prefix frontend test
 # Run dependency vulnerability audit
 npm --prefix frontend audit --audit-level=high
 ```
+
+---
+
+## 6. Available Python Development & Operational Scripts
+
+The `scripts/` directory contains standalone Python 3 CLI utilities to accelerate AI agent and developer workflows. Whenever new scripts are created or modified, their purpose and CLI arguments must be documented here and in [`scripts/README.md`](file:///Users/massanoritakaki/code/invest-tracker/scripts/README.md).
+
+### 1. `check_coverage.py`
+Inspects JaCoCo XML reports (`target/site/jacoco/jacoco.xml`) against the mandatory 90% line and branch coverage gates, pinpointing classes and missed branch counts.
+```bash
+# Check overall repository branch & instruction coverage against 90% threshold
+python3 scripts/check_coverage.py
+
+# Inspect missed branches for a specific Java file
+python3 scripts/check_coverage.py --file FreetradeCsvParser.java
+```
+
+### 2. `freetrade_csv_tool.py`
+Audits Freetrade CSV exports for anomalies (e.g. negative balances, dividend quantity mismatches) and injects corporate action rows (`STOCK_SPLIT`, `REVERSE_STOCK_SPLIT`) adhering to the standard 44-column schema.
+```bash
+# Audit a CSV file for anomalies and missing splits
+python3 scripts/freetrade_csv_tool.py audit path/to/activity-feed-export.csv
+
+# Inject forward/reverse stock splits into a new CSV
+python3 scripts/freetrade_csv_tool.py inject input.csv output.csv --tickers NVDA SMCI RGL
+
+# Print ready-to-paste raw CSV rows for corporate actions
+python3 scripts/freetrade_csv_tool.py print-rows
+```
+
+### 3. `audit_holdings.py`
+Queries the live Invest-Tracker REST API (`http://localhost:8080`) to verify holdings, returns, cash balances, cost basis currencies, and highlight position anomalies across portfolios.
+```bash
+# Audit all portfolios against local backend
+python3 scripts/audit_holdings.py
+
+# Audit specific portfolio against custom API URL
+python3 scripts/audit_holdings.py --url http://localhost:8080 --portfolio <PORTFOLIO_UUID>
+```
+
+### 4. `scan_instruments.py`
+Scans CSV files under `docs/csv/` or `docs/` to discover unique financial instruments, ISINs, tickers, native currencies, and initial price references.
+```bash
+python3 scripts/scan_instruments.py
+```
+
