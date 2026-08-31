@@ -130,13 +130,15 @@ public class InvestEngineCsvParser implements BrokerCsvParser {
         boolean isIgnored = mappedType == null;
         String ignoreReason = isIgnored ? "Unsupported InvestEngine transaction type: " + rawType : null;
 
+        String ticker = CsvImportService.inferTicker(isin, name);
+
         return new ParsedTransactionRow(
                 rowNumber,
                 timestamp,
                 rawType,
                 mappedType,
                 name,
-                null,
+                ticker,
                 isin,
                 currency,
                 quantity,

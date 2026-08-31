@@ -46,6 +46,7 @@ class InvestEngineCsvParserTest {
         assertEquals(TransactionType.BUY, r1.mappedType());
         assertEquals("Global X NASDAQ 100 Covered Call", r1.instrumentTitle());
         assertEquals("IE00BM8R0J59", r1.isin());
+        assertEquals("QYLD", r1.ticker());
         assertEquals(new BigDecimal("18.882175"), r1.quantity());
         assertEquals(new BigDecimal("13.2400"), r1.price());
         assertEquals(new BigDecimal("250.00"), r1.grossAmount());
@@ -56,12 +57,14 @@ class InvestEngineCsvParserTest {
         assertEquals(TransactionType.SELL, r2.mappedType());
         assertEquals("Franklin FTSE India", r2.instrumentTitle());
         assertEquals("IE00BHZRQZ17", r2.isin());
+        assertEquals("FLXI", r2.ticker());
 
         // Row 3: Dividend
         ParsedTransactionRow r3 = rows.get(2);
         assertEquals(TransactionType.DIVIDEND, r3.mappedType());
         assertEquals("Vanguard FTSE All-World", r3.instrumentTitle());
         assertEquals("IE00BK5BQT80", r3.isin());
+        assertEquals("VWRP", r3.ticker());
     }
 
     @Test
@@ -76,16 +79,18 @@ class InvestEngineCsvParserTest {
             Security / ISIN,Transaction Type,Quantity,Share Price,Total Trade Value,Trade Date/Time
             
             ShortRow
-            Unknown Security / ISIN US12345,UnknownType,1,10,10,2025-01-01T00:00:00Z
-            Plain Name,Buy,1,10,10,2025-01-01T00:00:00Z
+            Unknown Security / ISIN US12345,UnknownType,1,10,10,04/03/25 15:06:44
+            Plain Name,Buy,1,10,10,04/03/25 15:06:44
             Null Total,Buy,1,10,,invalid-date
-            Malformed Dec,Buy,bad,bad,bad,2025-01-01T00:00:00Z
+            Empty Date,Buy,1,10,10,
+            Malformed Dec,Buy,bad,bad,bad,04/03/25 15:06:44
             """;
         List<ParsedTransactionRow> rows = parser.parse(csv);
-        assertEquals(4, rows.size());
+        assertEquals(5, rows.size());
         assertTrue(rows.get(0).isIgnored());
         assertEquals("Plain Name", rows.get(1).instrumentTitle());
         assertEquals(BigDecimal.ZERO, rows.get(2).grossAmount());
+        assertNotNull(rows.get(3).timestamp());
         assertEquals("InvestEngine", parser.getBrokerName());
     }
 
