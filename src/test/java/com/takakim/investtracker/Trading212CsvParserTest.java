@@ -23,8 +23,11 @@ class Trading212CsvParserTest {
         assertTrue(parser.supports(validHeaders));
         assertFalse(parser.supports(List.of("Date", "Amount", "Category")));
         assertFalse(parser.supports(null));
-        assertFalse(parser.supports(List.of("A", "B", "C", "D")));
+        assertFalse(parser.supports(List.of("A", "B", "C", "D", "E", "F", "G", "H")));
         assertFalse(parser.supports(List.of("Other", "Time", "ISIN", "Ticker", "5", "6", "7", "8")));
+        assertFalse(parser.supports(List.of("Action", "Other", "ISIN", "Ticker", "5", "6", "7", "8")));
+        assertFalse(parser.supports(List.of("Action", "Time", "Other", "Ticker", "5", "6", "7", "8")));
+        assertFalse(parser.supports(List.of("Action", "Time", "ISIN", "Other", "5", "6", "7", "8")));
     }
 
     @Test
@@ -79,11 +82,12 @@ class Trading212CsvParserTest {
         assertEquals(TransactionType.INTEREST, r6.mappedType());
         assertEquals(new BigDecimal("1.25"), r6.grossAmount());
 
-        // Row 7: Spin Off allotment at 0 cost
+        // Row 7: Spin Off allotment as STOCK_SPLIT
         ParsedTransactionRow r7 = rows.get(6);
-        assertEquals(TransactionType.BUY, r7.mappedType());
+        assertEquals(TransactionType.STOCK_SPLIT, r7.mappedType());
         assertEquals("HONA", r7.ticker());
         assertEquals(new BigDecimal("1.3729929900"), r7.quantity());
+        assertNull(r7.price());
         assertEquals(BigDecimal.ZERO, r7.grossAmount());
 
         // Row 8: Stock split marker (ignored)

@@ -184,3 +184,10 @@ Scans CSV files under `docs/csv/` or `docs/` to discover unique financial instru
 python3 scripts/scan_instruments.py
 ```
 
+### 6. `enrich_investengine_csv.py`
+Enriches raw InvestEngine CSV exports by cross-referencing ISINs to add standard ticker symbols, native currencies, and LSE exchange metadata.
+```bash
+# Enrich an InvestEngine statement and write to a new file
+python3 scripts/enrich_investengine_csv.py path/to/SIPP.csv -o path/to/SIPP_enriched.csv
+```
+

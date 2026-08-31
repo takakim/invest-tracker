@@ -244,6 +244,20 @@ class CsvImportServiceAutoDetectTests {
         assertEquals(AssetClass.CASH, CsvImportService.inferAssetClass("Cash Interest", null, null));
         assertEquals(AssetClass.STOCK, CsvImportService.inferAssetClass("Apple Inc", "AAPL", "US0378331005"));
         assertEquals(AssetClass.STOCK, CsvImportService.inferAssetClass(null, null, null));
+
+        // Test inferTicker directory
+        assertEquals("FWRG", CsvImportService.inferTicker("IE000716YHJ7", "Invesco FTSE All-World"));
+        assertEquals("EQQQ", CsvImportService.inferTicker("IE0032077012", "Invesco Nasdaq 100"));
+        assertEquals("SPXP", CsvImportService.inferTicker("IE00B3YCGJ38", "Invesco S&P 500"));
+        assertEquals("FLXI", CsvImportService.inferTicker("IE00BHZRQZ17", "Franklin FTSE India"));
+        assertEquals("VWRP", CsvImportService.inferTicker("IE00BK5BQT80", "Vanguard FTSE All-World"));
+        assertEquals("VEVE", CsvImportService.inferTicker("IE00BK5BQV03", "Vanguard FTSE Developed World"));
+        assertEquals("VFEM", CsvImportService.inferTicker("IE00BK5BR733", "Vanguard FTSE Emerging Markets"));
+        assertEquals("QYLD", CsvImportService.inferTicker("IE00BM8R0J59", "Global X NASDAQ 100 Covered Call"));
+        assertEquals("VUSA", CsvImportService.inferTicker("IE00B3XXRP09", null));
+        assertEquals("VUAG", CsvImportService.inferTicker("IE00BFMXXD54", null));
+        assertNull(CsvImportService.inferTicker("UNKNOWN_ISIN", null));
+        assertNull(CsvImportService.inferTicker(null, null));
     }
 
     @Test
@@ -317,5 +331,55 @@ class CsvImportServiceAutoDetectTests {
         var result = service.detectBroker(csvWithBlanks);
         assertTrue(result.isSupported());
         assertEquals("Trading 212", result.brokerName());
+    }
+
+    @Test
+    @DisplayName("Tests executeImport with new instruments, duplicates, ignored, and preview")
+    void testExecuteImportLifecycle() {
+        UUID portfolioId = UUID.randomUUID();
+        UUID accountId = UUID.randomUUID();
+        Portfolio portfolio = new Portfolio("Main", new com.takakim.investtracker.domain.Currency("GBP"), com.takakim.investtracker.domain.CostBasisMethod.FIFO, com.takakim.investtracker.domain.ReturnMethod.TWR);
+        try {
+            var idF = Portfolio.class.getDeclaredField("id");
+            idF.setAccessible(true);
+            idF.set(portfolio, portfolioId);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
+        Account acc = new Account(portfolio, "InvestEngine SIPP", "InvestEngine", new com.takakim.investtracker.domain.Currency("GBP"));
+        try {
+            var idF = Account.class.getDeclaredField("id");
+            idF.setAccessible(true);
+            idF.set(acc, accountId);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
+        when(accountRepository.findById(accountId)).thenReturn(Optional.of(acc));
+        when(importBatchRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        String csv = """
+            Transaction Statement: 01 Feb 2025 - 25 Aug 2026 (Portfolio: DIY 1 / Reference: IP01985296)
+            Security / ISIN,Transaction Type,Quantity,Share Price,Total Trade Value,Trade Date/Time,Settlement Date,Broker
+            Invesco S&P 500 / ISIN IE00B3YCGJ38,Buy,0.50,£895.00,£447.50,04/03/25 15:07:07,06/03/25,None
+            Unknown Asset,UnknownType,1,10,10,04/03/25 15:07:07,06/03/25,None
+            """;
+
+        when(instrumentRepository.findByTicker("SPXP")).thenReturn(Optional.empty());
+        when(instrumentRepository.findByIsin("IE00B3YCGJ38")).thenReturn(Optional.empty());
+        when(instrumentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        var batch = service.executeImport(portfolioId, accountId, "SIPP.csv", csv);
+        assertNotNull(batch);
+        assertEquals(2, batch.getTotalRows());
+        assertEquals(1, batch.getImportedRows());
+        assertEquals(1, batch.getSkippedRows());
+
+        // Preview import
+        var preview = service.previewImport(portfolioId, accountId, "SIPP.csv", csv, null);
+        assertEquals(2, preview.totalRows());
+        assertEquals(1, preview.importableRows());
+        assertEquals(1, preview.ignoredRows());
     }
 }

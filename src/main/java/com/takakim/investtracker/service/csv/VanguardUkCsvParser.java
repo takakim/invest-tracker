@@ -129,13 +129,16 @@ public class VanguardUkCsvParser implements BrokerCsvParser {
         }
 
         // Infer ticker if possible
-        String ticker = null;
-        if (isin.startsWith("IE00B3XXRP09") || investmentName.toLowerCase().contains("s&p 500 ucits")) {
-            ticker = "VUSA";
-        } else if (isin.startsWith("IE00BK5BQT80") || investmentName.toLowerCase().contains("all-world")) {
-            ticker = "VWRP";
-        } else if (isin.startsWith("GB00B59G4H30") || investmentName.toLowerCase().contains("lifestrategy 80")) {
-            ticker = "V80A";
+        String ticker = CsvImportService.inferTicker(isin, investmentName);
+        if (ticker == null && investmentName != null) {
+            String lower = investmentName.toLowerCase();
+            if (lower.contains("s&p 500")) {
+                ticker = "VUSA";
+            } else if (lower.contains("all-world")) {
+                ticker = "VWRP";
+            } else if (lower.contains("lifestrategy 80")) {
+                ticker = "V80A";
+            }
         }
 
         BigDecimal fee = charges != null ? charges.abs() : BigDecimal.ZERO;

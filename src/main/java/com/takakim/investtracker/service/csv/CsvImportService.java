@@ -299,32 +299,36 @@ public class CsvImportService {
             return null;
         }
 
-        if (row.ticker() != null && !row.ticker().isBlank()) {
-            Optional<Instrument> existing = instrumentRepository.findByTicker(row.ticker());
+        String ticker = (row.ticker() != null && !row.ticker().isBlank())
+                ? row.ticker().trim()
+                : inferTicker(row.isin(), row.instrumentTitle());
+
+        if (ticker != null && !ticker.isBlank()) {
+            Optional<Instrument> existing = instrumentRepository.findByTicker(ticker);
             if (existing.isPresent()) {
                 return existing.get();
             }
         }
 
         if (row.isin() != null && !row.isin().isBlank()) {
-            Optional<Instrument> existing = instrumentRepository.findByIsin(row.isin());
+            Optional<Instrument> existing = instrumentRepository.findByIsin(row.isin().trim());
             if (existing.isPresent()) {
                 return existing.get();
             }
         }
 
         String name = row.instrumentTitle() != null && !row.instrumentTitle().isBlank()
-                ? row.instrumentTitle()
-                : (row.ticker() != null && !row.ticker().isBlank() ? row.ticker() : "Imported Asset");
+                ? row.instrumentTitle().trim()
+                : (ticker != null && !ticker.isBlank() ? ticker : "Imported Asset");
 
         String currencyCode = row.instrumentCurrency() != null && !row.instrumentCurrency().isBlank()
                 ? row.instrumentCurrency()
                 : row.currency();
 
-        AssetClass inferredClass = inferAssetClass(name, row.ticker(), row.isin());
+        AssetClass inferredClass = inferAssetClass(name, ticker, row.isin());
 
         String inferredExchange = null;
-        if (row.isin() != null && row.isin().startsWith("GB")) {
+        if (row.isin() != null && (row.isin().startsWith("GB") || row.isin().startsWith("IE") || row.isin().startsWith("LU") || row.isin().startsWith("GG"))) {
             inferredExchange = "LSE";
         } else if ("GBP".equalsIgnoreCase(currencyCode) || "GBX".equalsIgnoreCase(currencyCode)) {
             inferredExchange = "LSE";
@@ -333,12 +337,45 @@ public class CsvImportService {
         Instrument inst = new Instrument(
                 name,
                 inferredClass,
-                row.ticker(),
+                ticker,
                 row.isin(),
                 inferredExchange,
                 new Currency(currencyCode != null ? currencyCode : "GBP")
         );
         return instrumentRepository.save(inst);
+    }
+
+    private static final java.util.Map<String, String> KNOWN_ISIN_TICKERS = java.util.Map.ofEntries(
+            java.util.Map.entry("IE000716YHJ7", "FWRG"),
+            java.util.Map.entry("IE0032077012", "EQQQ"),
+            java.util.Map.entry("IE00B3YCGJ38", "SPXP"),
+            java.util.Map.entry("IE00BHZRQZ17", "FLXI"),
+            java.util.Map.entry("IE00BK5BQT80", "VWRP"),
+            java.util.Map.entry("IE00BK5BQV03", "VEVE"),
+            java.util.Map.entry("IE00BK5BR733", "VFEM"),
+            java.util.Map.entry("IE00BM8R0J59", "QYLD"),
+            java.util.Map.entry("IE00B3XXRP09", "VUSA"),
+            java.util.Map.entry("IE00BFMXXD54", "VUAG"),
+            java.util.Map.entry("IE00B3RBWM25", "VWRL"),
+            java.util.Map.entry("GB00B59G4H30", "V80A"),
+            java.util.Map.entry("IE00B4L5Y983", "SWDA"),
+            java.util.Map.entry("IE00B5BMR087", "CSPX"),
+            java.util.Map.entry("IE00BLPK3577", "CYSE"),
+            java.util.Map.entry("IE00BDVPNG13", "INTL"),
+            java.util.Map.entry("IE000940RNE6", "BKCN"),
+            java.util.Map.entry("IE00BJGWQN72", "KLWD"),
+            java.util.Map.entry("IE000W8WMSL2", "QWTM"),
+            java.util.Map.entry("IE000O8KMPM1", "WBIO"),
+            java.util.Map.entry("IE000MO2MB07", "WTNR"),
+            java.util.Map.entry("IE000YDZG487", "HNSS"),
+            java.util.Map.entry("IE00BMC38736", "SMGB"),
+            java.util.Map.entry("IE00B579F325", "SGLD"),
+            java.util.Map.entry("IE00BM67HX07", "XDPG")
+    );
+
+    public static String inferTicker(String isin, String name) {
+        if (isin == null) return null;
+        return KNOWN_ISIN_TICKERS.get(isin.trim().toUpperCase());
     }
 
     public static AssetClass inferAssetClass(String name, String ticker, String isin) {

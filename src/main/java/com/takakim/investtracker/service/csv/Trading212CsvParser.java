@@ -195,8 +195,8 @@ public class Trading212CsvParser implements BrokerCsvParser {
         // 7. SPIN OFF
         if (action.startsWith("Spin off")) {
             return new ParsedTransactionRow(
-                    rowNumber, timestamp, action, TransactionType.BUY, name.isEmpty() ? ticker : name, ticker, isin,
-                    instrumentCurrency, noOfShares, BigDecimal.ZERO, BigDecimal.ZERO,
+                    rowNumber, timestamp, action, TransactionType.STOCK_SPLIT, name.isEmpty() ? ticker : name, ticker, isin,
+                    instrumentCurrency, noOfShares, null, BigDecimal.ZERO,
                     BigDecimal.ZERO, BigDecimal.ZERO, accountCurrency, null, instrumentCurrency,
                     orderId, "Corporate Action: Spin Off Allotment", false, null, rawLine
             );
