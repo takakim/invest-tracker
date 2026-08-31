@@ -51,7 +51,7 @@ export function TransactionFormModal({
   onClose,
   onSubmit,
 }: TransactionFormModalProps) {
-  const { data: instruments = [] } = useInstrumentsList();
+  const { data: instruments = [] } = useInstrumentsList({ enabled: open });
 
   const {
     register,

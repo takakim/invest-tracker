@@ -19,3 +19,15 @@ export function useDividendAnalytics(portfolioId?: string, asOf?: string) {
   });
 }
 
+export function usePortfolioHistory(
+  portfolioId?: string,
+  params?: { period?: string; interval?: string; benchmarkId?: string }
+) {
+  return useQuery({
+    queryKey: ['portfolio', portfolioId, 'history', params?.period, params?.interval, params?.benchmarkId],
+    queryFn: () => analyticsApi.getPortfolioHistory(portfolioId!, params),
+    enabled: !!portfolioId,
+    staleTime: 60 * 1000,
+  });
+}
+

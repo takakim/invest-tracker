@@ -531,4 +531,60 @@ class MarketDataServiceTests {
         assertNotNull(quote);
         assertEquals(new BigDecimal("185.00"), quote.price());
     }
+
+    @Test
+    @DisplayName("Default fallback provider mock price never overwrites existing persisted observation in database")
+    void testDefaultProviderDoesNotOverwriteExistingPersistedObservation() {
+        UUID id = instrument.getId();
+        when(instrumentRepository.findById(id)).thenReturn(Optional.of(instrument));
+        when(marketObservationRepository.findFirstByInstrumentIdAndSourceTypeOrderByObservedAtDesc(id, ObservationSourceType.MANUAL))
+                .thenReturn(Optional.empty());
+
+        // Previous genuine observation from Friday at 289.47 USD
+        Instant fridayObs = Instant.now().minus(96, ChronoUnit.HOURS); // stale (>80h)
+        MarketObservation persisted = new MarketObservation(
+                instrument, new BigDecimal("289.47"), "USD", fridayObs,
+                ObservationSourceType.PROVIDER, "TWELVE_DATA"
+        );
+        when(marketObservationRepository.findFirstByInstrumentIdOrderByObservedAtDesc(id))
+                .thenReturn(Optional.of(persisted));
+
+        // Provider (e.g. DefaultMarketDataProvider) returns fallback mock 65.30 with DEFAULT_PROVIDER
+        PriceQuote mockQuote = new PriceQuote(
+                id, new BigDecimal("65.30"), "USD", Instant.now(),
+                ObservationSourceType.PROVIDER, "DEFAULT_PROVIDER", false, null
+        );
+        when(marketDataProvider.fetchQuote(eq(instrument), any())).thenReturn(Optional.of(mockQuote));
+
+        PriceQuote result = marketDataService.getLatestPrice(id, Instant.now());
+
+        assertNotNull(result);
+        // It must NOT be the 65.30 mock, it must return the genuine persisted 289.47
+        assertEquals(new BigDecimal("289.47"), result.price());
+        assertEquals("TWELVE_DATA", result.sourceReference());
+        verify(marketObservationRepository, never()).save(any(MarketObservation.class));
+    }
+
+    @Test
+    @DisplayName("Default provider mock price is persisted only when instrument has zero prior observations")
+    void testDefaultProviderPersistedWhenNoPriorObservationExists() {
+        UUID id = instrument.getId();
+        when(instrumentRepository.findById(id)).thenReturn(Optional.of(instrument));
+        when(marketObservationRepository.findFirstByInstrumentIdAndSourceTypeOrderByObservedAtDesc(id, ObservationSourceType.MANUAL))
+                .thenReturn(Optional.empty());
+        when(marketObservationRepository.findFirstByInstrumentIdOrderByObservedAtDesc(id))
+                .thenReturn(Optional.empty());
+
+        PriceQuote mockQuote = new PriceQuote(
+                id, new BigDecimal("65.30"), "USD", Instant.now(),
+                ObservationSourceType.PROVIDER, "DEFAULT_PROVIDER", false, null
+        );
+        when(marketDataProvider.fetchQuote(eq(instrument), any())).thenReturn(Optional.of(mockQuote));
+
+        PriceQuote result = marketDataService.getLatestPrice(id, Instant.now());
+
+        assertNotNull(result);
+        assertEquals(new BigDecimal("65.30"), result.price());
+        verify(marketObservationRepository, times(1)).save(any(MarketObservation.class));
+    }
 }

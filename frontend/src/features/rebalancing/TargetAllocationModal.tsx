@@ -59,7 +59,7 @@ export function TargetAllocationModal({
   portfolioId,
   existingPlan,
 }: TargetAllocationModalProps) {
-  const { data: instruments = [] } = useInstrumentsList();
+  const { data: instruments = [] } = useInstrumentsList({ enabled: open });
   const saveMutation = useSaveTargetAllocation(portfolioId);
   const deleteMutation = useDeleteTargetAllocation(portfolioId);
 

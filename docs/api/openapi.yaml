@@ -336,6 +336,31 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/DividendAnalytics' }
+  /portfolios/{portfolioId}/history:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+    get:
+      operationId: getPortfolioHistory
+      summary: Get historical portfolio valuation timeline, cash flows, and benchmark comparison
+      parameters:
+        - name: period
+          in: query
+          required: false
+          schema: { type: string, enum: ['1M', '3M', '6M', 'YTD', '1Y', '3Y', 'ALL'], default: '1Y' }
+        - name: interval
+          in: query
+          required: false
+          schema: { type: string, enum: [DAILY, WEEKLY, MONTHLY] }
+        - name: benchmarkId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Historical portfolio valuations and relative performance series
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PortfolioHistory' }
         '404': { $ref: '#/components/responses/Problem' }
   /portfolios/{portfolioId}/target-allocation:
     parameters:
@@ -1518,6 +1543,48 @@ components:
         items:
           type: array
           items: { $ref: '#/components/schemas/RebalanceOrderItem' }
+    HistoricalValuationPoint:
+      type: object
+      required: [timestamp, marketValue, costBasis, cashValue, investedCapital, unrealizedGainLoss, portfolioReturnPercentage]
+      properties:
+        timestamp: { type: string, format: date-time }
+        marketValue: { type: number }
+        costBasis: { type: number }
+        cashValue: { type: number }
+        investedCapital: { type: number }
+        unrealizedGainLoss: { type: number }
+        portfolioReturnPercentage: { type: number }
+        benchmarkReturnPercentage: { type: number, nullable: true }
+    HistoricalPerformanceSummary:
+      type: object
+      required: [startingValue, endingValue, netCashFlows, totalGainLoss, portfolioReturnPercentage, maxDrawdownPercentage]
+      properties:
+        startingValue: { type: number }
+        endingValue: { type: number }
+        netCashFlows: { type: number }
+        totalGainLoss: { type: number }
+        portfolioReturnPercentage: { type: number }
+        benchmarkReturnPercentage: { type: number, nullable: true }
+        excessReturnPercentage: { type: number, nullable: true }
+        maxDrawdownPercentage: { type: number }
+    PortfolioHistory:
+      type: object
+      required: [portfolioId, portfolioName, baseCurrency, period, interval, periodStart, periodEnd, summary, dataPoints]
+      properties:
+        portfolioId: { type: string, format: uuid }
+        portfolioName: { type: string }
+        baseCurrency: { type: string, pattern: '^[A-Z]{3}$' }
+        period: { type: string }
+        interval: { type: string }
+        periodStart: { type: string, format: date-time }
+        periodEnd: { type: string, format: date-time }
+        benchmarkId: { type: string, format: uuid, nullable: true }
+        benchmarkTicker: { type: string, nullable: true }
+        benchmarkName: { type: string, nullable: true }
+        summary: { $ref: '#/components/schemas/HistoricalPerformanceSummary' }
+        dataPoints:
+          type: array
+          items: { $ref: '#/components/schemas/HistoricalValuationPoint' }
 
 
 

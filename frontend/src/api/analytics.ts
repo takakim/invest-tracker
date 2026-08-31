@@ -1,5 +1,5 @@
 import { request } from './client';
-import type { PortfolioAnalytics, DividendAnalytics } from '../types';
+import type { PortfolioAnalytics, DividendAnalytics, PortfolioHistory } from '../types';
 
 export const analyticsApi = {
   getPortfolioAnalytics: (portfolioId: string, asOf?: string): Promise<PortfolioAnalytics> => {
@@ -10,5 +10,17 @@ export const analyticsApi = {
     const params = asOf ? `?asOf=${encodeURIComponent(asOf)}` : '';
     return request<DividendAnalytics>(`/api/v1/portfolios/${portfolioId}/analytics/dividends${params}`);
   },
+  getPortfolioHistory: (
+    portfolioId: string,
+    params?: { period?: string; interval?: string; benchmarkId?: string }
+  ): Promise<PortfolioHistory> => {
+    const query = new URLSearchParams();
+    if (params?.period) query.append('period', params.period);
+    if (params?.interval) query.append('interval', params.interval);
+    if (params?.benchmarkId) query.append('benchmarkId', params.benchmarkId);
+    const queryString = query.toString() ? `?${query.toString()}` : '';
+    return request<PortfolioHistory>(`/api/v1/portfolios/${portfolioId}/history${queryString}`);
+  },
 };
+
 
