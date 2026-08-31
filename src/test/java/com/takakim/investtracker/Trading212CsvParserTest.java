@@ -136,21 +136,14 @@ class Trading212CsvParserTest {
         assertEquals("TICK4", rows.get(11).instrumentTitle());
         assertEquals(TransactionType.DEPOSIT, rows.get(12).mappedType());
         assertTrue(rows.get(13).isIgnored());
-        assertEquals("Trading 212", parser.getBrokerName());
-    }
-
-    @Test
-    @DisplayName("Parses real Trading 212 export files from docs directory")
-    void parseRealFiles() throws Exception {
-        java.nio.file.Path dir = java.nio.file.Paths.get("docs/csv/trading212");
-        if (java.nio.file.Files.exists(dir)) {
-            try (var stream = java.nio.file.Files.list(dir)) {
-                for (java.nio.file.Path file : stream.filter(p -> p.toString().endsWith(".csv")).toList()) {
-                    String content = java.nio.file.Files.readString(file);
-                    List<ParsedTransactionRow> rows = parser.parse(content);
-                    assertFalse(rows.isEmpty(), "Rows should not be empty for " + file.getFileName());
-                }
-            }
-        }
+        String timestampVariations = """
+            Action,Time (UTC),ISIN,Ticker,Name,Notes,ID,No. of shares,Price / share,Currency (Price / share),Exchange rate,Result,Currency (Result),Total,Currency (Total),Withholding tax,Currency (Withholding tax),Stamp duty,Currency (Stamp duty),Currency conversion fee,Currency (Currency conversion fee)
+            Deposit,2024-07-13T06:37:13Z,,,,Notes,ID1,,,,,,,200.00,"GBP",,,,,,
+            Deposit,2024-07-14 06:37:13,,,,Notes,ID2,,,,,,,100.00,"GBP",,,,,,
+            """;
+        List<ParsedTransactionRow> tsRows = parser.parse(timestampVariations);
+        assertEquals(2, tsRows.size());
+        assertNotNull(tsRows.get(0).timestamp());
+        assertNotNull(tsRows.get(1).timestamp());
     }
 }

@@ -27,6 +27,22 @@ public class CsvImportController {
         this.csvImportService = csvImportService;
     }
 
+    @GetMapping("/api/v1/imports/supported-brokers")
+    public List<String> getSupportedBrokers() {
+        return csvImportService.getSupportedBrokers();
+    }
+
+    @PostMapping("/api/v1/imports/detect-broker")
+    public ApiDtos.BrokerDetectionResponse detectBroker(@Valid @RequestBody ApiDtos.BrokerDetectionRequest request) {
+        CsvImportService.BrokerDetectionResult res = csvImportService.detectBroker(request.csvContent());
+        return new ApiDtos.BrokerDetectionResponse(
+                res.brokerName(),
+                res.confidence(),
+                res.isSupported(),
+                res.supportedBrokers()
+        );
+    }
+
     @PostMapping("/api/v1/portfolios/{portfolioId}/accounts/{accountId}/imports/preview")
     public CsvImportPreviewResponse previewImport(
             @PathVariable UUID portfolioId,
@@ -34,7 +50,7 @@ public class CsvImportController {
             @Valid @RequestBody CsvImportRequest request) {
 
         PreviewResult preview = csvImportService.previewImport(
-                portfolioId, accountId, request.fileName(), request.csvContent());
+                portfolioId, accountId, request.fileName(), request.csvContent(), request.overrideBroker());
 
         List<PreviewRowResponse> rows = preview.rows().stream()
                 .map(r -> new PreviewRowResponse(
@@ -74,7 +90,7 @@ public class CsvImportController {
             @Valid @RequestBody CsvImportRequest request) {
 
         ImportBatch batch = csvImportService.executeImport(
-                portfolioId, accountId, request.fileName(), request.csvContent());
+                portfolioId, accountId, request.fileName(), request.csvContent(), request.overrideBroker());
 
         ImportBatchResponse response = toResponse(batch);
         URI location = URI.create(String.format("/api/v1/portfolios/%s/accounts/%s/imports/%s",

@@ -66,6 +66,13 @@ public class CsvImportService {
         this.parsers = parsers;
     }
 
+    public record BrokerDetectionResult(
+            String brokerName,
+            String confidence,
+            boolean isSupported,
+            List<String> supportedBrokers
+    ) {}
+
     public record PreviewRow(
             int rowNumber,
             String rawType,
@@ -94,11 +101,45 @@ public class CsvImportService {
             List<PreviewRow> rows
     ) {}
 
+    public List<String> getSupportedBrokers() {
+        return parsers.stream()
+                .map(BrokerCsvParser::getBrokerName)
+                .sorted()
+                .toList();
+    }
+
+    public BrokerDetectionResult detectBroker(String csvContent) {
+        List<String> supported = getSupportedBrokers();
+        if (csvContent == null || csvContent.isBlank()) {
+            return new BrokerDetectionResult("Unknown", "LOW", false, supported);
+        }
+
+        String cleanContent = stripBom(csvContent);
+        String[] lines = cleanContent.split("\r?\n");
+        for (int i = 0; i < Math.min(8, lines.length); i++) {
+            String line = lines[i].trim();
+            if (line.isEmpty()) continue;
+            List<String> headers = FreetradeCsvParser.parseCsvLine(line);
+            for (BrokerCsvParser p : parsers) {
+                if (p.supports(headers)) {
+                    return new BrokerDetectionResult(p.getBrokerName(), "HIGH", true, supported);
+                }
+            }
+        }
+
+        return new BrokerDetectionResult("Unknown", "NONE", false, supported);
+    }
+
     @Transactional(readOnly = true)
     public PreviewResult previewImport(UUID portfolioId, UUID accountId, String fileName, String csvContent) {
+        return previewImport(portfolioId, accountId, fileName, csvContent, null);
+    }
+
+    @Transactional(readOnly = true)
+    public PreviewResult previewImport(UUID portfolioId, UUID accountId, String fileName, String csvContent, String overrideBroker) {
         Account account = getAccount(portfolioId, accountId);
-        BrokerCsvParser parser = selectParser(csvContent);
-        List<ParsedTransactionRow> parsedRows = parser.parse(csvContent);
+        BrokerCsvParser parser = selectParser(csvContent, overrideBroker);
+        List<ParsedTransactionRow> parsedRows = parser.parse(stripBom(csvContent));
 
         List<PreviewRow> previewRows = new ArrayList<>();
         int importableCount = 0;
@@ -122,14 +163,14 @@ public class CsvImportService {
             if (isDuplicate) {
                 duplicateCount++;
                 previewRows.add(new PreviewRow(
-                        row.rowNumber(), row.rawType(), row.mappedType().name(), row.instrumentTitle(),
+                        row.rowNumber(), row.rawType(), row.mappedType() != null ? row.mappedType().name() : null, row.instrumentTitle(),
                         row.ticker(), row.isin(), row.quantity(), row.price(), row.grossAmount(),
                         row.feeAmount(), row.taxAmount(), row.currency(), true, false, "Duplicate transaction already imported"
                 ));
             } else {
                 importableCount++;
                 previewRows.add(new PreviewRow(
-                        row.rowNumber(), row.rawType(), row.mappedType().name(), row.instrumentTitle(),
+                        row.rowNumber(), row.rawType(), row.mappedType() != null ? row.mappedType().name() : null, row.instrumentTitle(),
                         row.ticker(), row.isin(), row.quantity(), row.price(), row.grossAmount(),
                         row.feeAmount(), row.taxAmount(), row.currency(), false, false, "Ready for import"
                 ));
@@ -149,9 +190,14 @@ public class CsvImportService {
 
     @Transactional
     public ImportBatch executeImport(UUID portfolioId, UUID accountId, String fileName, String csvContent) {
+        return executeImport(portfolioId, accountId, fileName, csvContent, null);
+    }
+
+    @Transactional
+    public ImportBatch executeImport(UUID portfolioId, UUID accountId, String fileName, String csvContent, String overrideBroker) {
         Account account = getAccount(portfolioId, accountId);
-        BrokerCsvParser parser = selectParser(csvContent);
-        List<ParsedTransactionRow> parsedRows = parser.parse(csvContent);
+        BrokerCsvParser parser = selectParser(csvContent, overrideBroker);
+        List<ParsedTransactionRow> parsedRows = parser.parse(stripBom(csvContent));
 
         ImportBatch batch = new ImportBatch(account, fileName, parser.getBrokerName(), parsedRows.size());
         batch = importBatchRepository.save(batch);
@@ -305,11 +351,11 @@ public class CsvImportService {
         if (n.contains("reit") || n.contains("property")) {
             return AssetClass.REIT;
         }
+        if (n.contains("fund") || n.contains("oeic") || n.contains("unit trust")) {
+            return AssetClass.MUTUAL_FUND;
+        }
         if (n.contains("etf") || n.contains("vanguard") || n.contains("ishares") || n.contains("spdr") || n.contains("ftse") || n.contains("s&p 500") || t.equals("vwrl") || t.equals("xdpg")) {
             return AssetClass.ETF;
-        }
-        if (n.contains("fund") || n.contains("oeic")) {
-            return AssetClass.MUTUAL_FUND;
         }
         if (n.contains("crypto") || n.contains("bitcoin") || t.equals("btc")) {
             return AssetClass.CRYPTO;
@@ -321,13 +367,33 @@ public class CsvImportService {
         return AssetClass.STOCK;
     }
 
-    private BrokerCsvParser selectParser(String csvContent) {
+    private String stripBom(String s) {
+        if (s != null && s.startsWith("\uFEFF")) {
+            return s.substring(1);
+        }
+        return s;
+    }
+
+    private BrokerCsvParser selectParser(String csvContent, String overrideBroker) {
+        if (overrideBroker != null && !overrideBroker.isBlank()) {
+            for (BrokerCsvParser p : parsers) {
+                if (p.getBrokerName().equalsIgnoreCase(overrideBroker.trim())) {
+                    return p;
+                }
+            }
+            throw new IllegalArgumentException("Unsupported broker: " + overrideBroker);
+        }
+
         if (csvContent == null || csvContent.isBlank()) {
             throw new IllegalArgumentException("CSV file content must not be empty");
         }
-        String[] lines = csvContent.split("\r?\n");
-        for (int i = 0; i < Math.min(5, lines.length); i++) {
-            List<String> headers = FreetradeCsvParser.parseCsvLine(lines[i]);
+
+        String cleanContent = stripBom(csvContent);
+        String[] lines = cleanContent.split("\r?\n");
+        for (int i = 0; i < Math.min(8, lines.length); i++) {
+            String line = lines[i].trim();
+            if (line.isEmpty()) continue;
+            List<String> headers = FreetradeCsvParser.parseCsvLine(line);
             for (BrokerCsvParser p : parsers) {
                 if (p.supports(headers)) {
                     return p;
