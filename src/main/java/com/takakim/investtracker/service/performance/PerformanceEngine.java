@@ -14,6 +14,9 @@ import com.takakim.investtracker.service.ResourceNotFoundException;
 import com.takakim.investtracker.service.position.LotDisposal;
 import com.takakim.investtracker.service.position.PositionCalculationResult;
 import com.takakim.investtracker.service.position.PositionEngine;
+import com.takakim.investtracker.domain.Currency;
+import com.takakim.investtracker.domain.Money;
+import com.takakim.investtracker.service.currency.FxRateService;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
@@ -21,6 +24,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,16 +47,28 @@ public class PerformanceEngine {
     private final AccountRepository accountRepository;
     private final TransactionRepository transactionRepository;
     private final PositionEngine positionEngine;
+    private final FxRateService fxRateService;
 
     public PerformanceEngine(
             PortfolioRepository portfolioRepository,
             AccountRepository accountRepository,
             TransactionRepository transactionRepository,
             PositionEngine positionEngine) {
+        this(portfolioRepository, accountRepository, transactionRepository, positionEngine, null);
+    }
+
+    @Autowired
+    public PerformanceEngine(
+            PortfolioRepository portfolioRepository,
+            AccountRepository accountRepository,
+            TransactionRepository transactionRepository,
+            PositionEngine positionEngine,
+            @Autowired(required = false) FxRateService fxRateService) {
         this.portfolioRepository = portfolioRepository;
         this.accountRepository = accountRepository;
         this.transactionRepository = transactionRepository;
         this.positionEngine = positionEngine;
+        this.fxRateService = fxRateService;
     }
 
     /**
@@ -104,6 +120,21 @@ public class PerformanceEngine {
         BigDecimal totalNetIncome = totalDividends.add(totalInterest)
                 .subtract(totalFees).subtract(totalTaxes);
 
+        // Calculate total net deposits (inflows - outflows) in portfolio base currency
+        BigDecimal totalNetDeposits = BigDecimal.ZERO;
+        Currency baseCurrency = portfolio.getBaseCurrency();
+        for (Transaction tx : allTxs) {
+            if (tx.getType() == TransactionType.DEPOSIT) {
+                BigDecimal amt = tx.getNetAmount().abs();
+                Money money = new Money(amt, tx.getAccount().getAccountCurrency());
+                totalNetDeposits = totalNetDeposits.add(convertMoney(money, baseCurrency, tx.getTradeDate()));
+            } else if (tx.getType() == TransactionType.WITHDRAWAL) {
+                BigDecimal amt = tx.getNetAmount().abs();
+                Money money = new Money(amt, tx.getAccount().getAccountCurrency());
+                totalNetDeposits = totalNetDeposits.subtract(convertMoney(money, baseCurrency, tx.getTradeDate()));
+            }
+        }
+
         // TWR / MWR from portfolio-level transactions
         BigDecimal twrReturn = null;
         BigDecimal twrAnnualized = null;
@@ -137,6 +168,7 @@ public class PerformanceEngine {
                 totalTaxes.setScale(4, ROUNDING),
                 totalNetIncome.setScale(4, ROUNDING),
                 totalCostBasis.setScale(4, ROUNDING),
+                totalNetDeposits.setScale(4, ROUNDING),
                 portfolio.getBaseCurrency().code(),
                 VALUATION_BASIS_COST,
                 accountSummaries
@@ -351,5 +383,12 @@ public class PerformanceEngine {
         }
 
         return gain.divide(weightedDeposits, SCALE, ROUNDING);
+    }
+
+    private BigDecimal convertMoney(Money money, Currency targetCurrency, Instant asOf) {
+        if (fxRateService != null) {
+            return fxRateService.convert(money, targetCurrency, asOf).amount();
+        }
+        return money.amount();
     }
 }

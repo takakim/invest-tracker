@@ -345,6 +345,7 @@ export interface PerformanceResult {
   totalTaxes: number;
   totalNetIncome: number;
   totalCostBasis: number;
+  totalNetDeposits?: number;
   currency: string;
   valuationBasis: string;
   byAccount: AccountPerformanceSummary[];

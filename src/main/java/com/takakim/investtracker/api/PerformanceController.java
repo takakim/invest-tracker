@@ -58,6 +58,7 @@ public class PerformanceController {
                 result.totalTaxes(),
                 result.totalNetIncome(),
                 result.totalCostBasis(),
+                result.totalNetDeposits(),
                 result.currency(),
                 result.valuationBasis(),
                 result.byAccount().stream().map(this::toAccountResponse).toList()

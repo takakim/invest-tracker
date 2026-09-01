@@ -678,4 +678,83 @@ class PositionDomainTests {
         ApiDtos.PositionPerformanceResponse perfSameCurr = service.computePositionPerformance(account, instrument, UUID.randomUUID());
         assertNotNull(perfSameCurr);
     }
+
+    @Test
+    @DisplayName("PositionService listAccountPositionsPerformance and listPortfolioPositionsPerformance handle includeClosed")
+    void testListPerformanceIncludeClosed() {
+        var portfolioRepo = org.mockito.Mockito.mock(com.takakim.investtracker.repository.PortfolioRepository.class);
+        var accountRepo = org.mockito.Mockito.mock(com.takakim.investtracker.repository.AccountRepository.class);
+        var instRepo = org.mockito.Mockito.mock(com.takakim.investtracker.repository.InstrumentRepository.class);
+        var posRepo = org.mockito.Mockito.mock(com.takakim.investtracker.repository.PositionRepository.class);
+        var posEngine = org.mockito.Mockito.mock(com.takakim.investtracker.service.position.PositionEngine.class);
+        var txRepo = org.mockito.Mockito.mock(com.takakim.investtracker.repository.TransactionRepository.class);
+        var marketService = org.mockito.Mockito.mock(com.takakim.investtracker.service.market.MarketDataService.class);
+        var fxService = org.mockito.Mockito.mock(com.takakim.investtracker.service.currency.FxRateService.class);
+
+        var service = new com.takakim.investtracker.service.PositionService(
+                portfolioRepo, accountRepo, instRepo, posRepo, posEngine, txRepo, marketService, fxService
+        );
+
+        Currency gbp = new Currency("GBP");
+        Portfolio portfolio = new Portfolio("Main", gbp, CostBasisMethod.FIFO, ReturnMethod.TWR);
+        Account account = new Account(portfolio, "ISA", "Broker", gbp);
+        Instrument activeInst = new Instrument("Apple Inc", AssetClass.STOCK, "AAPL", "US0378331005", "NASDAQ", gbp);
+        Instrument closedInst = new Instrument("Cloudflare", AssetClass.STOCK, "NET", "US18915M1071", "NYSE", gbp);
+
+        Position activePos = new Position(account, activeInst, new Quantity(new BigDecimal("10")), null);
+
+        org.mockito.Mockito.when(portfolioRepo.existsById(portfolio.getId())).thenReturn(true);
+        org.mockito.Mockito.when(accountRepo.findById(account.getId())).thenReturn(java.util.Optional.of(account));
+
+        // When includeClosed = false
+        org.mockito.Mockito.when(posRepo.findByAccountIdAndStatus(account.getId(), PositionStatus.ACTIVE))
+                .thenReturn(List.of(activePos));
+        org.mockito.Mockito.when(posRepo.findByAccountPortfolioIdAndStatus(portfolio.getId(), PositionStatus.ACTIVE))
+                .thenReturn(List.of(activePos));
+
+        var calcActive = new com.takakim.investtracker.service.position.PositionCalculationResult(
+                account.getId(), activeInst.getId(), CostBasisMethod.FIFO,
+                new BigDecimal("10.0"), new BigDecimal("1000.00"), "GBP",
+                new BigDecimal("100.00"), BigDecimal.ZERO, List.of(), List.of()
+        );
+        org.mockito.Mockito.when(posEngine.calculate(org.mockito.Mockito.eq(account), org.mockito.Mockito.eq(activeInst), org.mockito.Mockito.any(), org.mockito.Mockito.any()))
+                .thenReturn(calcActive);
+
+        var activeList = service.listAccountPositionsPerformance(portfolio.getId(), account.getId(), false);
+        assertEquals(1, activeList.size());
+
+        var activePortList = service.listPortfolioPositionsPerformance(portfolio.getId(), false);
+        assertEquals(1, activePortList.size());
+
+        // When includeClosed = true with a missing position record that has transaction history
+        org.mockito.Mockito.when(posRepo.findByAccountId(account.getId()))
+                .thenReturn(List.of(activePos));
+        org.mockito.Mockito.when(posRepo.findByAccountPortfolioId(portfolio.getId()))
+                .thenReturn(List.of(activePos));
+
+        Transaction closedBuy = new Transaction(
+                account, closedInst, TransactionType.BUY,
+                Instant.now().minus(10, java.time.temporal.ChronoUnit.DAYS), null, new BigDecimal("5"),
+                new BigDecimal("50.00"), new BigDecimal("250.00"),
+                null, null, "GBP", null, null, null, null
+        );
+        org.mockito.Mockito.when(txRepo.findByAccountIdOrderByTradeDateDesc(account.getId()))
+                .thenReturn(List.of(closedBuy));
+        org.mockito.Mockito.when(txRepo.findByAccountPortfolioIdOrderByTradeDateDesc(portfolio.getId()))
+                .thenReturn(List.of(closedBuy));
+
+        var calcClosed = new com.takakim.investtracker.service.position.PositionCalculationResult(
+                account.getId(), closedInst.getId(), CostBasisMethod.FIFO,
+                BigDecimal.ZERO, BigDecimal.ZERO, "GBP",
+                BigDecimal.ZERO, BigDecimal.ZERO, List.of(), List.of()
+        );
+        org.mockito.Mockito.when(posEngine.calculate(org.mockito.Mockito.eq(account), org.mockito.Mockito.eq(closedInst), org.mockito.Mockito.any(), org.mockito.Mockito.any()))
+                .thenReturn(calcClosed);
+
+        var allAccountList = service.listAccountPositionsPerformance(portfolio.getId(), account.getId(), true);
+        assertEquals(2, allAccountList.size());
+
+        var allPortfolioList = service.listPortfolioPositionsPerformance(portfolio.getId(), true);
+        assertEquals(2, allPortfolioList.size());
+    }
 }

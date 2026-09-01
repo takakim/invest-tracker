@@ -35,6 +35,18 @@ import ShowChartOutlinedIcon from '@mui/icons-material/ShowChartOutlined';
 import ReceiptLongOutlinedIcon from '@mui/icons-material/ReceiptLongOutlined';
 import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
 
+import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
+import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
+import AccountBalanceWalletOutlinedIcon from '@mui/icons-material/AccountBalanceWalletOutlined';
+import PieChartOutlineOutlinedIcon from '@mui/icons-material/PieChartOutlineOutlined';
+import TrendingUpOutlinedIcon from '@mui/icons-material/TrendingUpOutlined';
+import QueryStatsOutlinedIcon from '@mui/icons-material/QueryStatsOutlined';
+import CompareArrowsOutlinedIcon from '@mui/icons-material/CompareArrowsOutlined';
+import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined';
+import TuneOutlinedIcon from '@mui/icons-material/TuneOutlined';
+import BalanceOutlinedIcon from '@mui/icons-material/BalanceOutlined';
+import LayersOutlinedIcon from '@mui/icons-material/LayersOutlined';
+
 import { usePortfolio, useUpdatePortfolio, useArchivePortfolio } from './usePortfolios';
 import {
   useAccountsList,
@@ -54,7 +66,7 @@ import { PortfolioHistoryCard } from '../analytics/PortfolioHistoryCard';
 import { ExportReportModal } from '../analytics/ExportReportModal';
 import { TargetAllocationCard, RebalancingCalculatorCard } from '../rebalancing';
 import { BenchmarkComparisonCard } from '../benchmark/BenchmarkComparisonCard';
-import { ConfirmDialog, EmptyState, ErrorAlert, LoadingState } from '../../components';
+import { CollapsibleSection, ConfirmDialog, EmptyState, ErrorAlert, LoadingState } from '../../components';
 import type { Account, AccountCreateInput, PortfolioCreateInput } from '../../types';
 
 
@@ -89,6 +101,49 @@ export function PortfolioDetailPage() {
   const [exportModalOpen, setExportModalOpen] = useState(false);
 
   const [accountTabMap, setAccountTabMap] = useState<Record<string, number>>({});
+
+  // Collapsible section states
+  const SECTION_KEYS = [
+    'valuation',
+    'allocation',
+    'performance',
+    'history',
+    'benchmark',
+    'dividends',
+    'targetAllocation',
+    'rebalancing',
+    'accounts',
+  ] as const;
+  type SectionKey = (typeof SECTION_KEYS)[number];
+
+  const [expandedSections, setExpandedSections] = useState<Record<SectionKey, boolean>>({
+    valuation: true,
+    allocation: true,
+    performance: true,
+    history: true,
+    benchmark: true,
+    dividends: true,
+    targetAllocation: true,
+    rebalancing: true,
+    accounts: true,
+  });
+
+  const toggleSection = (key: SectionKey, next?: boolean) => {
+    setExpandedSections((prev) => ({
+      ...prev,
+      [key]: next !== undefined ? next : !prev[key],
+    }));
+  };
+
+  const handleExpandAll = () => {
+    const allOpen = SECTION_KEYS.reduce((acc, k) => ({ ...acc, [k]: true }), {} as Record<SectionKey, boolean>);
+    setExpandedSections(allOpen);
+  };
+
+  const handleCollapseAll = () => {
+    const allClosed = SECTION_KEYS.reduce((acc, k) => ({ ...acc, [k]: false }), {} as Record<SectionKey, boolean>);
+    setExpandedSections(allClosed);
+  };
 
   const handleTabChange = (accountId: string, newValue: number) => {
     setAccountTabMap((prev) => ({ ...prev, [accountId]: newValue }));
@@ -285,70 +340,140 @@ export function PortfolioDetailPage() {
         </Grid>
       </Paper>
 
+      {/* Global Section Controls */}
+      <Stack
+        direction="row"
+        sx={{ justifyContent: 'flex-end', alignItems: 'center', mb: 2, gap: 1 }}
+      >
+        <Button
+          size="small"
+          variant="text"
+          startIcon={<UnfoldMoreIcon fontSize="small" />}
+          onClick={handleExpandAll}
+          sx={{ fontSize: '0.8rem', color: 'text.secondary' }}
+        >
+          Expand All Sections
+        </Button>
+        <Button
+          size="small"
+          variant="text"
+          startIcon={<UnfoldLessIcon fontSize="small" />}
+          onClick={handleCollapseAll}
+          sx={{ fontSize: '0.8rem', color: 'text.secondary' }}
+        >
+          Collapse All Sections
+        </Button>
+      </Stack>
+
       {/* Valuation & Unrealized P&L */}
-      <Box sx={{ mb: 4 }}>
+      <CollapsibleSection
+        title="Valuation & Unrealized P&L"
+        subtitle="Current live valuations, cost basis, and unrealized returns across portfolio holdings"
+        icon={<AccountBalanceWalletOutlinedIcon />}
+        expanded={expandedSections.valuation}
+        onToggle={(expanded) => toggleSection('valuation', expanded)}
+      >
         <ValuationMetricsCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
-      </Box>
+      </CollapsibleSection>
 
       {/* Asset Allocation Breakdown */}
-      <Box sx={{ mb: 4 }}>
+      <CollapsibleSection
+        title="Asset Allocation Breakdown"
+        subtitle="Diversification by asset class, geography, sector, and currency"
+        icon={<PieChartOutlineOutlinedIcon />}
+        expanded={expandedSections.allocation}
+        onToggle={(expanded) => toggleSection('allocation', expanded)}
+      >
         <AssetAllocationCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
-      </Box>
+      </CollapsibleSection>
 
       {/* Portfolio Performance */}
-      <Box sx={{ mb: 4 }}>
+      <CollapsibleSection
+        title="Portfolio Performance"
+        subtitle="Time-Weighted Return (TWR) and Money-Weighted Return (MWR) with income breakdown"
+        icon={<TrendingUpOutlinedIcon />}
+        expanded={expandedSections.performance}
+        onToggle={(expanded) => toggleSection('performance', expanded)}
+      >
         <PerformanceSummaryCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
-      </Box>
+      </CollapsibleSection>
 
-      {/* Historical Valuation & Performance Charting */}
-      <Box sx={{ mb: 4 }}>
+      {/* Historical Valuation & Wealth Growth Charting */}
+      <CollapsibleSection
+        title="Historical Valuation & Wealth Growth"
+        subtitle="Time series valuation, invested capital comparison, drawdowns, and benchmark tracking"
+        icon={<QueryStatsOutlinedIcon />}
+        expanded={expandedSections.history}
+        onToggle={(expanded) => toggleSection('history', expanded)}
+      >
         <PortfolioHistoryCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
-      </Box>
+      </CollapsibleSection>
 
       {/* Benchmark Comparison & Alpha */}
-      <Box sx={{ mb: 4 }}>
+      <CollapsibleSection
+        title="Benchmark Comparison & Alpha"
+        subtitle="Excess returns, beta, tracking error, and comparative performance against index benchmarks"
+        icon={<CompareArrowsOutlinedIcon />}
+        expanded={expandedSections.benchmark}
+        onToggle={(expanded) => toggleSection('benchmark', expanded)}
+      >
         <BenchmarkComparisonCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
-      </Box>
+      </CollapsibleSection>
 
       {/* Dividend Analytics & Income Projection */}
-      <Box sx={{ mb: 4 }}>
+      <CollapsibleSection
+        title="Dividend Analytics & Income Projection"
+        subtitle="Yield, monthly income projections, ex-dividend schedule, and dividend safety"
+        icon={<PaymentsOutlinedIcon />}
+        expanded={expandedSections.dividends}
+        onToggle={(expanded) => toggleSection('dividends', expanded)}
+      >
         <DividendAnalyticsCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
-      </Box>
+      </CollapsibleSection>
 
       {/* Target Asset Allocation Strategy */}
-      <Box sx={{ mb: 4 }}>
+      <CollapsibleSection
+        title="Target Asset Allocation Strategy"
+        subtitle="Target models, allocation bounds, and portfolio drift tracking"
+        icon={<TuneOutlinedIcon />}
+        expanded={expandedSections.targetAllocation}
+        onToggle={(expanded) => toggleSection('targetAllocation', expanded)}
+      >
         <TargetAllocationCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
-      </Box>
+      </CollapsibleSection>
 
       {/* Portfolio Rebalancing Calculator */}
-      <Box sx={{ mb: 4 }}>
+      <CollapsibleSection
+        title="Portfolio Rebalancing Calculator"
+        subtitle="Order sizing and cash-neutral rebalancing suggestions"
+        icon={<BalanceOutlinedIcon />}
+        expanded={expandedSections.rebalancing}
+        onToggle={(expanded) => toggleSection('rebalancing', expanded)}
+      >
         <RebalancingCalculatorCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
-      </Box>
+      </CollapsibleSection>
 
       {/* Accounts Section */}
-      <Box sx={{ mb: 4 }}>
-        <Stack
-          direction="row"
-          sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2 }}
-        >
-          <Box>
-            <Typography variant="h5" sx={{ fontWeight: 600 }}>
-              Accounts
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Brokerage, custody, and cash accounts belonging to this portfolio.
-            </Typography>
-          </Box>
+      <CollapsibleSection
+        title="Accounts"
+        headingVariant="h5"
+        subtitle="Brokerage, custody, and cash accounts with tax-lot holdings and transaction ledgers"
+        icon={<LayersOutlinedIcon />}
+        badge={<Chip label={`${accounts.length} Accounts`} size="small" variant="outlined" color="primary" sx={{ height: 22, fontSize: '0.75rem' }} />}
+        actions={
           <Button
             variant="contained"
+            size="small"
             startIcon={<AddIcon />}
             onClick={handleOpenCreateAccount}
             disabled={portfolio.status !== 'ACTIVE'}
           >
             Add Account
           </Button>
-        </Stack>
-
+        }
+        expanded={expandedSections.accounts}
+        onToggle={(expanded) => toggleSection('accounts', expanded)}
+      >
         <ErrorAlert error={accountsError} onClose={() => refetchAccounts()} />
 
         {isAccountsLoading ? (
@@ -362,9 +487,9 @@ export function PortfolioDetailPage() {
             icon={<AccountBalanceOutlinedIcon sx={{ fontSize: 52, opacity: 0.7 }} />}
           />
         ) : (
-          <Stack spacing={3}>
+          <Stack spacing={3} sx={{ mt: 1 }}>
             {accounts.map((account) => (
-              <Paper key={account.id} sx={{ p: 3, borderRadius: 3 }}>
+              <Paper key={account.id} variant="outlined" sx={{ p: 3, borderRadius: 3 }}>
                 <Stack
                   direction={{ xs: 'column', sm: 'row' }}
                   sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, gap: 2, mb: 2 }}
@@ -453,7 +578,7 @@ export function PortfolioDetailPage() {
             ))}
           </Stack>
         )}
-      </Box>
+      </CollapsibleSection>
 
       {/* Edit Portfolio Modal */}
       <PortfolioFormModal

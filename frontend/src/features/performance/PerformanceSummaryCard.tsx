@@ -186,28 +186,35 @@ export default function PerformanceSummaryCard({ portfolioId, currency }: Props)
 
           {/* Key metrics grid */}
           <Grid container spacing={3}>
-            <Grid size={{ xs: 6, sm: 3 }}>
+            <Grid size={{ xs: 6, sm: 4, md: 2.4 }}>
               <Metric
-                label="Realized Gain/Loss"
-                value={formatMoney(data.totalRealizedGainLoss, curr)}
-                positive={data.totalRealizedGainLoss > 0 ? true : data.totalRealizedGainLoss < 0 ? false : null}
+                label="Net Deposits"
+                value={formatMoney(data.totalNetDeposits ?? 0, curr)}
+                tooltip="Total cumulative external cash deposits minus withdrawals"
               />
             </Grid>
-            <Grid size={{ xs: 6, sm: 3 }}>
-              <Metric
-                label="Net Income"
-                value={formatMoney(data.totalNetIncome, curr)}
-                positive={data.totalNetIncome > 0 ? true : data.totalNetIncome < 0 ? false : null}
-              />
-            </Grid>
-            <Grid size={{ xs: 6, sm: 3 }}>
+            <Grid size={{ xs: 6, sm: 4, md: 2.4 }}>
               <Metric
                 label="Cost Basis"
                 value={formatMoney(data.totalCostBasis, curr)}
                 tooltip="Sum of open lot acquisition costs"
               />
             </Grid>
-            <Grid size={{ xs: 6, sm: 3 }}>
+            <Grid size={{ xs: 6, sm: 4, md: 2.4 }}>
+              <Metric
+                label="Realized Gain/Loss"
+                value={formatMoney(data.totalRealizedGainLoss, curr)}
+                positive={data.totalRealizedGainLoss > 0 ? true : data.totalRealizedGainLoss < 0 ? false : null}
+              />
+            </Grid>
+            <Grid size={{ xs: 6, sm: 4, md: 2.4 }}>
+              <Metric
+                label="Net Income"
+                value={formatMoney(data.totalNetIncome, curr)}
+                positive={data.totalNetIncome > 0 ? true : data.totalNetIncome < 0 ? false : null}
+              />
+            </Grid>
+            <Grid size={{ xs: 6, sm: 4, md: 2.4 }}>
               <Metric
                 label="Dividends"
                 value={formatMoney(data.totalDividendIncome, curr)}

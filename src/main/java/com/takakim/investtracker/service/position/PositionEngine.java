@@ -110,6 +110,10 @@ public class PositionEngine {
         } else if (qty.compareTo(BigDecimal.ZERO) > 0) {
             Position position = new Position(account, instrument, new Quantity(qty), costBasisMoney);
             positionRepository.save(position);
+        } else if (!history.isEmpty()) {
+            Position position = new Position(account, instrument, new Quantity(BigDecimal.ZERO), null);
+            position.archive();
+            positionRepository.save(position);
         }
 
         return result;

@@ -1292,6 +1292,7 @@ components:
         totalTaxes: { type: number }
         totalNetIncome: { type: number }
         totalCostBasis: { type: number }
+        totalNetDeposits: { type: number }
         currency: { type: string }
         valuationBasis: { type: string, description: "COST_BASIS until market prices are available" }
         byAccount:
