@@ -95,8 +95,13 @@ export function TransactionFormModal({
       if (!isNaN(q) && !isNaN(p)) {
         setValue('grossAmount', Number((q * p).toFixed(4)));
       }
+    } else if (isSplit) {
+      setValue('grossAmount', 0);
+      setValue('price', undefined);
+      setValue('feeAmount', undefined);
+      setValue('taxAmount', undefined);
     }
-  }, [isTrade, watchedQuantity, watchedPrice, setValue]);
+  }, [isTrade, isSplit, watchedQuantity, watchedPrice, setValue]);
 
   useEffect(() => {
     if (open) {
@@ -120,7 +125,7 @@ export function TransactionFormModal({
   const fee = Number(watchedFee || 0);
   const tax = Number(watchedTax || 0);
   const netAmountPreview =
-    selectedType === 'BUY' ? gross + fee : selectedType === 'SELL' ? gross - fee - tax : selectedType === 'DIVIDEND' ? gross - tax : gross;
+    isSplit ? 0 : selectedType === 'BUY' ? gross + fee : selectedType === 'SELL' ? gross - fee - tax : selectedType === 'DIVIDEND' ? gross - tax : gross;
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
@@ -138,7 +143,7 @@ export function TransactionFormModal({
                     name="type"
                     control={control}
                     render={({ field }) => (
-                      <Select {...field} labelId="tx-type-label" label="Transaction Type">
+                      <Select labelId="tx-type-label" label="Transaction Type" {...field}>
                         {TRANSACTION_TYPES.map((t) => (
                           <MenuItem key={t.value} value={t.value}>
                             {t.label}
@@ -153,7 +158,7 @@ export function TransactionFormModal({
 
               <Grid size={{ xs: 12, sm: 6 }}>
                 <TextField
-                  label="Trade Date & Time"
+                  label="Trade Date / Time"
                   required
                   fullWidth
                   type="datetime-local"
@@ -167,15 +172,19 @@ export function TransactionFormModal({
 
             {requiresInstrument && (
               <FormControl fullWidth error={Boolean(errors.instrumentId)}>
-                <InputLabel id="tx-instrument-label">Select Instrument</InputLabel>
+                <InputLabel id="tx-inst-label">Financial Instrument</InputLabel>
                 <Controller
                   name="instrumentId"
                   control={control}
                   render={({ field }) => (
-                    <Select {...field} labelId="tx-instrument-label" label="Select Instrument">
+                    <Select labelId="tx-inst-label" label="Financial Instrument" {...field} value={field.value || ''}>
+                      <MenuItem value="">
+                        <em>Select an instrument</em>
+                      </MenuItem>
                       {instruments.map((inst) => (
                         <MenuItem key={inst.id} value={inst.id}>
-                          {inst.name} {inst.ticker ? `(${inst.ticker})` : ''} [{inst.currency}]
+                          {inst.ticker ? `${inst.ticker} — ` : ''}
+                          {inst.name} {inst.isin ? `(${inst.isin})` : ''}
                         </MenuItem>
                       ))}
                     </Select>
@@ -185,78 +194,82 @@ export function TransactionFormModal({
               </FormControl>
             )}
 
-            {isTrade && (
+            {(isTrade || isSplit) && (
               <Grid container spacing={2}>
-                <Grid size={{ xs: 12, sm: 6 }}>
+                <Grid size={{ xs: 12, sm: isTrade ? 6 : 12 }}>
                   <TextField
-                    label="Share Quantity"
+                    label={isSplit ? 'Split Share Quantity' : 'Share Quantity'}
                     required
                     fullWidth
                     type="number"
-                    placeholder="e.g. 10.50"
+                    placeholder={isSplit ? 'e.g. 181.605204' : 'e.g. 10.50'}
                     slotProps={{ htmlInput: { step: 'any', min: 0 } }}
                     error={Boolean(errors.quantity)}
-                    helperText={errors.quantity?.message}
+                    helperText={errors.quantity?.message || (isSplit ? 'Number of additional shares received (or deducted for reverse split)' : undefined)}
                     {...register('quantity')}
                   />
                 </Grid>
-                <Grid size={{ xs: 12, sm: 6 }}>
+                {isTrade && (
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      label="Execution Price per Share"
+                      required
+                      fullWidth
+                      type="number"
+                      placeholder="e.g. 150.25"
+                      slotProps={{ htmlInput: { step: 'any', min: 0 } }}
+                      error={Boolean(errors.price)}
+                      helperText={errors.price?.message}
+                      {...register('price')}
+                    />
+                  </Grid>
+                )}
+              </Grid>
+            )}
+
+            {!isSplit && (
+              <Grid container spacing={2}>
+                <Grid size={{ xs: 12, sm: 4 }}>
                   <TextField
-                    label="Execution Price per Share"
+                    label="Gross Amount"
                     required
                     fullWidth
                     type="number"
-                    placeholder="e.g. 150.25"
+                    placeholder="e.g. 1500.00"
                     slotProps={{ htmlInput: { step: 'any', min: 0 } }}
-                    error={Boolean(errors.price)}
-                    helperText={errors.price?.message}
-                    {...register('price')}
+                    error={Boolean(errors.grossAmount)}
+                    helperText={errors.grossAmount?.message}
+                    {...register('grossAmount')}
+                  />
+                </Grid>
+
+                <Grid size={{ xs: 12, sm: 4 }}>
+                  <TextField
+                    label="Broker Fee"
+                    fullWidth
+                    type="number"
+                    placeholder="e.g. 5.00"
+                    slotProps={{ htmlInput: { step: 'any', min: 0 } }}
+                    error={Boolean(errors.feeAmount)}
+                    helperText={errors.feeAmount?.message}
+                    {...register('feeAmount')}
+                  />
+                </Grid>
+
+                <Grid size={{ xs: 12, sm: 4 }}>
+                  <TextField
+                    label="Tax Amount"
+                    fullWidth
+                    type="number"
+                    placeholder="e.g. 10.00"
+                    slotProps={{ htmlInput: { step: 'any', min: 0 } }}
+                    error={Boolean(errors.taxAmount)}
+                    helperText={errors.taxAmount?.message}
+                    {...register('taxAmount')}
                   />
                 </Grid>
               </Grid>
             )}
-
-            <Grid container spacing={2}>
-              <Grid size={{ xs: 12, sm: 4 }}>
-                <TextField
-                  label="Gross Amount"
-                  required
-                  fullWidth
-                  type="number"
-                  placeholder="e.g. 1500.00"
-                  slotProps={{ htmlInput: { step: 'any', min: 0 } }}
-                  error={Boolean(errors.grossAmount)}
-                  helperText={errors.grossAmount?.message}
-                  {...register('grossAmount')}
-                />
-              </Grid>
-
-              <Grid size={{ xs: 12, sm: 4 }}>
-                <TextField
-                  label="Broker Fee"
-                  fullWidth
-                  type="number"
-                  placeholder="e.g. 5.00"
-                  slotProps={{ htmlInput: { step: 'any', min: 0 } }}
-                  error={Boolean(errors.feeAmount)}
-                  helperText={errors.feeAmount?.message}
-                  {...register('feeAmount')}
-                />
-              </Grid>
-
-              <Grid size={{ xs: 12, sm: 4 }}>
-                <TextField
-                  label="Tax Amount"
-                  fullWidth
-                  type="number"
-                  placeholder="e.g. 10.00"
-                  slotProps={{ htmlInput: { step: 'any', min: 0 } }}
-                  error={Boolean(errors.taxAmount)}
-                  helperText={errors.taxAmount?.message}
-                  {...register('taxAmount')}
-                />
-              </Grid>
-            </Grid>
 
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, sm: 6 }}>

@@ -102,6 +102,39 @@ class InvestEngineCsvParserTest {
     }
 
     @Test
+    @DisplayName("Parses enriched InvestEngine CSV schema with 12 columns")
+    void parseEnrichedCsv() {
+        String csv = """
+            Security,Ticker,ISIN,Currency,Exchange,Transaction Type,Quantity,Share Price,Total Trade Value,Trade Date/Time,Settlement Date,Broker
+            Invesco S&P 500 UCITS ETF,SPXP,IE00B3YCGJ38,GBP,LSE,Stock Split,181.605204,£0.0000,£0.00,12/01/26 08:00:00,12/01/26,None
+            Invesco S&P 500 UCITS ETF,SPXP,IE00B3YCGJ38,GBP,LSE,Buy,14.396643,£10.3419,£148.89,16/01/26 14:59:41,20/01/26,None
+            Invesco S&P 500 UCITS ETF,SPXP,IE00B3YCGJ38,GBP,LSE,Dividend,10.0,£0.0,£5.50,16/02/26 14:59:41,20/02/26,None
+            """;
+        List<ParsedTransactionRow> rows = parser.parse(csv);
+        assertEquals(3, rows.size());
+
+        ParsedTransactionRow r1 = rows.get(0);
+        assertEquals(TransactionType.STOCK_SPLIT, r1.mappedType());
+        assertEquals("SPXP", r1.ticker());
+        assertEquals("IE00B3YCGJ38", r1.isin());
+        assertEquals("Invesco S&P 500 UCITS ETF", r1.instrumentTitle());
+        assertEquals("GBP", r1.currency());
+        assertEquals(new BigDecimal("181.605204"), r1.quantity());
+        assertNull(r1.price());
+        assertEquals(BigDecimal.ZERO, r1.grossAmount());
+
+        ParsedTransactionRow r2 = rows.get(1);
+        assertEquals(TransactionType.BUY, r2.mappedType());
+        assertEquals(new BigDecimal("14.396643"), r2.quantity());
+        assertEquals(new BigDecimal("10.3419"), r2.price());
+        assertEquals(new BigDecimal("148.89"), r2.grossAmount());
+
+        ParsedTransactionRow r3 = rows.get(2);
+        assertEquals(TransactionType.DIVIDEND, r3.mappedType());
+        assertEquals(new BigDecimal("5.50"), r3.grossAmount());
+    }
+
+    @Test
     @DisplayName("Parses real InvestEngine export statement from docs directory")
     void parseRealFiles() throws Exception {
         java.nio.file.Path dir = java.nio.file.Paths.get("docs/csv/investengine");

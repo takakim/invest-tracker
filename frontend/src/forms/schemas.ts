@@ -122,40 +122,70 @@ export const transactionTypeEnum = z.enum([
   'TRANSFER',
 ]);
 
-export const transactionSchema = z.object({
-  type: transactionTypeEnum,
-  tradeDate: z.string().trim().min(1, 'Trade date is required'),
-  instrumentId: z
-    .string()
-    .trim()
-    .optional()
-    .or(z.literal(''))
-    .transform((v) => (v && v.trim() ? v.trim() : undefined)),
-  quantity: z
-    .union([z.coerce.number().min(0, 'Quantity must be non-negative'), z.literal(''), z.undefined(), z.null()])
-    .optional()
-    .transform((val) => (val === '' || val === null || val === undefined ? undefined : Number(val))),
-  price: z
-    .union([z.coerce.number().min(0, 'Price must be non-negative'), z.literal(''), z.undefined(), z.null()])
-    .optional()
-    .transform((val) => (val === '' || val === null || val === undefined ? undefined : Number(val))),
-  grossAmount: z.coerce.number({ message: 'Gross amount is required' }).min(0, 'Gross amount must be non-negative'),
-  feeAmount: z
-    .union([z.coerce.number().min(0, 'Fee amount must be non-negative'), z.literal(''), z.undefined(), z.null()])
-    .optional()
-    .transform((val) => (val === '' || val === null || val === undefined ? undefined : Number(val))),
-  taxAmount: z
-    .union([z.coerce.number().min(0, 'Tax amount must be non-negative'), z.literal(''), z.undefined(), z.null()])
-    .optional()
-    .transform((val) => (val === '' || val === null || val === undefined ? undefined : Number(val))),
-  currency: currencyCodeSchema,
-  notes: z
-    .string()
-    .trim()
-    .max(255, 'Notes must be at most 255 characters')
-    .optional()
-    .or(z.literal(''))
-    .transform((v) => (v && v.trim() ? v.trim() : undefined)),
-});
+export const transactionSchema = z
+  .object({
+    type: transactionTypeEnum,
+    tradeDate: z.string().trim().min(1, 'Trade date is required'),
+    instrumentId: z
+      .string()
+      .trim()
+      .optional()
+      .or(z.literal(''))
+      .transform((v) => (v && v.trim() ? v.trim() : undefined)),
+    quantity: z
+      .union([z.coerce.number().min(0, 'Quantity must be non-negative'), z.literal(''), z.undefined(), z.null()])
+      .optional()
+      .transform((val) => (val === '' || val === null || val === undefined ? undefined : Number(val))),
+    price: z
+      .union([z.coerce.number().min(0, 'Price must be non-negative'), z.literal(''), z.undefined(), z.null()])
+      .optional()
+      .transform((val) => (val === '' || val === null || val === undefined ? undefined : Number(val))),
+    grossAmount: z.coerce.number({ message: 'Gross amount is required' }).min(0, 'Gross amount must be non-negative'),
+    feeAmount: z
+      .union([z.coerce.number().min(0, 'Fee amount must be non-negative'), z.literal(''), z.undefined(), z.null()])
+      .optional()
+      .transform((val) => (val === '' || val === null || val === undefined ? undefined : Number(val))),
+    taxAmount: z
+      .union([z.coerce.number().min(0, 'Tax amount must be non-negative'), z.literal(''), z.undefined(), z.null()])
+      .optional()
+      .transform((val) => (val === '' || val === null || val === undefined ? undefined : Number(val))),
+    currency: currencyCodeSchema,
+    notes: z
+      .string()
+      .trim()
+      .max(255, 'Notes must be at most 255 characters')
+      .optional()
+      .or(z.literal(''))
+      .transform((v) => (v && v.trim() ? v.trim() : undefined)),
+  })
+  .superRefine((val, ctx) => {
+    const isTrade = val.type === 'BUY' || val.type === 'SELL';
+    const isSplit = val.type === 'STOCK_SPLIT' || val.type === 'REVERSE_STOCK_SPLIT';
+    const requiresInstrument = isTrade || isSplit || val.type === 'DIVIDEND';
+
+    if (requiresInstrument && !val.instrumentId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Instrument is required',
+        path: ['instrumentId'],
+      });
+    }
+
+    if ((isTrade || isSplit) && (val.quantity === undefined || val.quantity <= 0)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Quantity must be greater than 0',
+        path: ['quantity'],
+      });
+    }
+
+    if (isTrade && (val.price === undefined || val.price <= 0)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Price must be greater than 0',
+        path: ['price'],
+      });
+    }
+  });
 
 export type TransactionFormData = z.input<typeof transactionSchema>;
