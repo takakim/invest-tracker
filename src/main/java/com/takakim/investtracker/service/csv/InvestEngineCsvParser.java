@@ -97,26 +97,58 @@ public class InvestEngineCsvParser implements BrokerCsvParser {
     }
 
     private ParsedTransactionRow parseRow(int rowNumber, List<String> cols, String rawLine) {
-        String securityIsin = col(cols, 0).trim();
-        String rawType = col(cols, 1).trim();
-        BigDecimal quantity = parseDecimal(col(cols, 2));
-        BigDecimal sharePrice = parseDecimal(col(cols, 3));
-        BigDecimal totalValue = parseDecimal(col(cols, 4));
-        String dateTimeStr = col(cols, 5).trim();
-        String broker = col(cols, 7).trim();
+        boolean isEnriched = cols.size() >= 10 && (
+                "Buy".equalsIgnoreCase(col(cols, 5)) ||
+                "Sell".equalsIgnoreCase(col(cols, 5)) ||
+                "Dividend".equalsIgnoreCase(col(cols, 5)) ||
+                col(cols, 5).toLowerCase().contains("split")
+        );
 
-        String name = securityIsin;
-        String isin = null;
-        if (securityIsin.contains("/ ISIN")) {
-            String[] parts = securityIsin.split("/ ISIN:?");
-            name = parts[0].trim();
-            if (parts.length > 1) {
-                isin = parts[1].trim();
+        String name;
+        String isin;
+        String ticker;
+        String currency = "GBP";
+        String rawType;
+        BigDecimal quantity;
+        BigDecimal sharePrice;
+        BigDecimal totalValue;
+        String dateTimeStr;
+        String broker;
+
+        if (isEnriched) {
+            name = col(cols, 0).trim();
+            ticker = col(cols, 1).trim();
+            isin = col(cols, 2).trim();
+            currency = col(cols, 3).trim();
+            if (currency.isBlank()) currency = "GBP";
+            rawType = col(cols, 5).trim();
+            quantity = parseDecimal(col(cols, 6));
+            sharePrice = parseDecimal(col(cols, 7));
+            totalValue = parseDecimal(col(cols, 8));
+            dateTimeStr = col(cols, 9).trim();
+            broker = col(cols, 11).trim();
+        } else {
+            String securityIsin = col(cols, 0).trim();
+            rawType = col(cols, 1).trim();
+            quantity = parseDecimal(col(cols, 2));
+            sharePrice = parseDecimal(col(cols, 3));
+            totalValue = parseDecimal(col(cols, 4));
+            dateTimeStr = col(cols, 5).trim();
+            broker = col(cols, 7).trim();
+
+            name = securityIsin;
+            isin = null;
+            if (securityIsin.contains("/ ISIN")) {
+                String[] parts = securityIsin.split("/ ISIN:?");
+                name = parts[0].trim();
+                if (parts.length > 1) {
+                    isin = parts[1].trim();
+                }
             }
+            ticker = CsvImportService.inferTicker(isin, name);
         }
 
         Instant timestamp = parseTimestamp(dateTimeStr);
-        String currency = "GBP";
 
         TransactionType mappedType = null;
         if ("Buy".equalsIgnoreCase(rawType)) {
@@ -125,6 +157,14 @@ public class InvestEngineCsvParser implements BrokerCsvParser {
             mappedType = TransactionType.SELL;
         } else if ("Dividend".equalsIgnoreCase(rawType)) {
             mappedType = TransactionType.DIVIDEND;
+        } else if ("Stock Split".equalsIgnoreCase(rawType) || "STOCK_SPLIT".equalsIgnoreCase(rawType) || "Split".equalsIgnoreCase(rawType)) {
+            mappedType = TransactionType.STOCK_SPLIT;
+            sharePrice = null;
+            totalValue = BigDecimal.ZERO;
+        } else if ("Reverse Stock Split".equalsIgnoreCase(rawType) || "REVERSE_STOCK_SPLIT".equalsIgnoreCase(rawType)) {
+            mappedType = TransactionType.REVERSE_STOCK_SPLIT;
+            sharePrice = null;
+            totalValue = BigDecimal.ZERO;
         }
 
         boolean isIgnored = mappedType == null;
@@ -136,7 +176,7 @@ public class InvestEngineCsvParser implements BrokerCsvParser {
                 rawType,
                 mappedType,
                 name,
-                null,
+                ticker,
                 isin,
                 currency,
                 quantity,

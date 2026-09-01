@@ -63,12 +63,6 @@ public class InstrumentService {
                 manualOnly
         );
         Instrument saved = repository.save(instrument);
-        if (marketDataService != null && !saved.isManualPriceOnly()) {
-            try {
-                marketDataService.getLatestPrice(saved.getId(), Instant.now());
-            } catch (Exception ignored) {
-            }
-        }
         return toResponse(saved);
     }
 
@@ -98,7 +92,7 @@ public class InstrumentService {
 
             for (Instrument inst : prioritized) {
                 try {
-                    marketDataService.getLatestPrice(inst.getId(), Instant.now());
+                    marketDataService.refreshPrice(inst.getId());
                 } catch (Exception ignored) {
                 }
             }
@@ -111,7 +105,7 @@ public class InstrumentService {
                 .orElseThrow(() -> new ResourceNotFoundException("Instrument not found: " + id));
         if (marketDataService != null) {
             try {
-                marketDataService.getLatestPrice(instrument.getId(), Instant.now());
+                marketDataService.refreshPrice(instrument.getId());
             } catch (Exception ignored) {
             }
         }

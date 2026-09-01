@@ -33,10 +33,12 @@ public class AverageCostBasisStrategy implements CostBasisStrategy {
 
     @Override
     public PositionCalculationResult calculate(Account account, Instrument instrument, List<Transaction> transactions) {
-        // Default currency fallback — will be overridden by actual transaction currency below
-        String currency = (account != null && account.getAccountCurrency() != null)
-                ? account.getAccountCurrency().code()
-                : (instrument != null && instrument.getCurrency() != null ? instrument.getCurrency().code() : "USD");
+        String currency = "USD";
+        if (account != null && account.getAccountCurrency() != null) {
+            currency = account.getAccountCurrency().code();
+        } else if (instrument != null && instrument.getCurrency() != null) {
+            currency = instrument.getCurrency().code();
+        }
 
         UUID instId = instrument != null ? instrument.getId() : UUID.randomUUID();
         UUID accId = account != null ? account.getId() : UUID.randomUUID();

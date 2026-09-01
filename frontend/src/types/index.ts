@@ -295,6 +295,18 @@ export interface ImportBatch {
 export interface CsvImportInput {
   fileName: string;
   csvContent: string;
+  overrideBroker?: string | null;
+}
+
+export interface BrokerDetectionRequest {
+  csvContent: string;
+}
+
+export interface BrokerDetectionResponse {
+  brokerName: string;
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'NONE';
+  isSupported: boolean;
+  supportedBrokers: string[];
 }
 
 
@@ -523,7 +535,8 @@ export interface DividendAnalytics {
   monthlyHistory: MonthlyDividendHistory[];
   yearlyHistory: YearlyDividendHistory[];
   holdings: HoldingDividendMetric[];
-  projectedCalendar: ProjectedMonthlyIncome[];
+  projectedMonthlyCalendar: ProjectedMonthlyIncome[];
+  projectedCalendar?: ProjectedMonthlyIncome[];
 }
 
 export type AllocationType = 'ASSET_CLASS' | 'INSTRUMENT';

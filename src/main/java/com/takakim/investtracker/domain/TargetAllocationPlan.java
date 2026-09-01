@@ -91,6 +91,11 @@ public class TargetAllocationPlan {
         this.updatedAt = Instant.now();
     }
 
+    public void removeItemsNotIn(java.util.Set<String> retainedCategoryKeys) {
+        items.removeIf(item -> !retainedCategoryKeys.contains(item.getCategoryKey().toUpperCase()));
+        this.updatedAt = Instant.now();
+    }
+
     public UUID getId() {
         return id;
     }

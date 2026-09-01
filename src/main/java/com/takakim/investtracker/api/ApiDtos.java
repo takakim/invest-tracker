@@ -125,7 +125,21 @@ public final class ApiDtos {
 
     public record CsvImportRequest(
         @NotBlank String fileName,
+        @NotBlank String csvContent,
+        String overrideBroker) {
+        public CsvImportRequest(String fileName, String csvContent) {
+            this(fileName, csvContent, null);
+        }
+    }
+
+    public record BrokerDetectionRequest(
         @NotBlank String csvContent) { }
+
+    public record BrokerDetectionResponse(
+        String brokerName,
+        String confidence,
+        boolean isSupported,
+        List<String> supportedBrokers) { }
 
     public record PreviewRowResponse(
         int rowNumber,

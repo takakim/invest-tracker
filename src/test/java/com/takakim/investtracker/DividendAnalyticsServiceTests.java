@@ -616,4 +616,41 @@ class DividendAnalyticsServiceTests {
         assertEquals(new BigDecimal("2.00"), response.portfolioDividendYieldPercentage());
         assertEquals(new BigDecimal("4.00"), response.portfolioYieldOnCostPercentage());
     }
+
+    @Test
+    void calculate_olderDividendFallback_usesQuarterlyProxy() {
+        Instant now = Instant.parse("2026-08-30T12:00:00Z");
+        // Dividend from 18 months ago (outside TTM)
+        Instant oldDivDate = Instant.parse("2025-01-10T10:00:00Z");
+
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(portfolio));
+
+        Transaction oldTx = new Transaction(
+                account, vusa, TransactionType.DIVIDEND, oldDivDate, oldDivDate,
+                new BigDecimal("50"), new BigDecimal("0.50"),
+                new BigDecimal("25.00"), BigDecimal.ZERO, BigDecimal.ZERO,
+                "GBP", BigDecimal.ONE, null, null, null
+        );
+
+        when(transactionRepository.findByAccountPortfolioIdOrderByTradeDateDesc(portfolioId))
+                .thenReturn(List.of(oldTx));
+
+        Position pos = new Position(account, vusa, new Quantity(new BigDecimal("50")), new Money(new BigDecimal("2500.00"), new Currency("GBP")));
+        when(positionRepository.findByAccountPortfolioIdAndStatus(portfolioId, PositionStatus.ACTIVE))
+                .thenReturn(List.of(pos));
+
+        when(fxRateService.convert(any(Money.class), eq(new Currency("GBP")), any(Instant.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        when(marketDataService.getLatestPrice(eq(vusa.getId()), any(Instant.class)))
+                .thenReturn(new PriceQuote(vusa.getId(), new BigDecimal("100.00"), "GBP", now, com.takakim.investtracker.domain.ObservationSourceType.PROVIDER, "TEST", false, null));
+
+        DividendAnalyticsResponse response = dividendAnalyticsService.calculate(portfolioId, now);
+
+        assertNotNull(response);
+        assertEquals(new BigDecimal("25.0000"), response.totalDividendsAllTime());
+        // 0.50 DPS * 4 = 2.0000 DPS proxy
+        assertEquals(new BigDecimal("2.0000"), response.holdings().get(0).trailingTwelveMonthsDps());
+        assertEquals(new BigDecimal("100.0000"), response.holdings().get(0).projectedAnnualIncome());
+    }
 }

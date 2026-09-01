@@ -45,3 +45,37 @@ python3 scripts/check_coverage.py
 # Inspect missed branches in a specific file
 python3 scripts/check_coverage.py --file FreetradeCsvParser.java
 ```
+
+---
+
+### 4. `audit_csv_ledger.py`
+Audits cash ledger balances, embedded fees, withholding taxes, and net outlays/proceeds across broker CSV exports, detecting potential double-deductions and reconciling directly against live app cash balances.
+
+```bash
+# Audit a CSV ledger breakdown
+python3 scripts/audit_csv_ledger.py path/to/activity-feed-export.csv
+
+# Reconcile against target live broker app cash balance
+python3 scripts/audit_csv_ledger.py path/to/activity-feed-export.csv --target-cash 3637.84
+```
+
+---
+
+### 5. `scan_instruments.py`
+Scans CSV files under `docs/csv/` or `docs/` to discover unique financial instruments, ISINs, tickers, native currencies, and initial price references.
+
+```bash
+python3 scripts/scan_instruments.py
+```
+
+---
+
+### 6. `enrich_investengine_csv.py`
+Enriches raw InvestEngine CSV exports by cross-referencing ISINs to add standard ticker symbols, native currencies, and LSE exchange metadata.
+
+```bash
+# Enrich an InvestEngine statement and write to a new file
+python3 scripts/enrich_investengine_csv.py path/to/SIPP.csv -o path/to/SIPP_enriched.csv
+```
+
+

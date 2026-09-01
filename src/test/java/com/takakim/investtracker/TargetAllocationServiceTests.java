@@ -250,6 +250,49 @@ class TargetAllocationServiceTests {
     }
 
     @Test
+    void saveTargetPlan_duplicateCategoryKey_throwsException() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(portfolio));
+
+        TargetAllocationPlanRequest request = new TargetAllocationPlanRequest(
+                "Plan", AllocationType.ASSET_CLASS, new BigDecimal("5.00"),
+                List.of(
+                        new TargetAllocationItemRequest("STOCK", "Equities 1", new BigDecimal("50.00"), null),
+                        new TargetAllocationItemRequest("STOCK", "Equities 2", new BigDecimal("50.00"), null)
+                )
+        );
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> service.saveTargetPlan(portfolioId, request));
+        assertTrue(ex.getMessage().contains("Duplicate category key"));
+    }
+
+    @Test
+    void saveTargetPlan_updatesExistingCategoryInPlace() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(portfolio));
+
+        TargetAllocationPlan existingPlan = new TargetAllocationPlan(portfolio, "Old Name", AllocationType.ASSET_CLASS, new BigDecimal("5.00"));
+        existingPlan.addItem(new TargetAllocationItem(existingPlan, "STOCK", "Old Stock", new BigDecimal("80.00"), null));
+        existingPlan.addItem(new TargetAllocationItem(existingPlan, "BOND", "Old Bond", new BigDecimal("20.00"), null));
+
+        when(planRepository.findByPortfolioIdWithItems(portfolioId)).thenReturn(Optional.of(existingPlan));
+        when(planRepository.save(any(TargetAllocationPlan.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        // Update STOCK, replace BOND with CASH
+        TargetAllocationPlanRequest request = new TargetAllocationPlanRequest(
+                "Updated Plan", AllocationType.ASSET_CLASS, new BigDecimal("3.00"),
+                List.of(
+                        new TargetAllocationItemRequest("STOCK", "Updated Stock", new BigDecimal("70.00"), null),
+                        new TargetAllocationItemRequest("CASH", "Cash Reserves", new BigDecimal("30.00"), null)
+                )
+        );
+
+        TargetAllocationPlanResponse response = service.saveTargetPlan(portfolioId, request);
+        assertEquals(2, response.items().size());
+        assertTrue(response.items().stream().anyMatch(i -> i.categoryKey().equals("STOCK") && i.targetPercentage().compareTo(new BigDecimal("70.00")) == 0));
+        assertTrue(response.items().stream().anyMatch(i -> i.categoryKey().equals("CASH") && i.targetPercentage().compareTo(new BigDecimal("30.00")) == 0));
+    }
+
+    @Test
     void deleteTargetPlan_portfolioNotFound_throwsException() {
         when(portfolioRepository.existsById(portfolioId)).thenReturn(false);
         assertThrows(ResourceNotFoundException.class, () -> service.deleteTargetPlan(portfolioId));

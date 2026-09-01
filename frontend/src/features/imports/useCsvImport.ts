@@ -21,10 +21,39 @@ export function useExecuteCsvImport(portfolioId: string, accountId: string) {
   });
 }
 
+export function useSupportedBrokers() {
+  return useQuery({
+    queryKey: ['supportedBrokers'],
+    queryFn: () => importApi.getSupportedBrokers(),
+    staleTime: 60 * 60 * 1000,
+  });
+}
+
+export function useDetectBroker() {
+  return useMutation({
+    mutationFn: (csvContent: string) => importApi.detectBroker(csvContent),
+  });
+}
+
 export function useImportBatchesList(portfolioId: string, accountId: string) {
   return useQuery({
     queryKey: ['imports', portfolioId, accountId],
     queryFn: () => importApi.list(portfolioId, accountId),
     enabled: Boolean(portfolioId && accountId),
+  });
+}
+
+export function useDeleteImportBatch(portfolioId: string, accountId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (batchId: string) => importApi.deleteBatch(portfolioId, accountId, batchId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['positions'] });
+      queryClient.invalidateQueries({ queryKey: ['instruments'] });
+      queryClient.invalidateQueries({ queryKey: ['imports', portfolioId, accountId] });
+      queryClient.invalidateQueries({ queryKey: ['portfolios'] });
+      queryClient.invalidateQueries({ queryKey: ['portfolio'] });
+    },
   });
 }

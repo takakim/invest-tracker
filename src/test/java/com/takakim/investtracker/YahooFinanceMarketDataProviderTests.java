@@ -650,4 +650,78 @@ class YahooFinanceMarketDataProviderTests {
         assertTrue(provider.fetchQuote(vwrl, null).isEmpty());
         mockServer.verify();
     }
+
+    @Test
+    @DisplayName("fetchHistoricalQuotes returns empty when chart gateway returns empty")
+    void testHistoricalQuotesChartNotFound() {
+        Instrument aapl = new Instrument("Apple Inc", AssetClass.STOCK, "AAPL", "US0378331005", "NASDAQ", new Currency("USD"));
+        mockServer.expect(requestTo("https://query1.finance.yahoo.com/v8/finance/chart/AAPL?interval=1d&range=1mo"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withResourceNotFound());
+
+        assertTrue(provider.fetchHistoricalQuotes(aapl, null, null).isEmpty());
+        mockServer.verify();
+    }
+
+    @Test
+    @DisplayName("fetchHistoricalQuotes returns empty when close list is null")
+    void testHistoricalQuotesNullCloses() {
+        Instrument aapl = new Instrument("Apple Inc", AssetClass.STOCK, "AAPL", "US0378331005", "NASDAQ", new Currency("USD"));
+        String json = "{\"chart\": {\"result\": [{\"meta\": {\"symbol\": \"AAPL\"}, \"timestamp\": [1700000000], \"indicators\": {\"quote\": [{\"close\": null}]}}]}}";
+        mockServer.expect(requestTo("https://query1.finance.yahoo.com/v8/finance/chart/AAPL?interval=1d&range=1mo"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(json, MediaType.APPLICATION_JSON));
+
+        assertTrue(provider.fetchHistoricalQuotes(aapl, null, null).isEmpty());
+        mockServer.verify();
+    }
+
+    @Test
+    @DisplayName("fetchHistoricalQuotes converts pence to pounds for LSE instruments")
+    void testHistoricalQuotesPenceConversion() {
+        Instrument rr = new Instrument("Rolls Royce", AssetClass.STOCK, "RR", "GB00B63H8491", "LSE", new Currency("GBP"));
+        String json = """
+            {
+                "chart": {
+                    "result": [
+                        {
+                            "meta": {
+                                "currency": "GBp",
+                                "symbol": "RR.L"
+                            },
+                            "timestamp": [1700000000, 1700086400],
+                            "indicators": {
+                                "quote": [
+                                    {
+                                        "close": [1500.0, 1550.0]
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            }
+            """;
+        mockServer.expect(requestTo("https://query1.finance.yahoo.com/v8/finance/chart/RR.L?interval=1d&range=1mo"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(json, MediaType.APPLICATION_JSON));
+
+        List<PriceQuote> quotes = provider.fetchHistoricalQuotes(rr, null, null);
+        mockServer.verify();
+
+        assertEquals(2, quotes.size());
+        assertEquals(new BigDecimal("15.0000"), quotes.get(0).price());
+        assertEquals(new BigDecimal("15.5000"), quotes.get(1).price());
+    }
+
+    @Test
+    @DisplayName("getProviderId returns YAHOO_FINANCE")
+    void testProviderIdAndDisabled() {
+        assertEquals("YAHOO_FINANCE", provider.getProviderId());
+
+        properties.getYahoo().setEnabled(false);
+        Instrument aapl = new Instrument("Apple Inc", AssetClass.STOCK, "AAPL", "US0378331005", "NASDAQ", new Currency("USD"));
+        assertTrue(provider.fetchQuote(aapl, Instant.now()).isEmpty());
+        assertTrue(provider.fetchHistoricalQuotes(aapl, null, null).isEmpty());
+    }
 }
