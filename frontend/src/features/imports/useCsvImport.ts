@@ -42,3 +42,18 @@ export function useImportBatchesList(portfolioId: string, accountId: string) {
     enabled: Boolean(portfolioId && accountId),
   });
 }
+
+export function useDeleteImportBatch(portfolioId: string, accountId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (batchId: string) => importApi.deleteBatch(portfolioId, accountId, batchId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['positions'] });
+      queryClient.invalidateQueries({ queryKey: ['instruments'] });
+      queryClient.invalidateQueries({ queryKey: ['imports', portfolioId, accountId] });
+      queryClient.invalidateQueries({ queryKey: ['portfolios'] });
+      queryClient.invalidateQueries({ queryKey: ['portfolio'] });
+    },
+  });
+}

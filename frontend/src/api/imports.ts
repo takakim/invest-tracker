@@ -30,4 +30,9 @@ export const importApi = {
 
   list: (portfolioId: string, accountId: string): Promise<ImportBatch[]> =>
     request<ImportBatch[]>(`/api/v1/portfolios/${portfolioId}/accounts/${accountId}/imports`),
+
+  deleteBatch: (portfolioId: string, accountId: string, batchId: string): Promise<void> =>
+    request<void>(`/api/v1/portfolios/${portfolioId}/accounts/${accountId}/imports/${batchId}`, {
+      method: 'DELETE',
+    }),
 };
