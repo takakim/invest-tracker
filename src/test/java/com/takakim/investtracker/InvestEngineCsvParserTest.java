@@ -84,13 +84,20 @@ class InvestEngineCsvParserTest {
             Null Total,Buy,1,10,,invalid-date
             Empty Date,Buy,1,10,10,
             Malformed Dec,Buy,bad,bad,bad,04/03/25 15:06:44
+            Invesco S&P 500 / ISIN IE00B3YCGJ38,Stock Split,181.605204,0,0,12/01/26 08:00:00
+            Invesco S&P 500 / ISIN IE00B3YCGJ38,Reverse Stock Split,10.000000,0,0,12/01/26 08:00:00
             """;
         List<ParsedTransactionRow> rows = parser.parse(csv);
-        assertEquals(5, rows.size());
+        assertEquals(7, rows.size());
         assertTrue(rows.get(0).isIgnored());
         assertEquals("Plain Name", rows.get(1).instrumentTitle());
         assertEquals(BigDecimal.ZERO, rows.get(2).grossAmount());
         assertNotNull(rows.get(3).timestamp());
+        assertEquals(TransactionType.STOCK_SPLIT, rows.get(5).mappedType());
+        assertEquals(new BigDecimal("181.605204"), rows.get(5).quantity());
+        assertNull(rows.get(5).price());
+        assertEquals(BigDecimal.ZERO, rows.get(5).grossAmount());
+        assertEquals(TransactionType.REVERSE_STOCK_SPLIT, rows.get(6).mappedType());
         assertEquals("InvestEngine", parser.getBrokerName());
     }
 

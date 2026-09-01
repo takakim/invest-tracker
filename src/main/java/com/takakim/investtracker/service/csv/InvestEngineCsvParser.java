@@ -125,6 +125,14 @@ public class InvestEngineCsvParser implements BrokerCsvParser {
             mappedType = TransactionType.SELL;
         } else if ("Dividend".equalsIgnoreCase(rawType)) {
             mappedType = TransactionType.DIVIDEND;
+        } else if ("Stock Split".equalsIgnoreCase(rawType) || "STOCK_SPLIT".equalsIgnoreCase(rawType) || "Split".equalsIgnoreCase(rawType)) {
+            mappedType = TransactionType.STOCK_SPLIT;
+            sharePrice = null;
+            totalValue = BigDecimal.ZERO;
+        } else if ("Reverse Stock Split".equalsIgnoreCase(rawType) || "REVERSE_STOCK_SPLIT".equalsIgnoreCase(rawType)) {
+            mappedType = TransactionType.REVERSE_STOCK_SPLIT;
+            sharePrice = null;
+            totalValue = BigDecimal.ZERO;
         }
 
         boolean isIgnored = mappedType == null;
