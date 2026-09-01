@@ -28,7 +28,14 @@ import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined';
 import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined';
 import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined';
 
-import { usePreviewCsvImport, useExecuteCsvImport, useSupportedBrokers, useDetectBroker } from './useCsvImport';
+import {
+  usePreviewCsvImport,
+  useExecuteCsvImport,
+  useSupportedBrokers,
+  useDetectBroker,
+  useImportBatchesList,
+  useDeleteImportBatch,
+} from './useCsvImport';
 import { ErrorAlert, LoadingState } from '../../components';
 import type { CsvImportPreview, ImportBatch, BrokerDetectionResponse } from '../../types';
 
@@ -61,6 +68,9 @@ export function CsvImportModal({
     'Trading 212',
     'Vanguard UK',
   ] } = useSupportedBrokers();
+
+  const { data: importBatches = [] } = useImportBatchesList(portfolioId, accountId);
+  const deleteBatchMutation = useDeleteImportBatch(portfolioId, accountId);
 
   const previewMutation = usePreviewCsvImport(portfolioId, accountId);
   const executeMutation = useExecuteCsvImport(portfolioId, accountId);
@@ -151,36 +161,88 @@ export function CsvImportModal({
 
           {/* STEP 1: Upload File */}
           {!previewData && !completedBatch && (
-            <Box
-              sx={{
-                p: 4,
-                border: '2px dashed',
-                borderColor: 'divider',
-                borderRadius: 2,
-                textAlign: 'center',
-                bgcolor: 'action.hover',
-                cursor: 'pointer',
-              }}
-              component="label"
-            >
-              <input
-                type="file"
-                accept=".csv"
-                hidden
-                data-testid="csv-file-input"
-                onChange={handleFileChange}
-              />
-              <UploadFileOutlinedIcon sx={{ fontSize: 48, color: 'primary.main', mb: 1 }} />
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                Select a broker CSV file to import
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                Intelligent auto-detection for Vanguard UK, Interactive Brokers, DEGIRO, AJ Bell, Trading 212, Freetrade, and InvestEngine statement exports.
-              </Typography>
-              <Button variant="outlined" sx={{ mt: 2 }} component="span">
-                Choose CSV File
-              </Button>
-            </Box>
+            <>
+              <Box
+                sx={{
+                  p: 4,
+                  border: '2px dashed',
+                  borderColor: 'divider',
+                  borderRadius: 2,
+                  textAlign: 'center',
+                  bgcolor: 'action.hover',
+                  cursor: 'pointer',
+                }}
+                component="label"
+              >
+                <input
+                  type="file"
+                  accept=".csv"
+                  hidden
+                  data-testid="csv-file-input"
+                  onChange={handleFileChange}
+                />
+                <UploadFileOutlinedIcon sx={{ fontSize: 48, color: 'primary.main', mb: 1 }} />
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  Select a broker CSV file to import
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                  Intelligent auto-detection for Vanguard UK, Interactive Brokers, DEGIRO, AJ Bell, Trading 212, Freetrade, and InvestEngine statement exports.
+                </Typography>
+                <Button variant="outlined" sx={{ mt: 2 }} component="span">
+                  Choose CSV File
+                </Button>
+              </Box>
+
+              {importBatches.length > 0 && (
+                <Box sx={{ mt: 2 }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+                    Previous Import Batches ({importBatches.length})
+                  </Typography>
+                  <TableContainer component={Paper} variant="outlined">
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>File Name</TableCell>
+                          <TableCell>Broker</TableCell>
+                          <TableCell align="right">Imported</TableCell>
+                          <TableCell align="right">Skipped</TableCell>
+                          <TableCell>Imported At</TableCell>
+                          <TableCell align="right">Action</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {importBatches.map((batch) => (
+                          <TableRow key={batch.id}>
+                            <TableCell sx={{ fontWeight: 500 }}>{batch.fileName}</TableCell>
+                            <TableCell>
+                              <Chip label={batch.brokerType} size="small" variant="outlined" />
+                            </TableCell>
+                            <TableCell align="right">{batch.importedRows}</TableCell>
+                            <TableCell align="right">{batch.skippedRows}</TableCell>
+                            <TableCell>{new Date(batch.createdAt).toLocaleString()}</TableCell>
+                            <TableCell align="right">
+                              <Button
+                                size="small"
+                                color="error"
+                                variant="outlined"
+                                disabled={deleteBatchMutation.isPending}
+                                onClick={() => {
+                                  if (window.confirm(`Are you sure you want to rollback and delete batch "${batch.fileName}"? This will remove its imported transactions and recalculate positions.`)) {
+                                    deleteBatchMutation.mutate(batch.id);
+                                  }
+                                }}
+                              >
+                                Rollback Batch
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Box>
+              )}
+            </>
           )}
 
           {previewMutation.isPending && <LoadingState variant="table" count={3} />}
