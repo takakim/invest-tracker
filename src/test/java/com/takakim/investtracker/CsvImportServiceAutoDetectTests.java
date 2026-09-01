@@ -1,12 +1,11 @@
 package com.takakim.investtracker;
 
-import com.takakim.investtracker.domain.Account;
-import com.takakim.investtracker.domain.AssetClass;
-import com.takakim.investtracker.domain.Portfolio;
+import com.takakim.investtracker.domain.*;
 import com.takakim.investtracker.repository.AccountRepository;
 import com.takakim.investtracker.repository.ImportBatchRepository;
 import com.takakim.investtracker.repository.ImportRecordRepository;
 import com.takakim.investtracker.repository.InstrumentRepository;
+import com.takakim.investtracker.repository.TransactionRepository;
 import com.takakim.investtracker.service.TransactionService;
 import com.takakim.investtracker.service.csv.AjBellCsvParser;
 import com.takakim.investtracker.service.csv.BrokerCsvParser;
@@ -46,6 +45,8 @@ class CsvImportServiceAutoDetectTests {
     @Mock
     private TransactionService transactionService;
     @Mock
+    private TransactionRepository transactionRepository;
+    @Mock
     private PositionEngine positionEngine;
 
     private CsvImportService service;
@@ -68,6 +69,7 @@ class CsvImportServiceAutoDetectTests {
                 importBatchRepository,
                 importRecordRepository,
                 transactionService,
+                transactionRepository,
                 positionEngine,
                 parsers
         );
@@ -406,5 +408,66 @@ class CsvImportServiceAutoDetectTests {
         assertEquals(2, preview.totalRows());
         assertEquals(1, preview.importableRows());
         assertEquals(1, preview.ignoredRows());
+    }
+
+    @Test
+    @DisplayName("Deletes import batch, records, and cascades transaction rollback")
+    void deleteImportBatchTest() {
+        UUID portfolioId = UUID.randomUUID();
+        UUID accountId = UUID.randomUUID();
+        UUID batchId = UUID.randomUUID();
+
+        Portfolio p = new Portfolio("Main", new com.takakim.investtracker.domain.Currency("GBP"), com.takakim.investtracker.domain.CostBasisMethod.FIFO, com.takakim.investtracker.domain.ReturnMethod.TWR);
+        Account acc = new Account(p, "SIPP", "InvestEngine", new com.takakim.investtracker.domain.Currency("GBP"));
+        Instrument inst = new Instrument("Invesco S&P 500", com.takakim.investtracker.domain.AssetClass.ETF, "SPXP", "IE00B3YCGJ38", "LSE", new com.takakim.investtracker.domain.Currency("GBP"));
+        ImportBatch batch = new ImportBatch(acc, "SIPP.csv", "InvestEngine", 1);
+        Transaction tx = new Transaction(acc, inst, com.takakim.investtracker.domain.TransactionType.BUY, java.time.Instant.now(), null, new java.math.BigDecimal("10"), new java.math.BigDecimal("10"), new java.math.BigDecimal("100"), null, null, "GBP", null, null, null, null);
+        ImportRecord rec = new ImportRecord(batch, acc, 1, "raw", "fp", com.takakim.investtracker.domain.ImportRecordStatus.IMPORTED, null, tx);
+
+        try {
+            var idF = Portfolio.class.getDeclaredField("id");
+            idF.setAccessible(true);
+            idF.set(p, portfolioId);
+
+            var accIdF = Account.class.getDeclaredField("id");
+            accIdF.setAccessible(true);
+            accIdF.set(acc, accountId);
+
+            var bIdF = ImportBatch.class.getDeclaredField("id");
+            bIdF.setAccessible(true);
+            bIdF.set(batch, batchId);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
+        when(accountRepository.findById(accountId)).thenReturn(Optional.of(acc));
+        when(importBatchRepository.findById(batchId)).thenReturn(Optional.of(batch));
+        when(importRecordRepository.findByBatchIdOrderByRowNumberAsc(batchId)).thenReturn(List.of(rec));
+
+        service.deleteImportBatch(portfolioId, accountId, batchId);
+
+        verify(importRecordRepository).deleteAll(List.of(rec));
+        verify(importBatchRepository).delete(batch);
+        verify(transactionRepository).deleteAll(List.of(tx));
+        verify(positionEngine).recalculateAndSync(acc, inst);
+
+        // Batch not found
+        when(importBatchRepository.findById(batchId)).thenReturn(Optional.empty());
+        assertThrows(com.takakim.investtracker.service.ResourceNotFoundException.class,
+                () -> service.deleteImportBatch(portfolioId, accountId, batchId));
+
+        // Batch account mismatch
+        Account otherAcc = new Account(p, "Other", "InvestEngine", new com.takakim.investtracker.domain.Currency("GBP"));
+        ImportBatch otherBatch = new ImportBatch(otherAcc, "SIPP.csv", "InvestEngine", 1);
+        when(importBatchRepository.findById(batchId)).thenReturn(Optional.of(otherBatch));
+        assertThrows(com.takakim.investtracker.service.ResourceNotFoundException.class,
+                () -> service.deleteImportBatch(portfolioId, accountId, batchId));
+
+        // Record with null transaction
+        ImportRecord nullTxRec = new ImportRecord(batch, acc, 2, "raw", "fp2", com.takakim.investtracker.domain.ImportRecordStatus.SKIPPED_IGNORED, "ignored", null);
+        when(importBatchRepository.findById(batchId)).thenReturn(Optional.of(batch));
+        when(importRecordRepository.findByBatchIdOrderByRowNumberAsc(batchId)).thenReturn(List.of(nullTxRec));
+        service.deleteImportBatch(portfolioId, accountId, batchId);
+        verify(importRecordRepository).deleteAll(List.of(nullTxRec));
     }
 }

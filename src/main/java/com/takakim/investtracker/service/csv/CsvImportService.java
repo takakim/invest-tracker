@@ -35,6 +35,7 @@ public class CsvImportService {
     private final ImportBatchRepository importBatchRepository;
     private final ImportRecordRepository importRecordRepository;
     private final TransactionService transactionService;
+    private final com.takakim.investtracker.repository.TransactionRepository transactionRepository;
     private final com.takakim.investtracker.service.position.PositionEngine positionEngine;
     private final List<BrokerCsvParser> parsers;
 
@@ -45,7 +46,18 @@ public class CsvImportService {
             ImportRecordRepository importRecordRepository,
             TransactionService transactionService,
             List<BrokerCsvParser> parsers) {
-        this(accountRepository, instrumentRepository, importBatchRepository, importRecordRepository, transactionService, null, parsers);
+        this(accountRepository, instrumentRepository, importBatchRepository, importRecordRepository, transactionService, null, null, parsers);
+    }
+
+    public CsvImportService(
+            AccountRepository accountRepository,
+            InstrumentRepository instrumentRepository,
+            ImportBatchRepository importBatchRepository,
+            ImportRecordRepository importRecordRepository,
+            TransactionService transactionService,
+            com.takakim.investtracker.repository.TransactionRepository transactionRepository,
+            List<BrokerCsvParser> parsers) {
+        this(accountRepository, instrumentRepository, importBatchRepository, importRecordRepository, transactionService, transactionRepository, null, parsers);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -55,6 +67,7 @@ public class CsvImportService {
             ImportBatchRepository importBatchRepository,
             ImportRecordRepository importRecordRepository,
             TransactionService transactionService,
+            com.takakim.investtracker.repository.TransactionRepository transactionRepository,
             com.takakim.investtracker.service.position.PositionEngine positionEngine,
             List<BrokerCsvParser> parsers) {
         this.accountRepository = accountRepository;
@@ -62,6 +75,7 @@ public class CsvImportService {
         this.importBatchRepository = importBatchRepository;
         this.importRecordRepository = importRecordRepository;
         this.transactionService = transactionService;
+        this.transactionRepository = transactionRepository;
         this.positionEngine = positionEngine;
         this.parsers = parsers;
     }
@@ -292,6 +306,43 @@ public class CsvImportService {
     public List<ImportBatch> listImportBatches(UUID portfolioId, UUID accountId) {
         getAccount(portfolioId, accountId);
         return importBatchRepository.findByAccountIdOrderByCreatedAtDesc(accountId);
+    }
+
+    @Transactional
+    public void deleteImportBatch(UUID portfolioId, UUID accountId, UUID batchId) {
+        Account account = getAccount(portfolioId, accountId);
+        ImportBatch batch = importBatchRepository.findById(batchId)
+                .orElseThrow(() -> new ResourceNotFoundException("Import batch not found: " + batchId));
+        if (!batch.getAccount().getId().equals(accountId)) {
+            throw new ResourceNotFoundException("Import batch " + batchId + " does not belong to account " + accountId);
+        }
+
+        List<ImportRecord> records = importRecordRepository.findByBatchIdOrderByRowNumberAsc(batchId);
+        java.util.Map<UUID, Instrument> affectedInstruments = new java.util.TreeMap<>();
+        List<Transaction> txsToDelete = new java.util.ArrayList<>();
+
+        for (ImportRecord record : records) {
+            if (record.getTransaction() != null) {
+                Transaction tx = record.getTransaction();
+                if (tx.getInstrument() != null) {
+                    affectedInstruments.put(tx.getInstrument().getId(), tx.getInstrument());
+                }
+                txsToDelete.add(tx);
+            }
+        }
+
+        importRecordRepository.deleteAll(records);
+        importBatchRepository.delete(batch);
+        transactionRepository.deleteAll(txsToDelete);
+
+        if (positionEngine != null) {
+            for (Instrument instrument : affectedInstruments.values()) {
+                try {
+                    positionEngine.recalculateAndSync(account, instrument);
+                } catch (Exception ignored) {
+                }
+            }
+        }
     }
 
     private Instrument resolveOrCreateInstrument(ParsedTransactionRow row) {
