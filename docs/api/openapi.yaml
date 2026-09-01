@@ -523,7 +523,34 @@ paths:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/Transaction' }
-        '404': { $ref: '#/components/responses/Problem' }
+  /imports/supported-brokers:
+    get:
+      operationId: getSupportedBrokers
+      summary: Get list of all supported CSV import broker templates
+      responses:
+        '200':
+          description: List of supported broker names
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: string }
+  /imports/detect-broker:
+    post:
+      operationId: detectBroker
+      summary: Auto-detect broker CSV template and format confidence
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BrokerDetectionRequest' }
+      responses:
+        '200':
+          description: Broker auto-detection result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BrokerDetectionResponse' }
+        '400': { $ref: '#/components/responses/Problem' }
   /portfolios/{portfolioId}/accounts/{accountId}/imports/preview:
     parameters:
       - { $ref: '#/components/parameters/PortfolioId' }
@@ -572,6 +599,21 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ImportBatch' }
         '400': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/accounts/{accountId}/imports/{batchId}:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+      - { $ref: '#/components/parameters/AccountId' }
+      - name: batchId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      operationId: deleteImportBatch
+      summary: Roll back an import batch and all its transactions
+      responses:
+        '204':
+          description: Import batch deleted and positions resynced
         '404': { $ref: '#/components/responses/Problem' }
   /instruments:
     get:
@@ -1144,6 +1186,22 @@ components:
       properties:
         fileName: { type: string }
         csvContent: { type: string }
+        overrideBroker: { type: string, nullable: true }
+    BrokerDetectionRequest:
+      type: object
+      required: [csvContent]
+      properties:
+        csvContent: { type: string }
+    BrokerDetectionResponse:
+      type: object
+      required: [brokerName, confidence, isSupported, supportedBrokers]
+      properties:
+        brokerName: { type: string }
+        confidence: { type: string, enum: [HIGH, MEDIUM, LOW, NONE] }
+        isSupported: { type: boolean }
+        supportedBrokers:
+          type: array
+          items: { type: string }
     PreviewRow:
       type: object
       required: [rowNumber, isDuplicate, isIgnored]

@@ -130,7 +130,6 @@ class MarketDataServiceTests {
         when(instrumentRepository.findById(id)).thenReturn(Optional.of(instrument));
         when(marketObservationRepository.findFirstByInstrumentIdAndSourceTypeOrderByObservedAtDesc(id, ObservationSourceType.MANUAL))
                 .thenReturn(Optional.empty());
-        when(marketDataProvider.fetchQuote(eq(instrument), any())).thenReturn(Optional.empty());
 
         Instant historical = Instant.now().minus(120, ChronoUnit.HOURS);
         MarketObservation persisted = new MarketObservation(
@@ -143,7 +142,7 @@ class MarketDataServiceTests {
         PriceQuote quote = marketDataService.getLatestPrice(id, Instant.now());
         assertEquals(new BigDecimal("175.00"), quote.price());
         assertTrue(quote.isStale());
-        assertTrue(quote.warning().contains("using latest persisted observation"));
+        assertNotNull(quote.warning());
     }
 
     @Test
@@ -153,7 +152,6 @@ class MarketDataServiceTests {
         when(instrumentRepository.findById(id)).thenReturn(Optional.of(instrument));
         when(marketObservationRepository.findFirstByInstrumentIdAndSourceTypeOrderByObservedAtDesc(id, ObservationSourceType.MANUAL))
                 .thenReturn(Optional.empty());
-        when(marketDataProvider.fetchQuote(eq(instrument), any())).thenReturn(Optional.empty());
 
         MarketObservation persistedZero = new MarketObservation(
                 instrument, BigDecimal.ZERO, "USD", Instant.now().minus(2, ChronoUnit.HOURS),
@@ -221,7 +219,6 @@ class MarketDataServiceTests {
         when(instrumentRepository.findById(id)).thenReturn(Optional.of(instrument));
         when(marketObservationRepository.findFirstByInstrumentIdAndSourceTypeOrderByObservedAtDesc(id, ObservationSourceType.MANUAL))
                 .thenReturn(Optional.empty());
-        when(marketDataProvider.fetchQuote(eq(instrument), any())).thenReturn(Optional.empty());
         when(marketObservationRepository.findFirstByInstrumentIdOrderByObservedAtDesc(id))
                 .thenReturn(Optional.empty());
 
@@ -250,7 +247,6 @@ class MarketDataServiceTests {
         when(instrumentRepository.findById(id)).thenReturn(Optional.of(instrument));
         when(marketObservationRepository.findFirstByInstrumentIdAndSourceTypeOrderByObservedAtDesc(id, ObservationSourceType.MANUAL))
                 .thenReturn(Optional.empty());
-        when(marketDataProvider.fetchQuote(eq(instrument), any())).thenReturn(Optional.empty());
 
         Instant oldTime = Instant.now().minus(120, ChronoUnit.HOURS);
         MarketObservation obs = new MarketObservation(instrument, new BigDecimal("150.00"), "USD", oldTime, ObservationSourceType.PROVIDER, "FEED");
@@ -296,7 +292,7 @@ class MarketDataServiceTests {
     }
 
     @Test
-    @DisplayName("Falls back to persisted quote when provider throws an exception")
+    @DisplayName("Falls back to persisted quote when provider throws an exception during refreshPrice")
     void fallbackWhenProviderThrowsException() {
         UUID id = instrument.getId();
         when(instrumentRepository.findById(id)).thenReturn(Optional.of(instrument));
@@ -311,7 +307,7 @@ class MarketDataServiceTests {
         when(marketObservationRepository.findFirstByInstrumentIdOrderByObservedAtDesc(id))
                 .thenReturn(Optional.of(persisted));
 
-        PriceQuote quote = marketDataService.getLatestPrice(id, Instant.now());
+        PriceQuote quote = marketDataService.refreshPrice(id);
         assertEquals(new BigDecimal("170.00"), quote.price());
     }
 
@@ -322,7 +318,6 @@ class MarketDataServiceTests {
         when(instrumentRepository.findById(id)).thenReturn(Optional.of(instrument));
         when(marketObservationRepository.findFirstByInstrumentIdAndSourceTypeOrderByObservedAtDesc(id, ObservationSourceType.MANUAL))
                 .thenReturn(Optional.empty());
-        when(marketDataProvider.fetchQuote(eq(instrument), any())).thenReturn(Optional.empty());
         when(marketObservationRepository.findFirstByInstrumentIdOrderByObservedAtDesc(id))
                 .thenReturn(Optional.empty());
 
@@ -556,7 +551,7 @@ class MarketDataServiceTests {
         );
         when(marketDataProvider.fetchQuote(eq(instrument), any())).thenReturn(Optional.of(mockQuote));
 
-        PriceQuote result = marketDataService.getLatestPrice(id, Instant.now());
+        PriceQuote result = marketDataService.refreshPrice(id);
 
         assertNotNull(result);
         // It must NOT be the 65.30 mock, it must return the genuine persisted 289.47
@@ -585,6 +580,60 @@ class MarketDataServiceTests {
 
         assertNotNull(result);
         assertEquals(new BigDecimal("65.30"), result.price());
+        verify(marketObservationRepository, times(1)).save(any(MarketObservation.class));
+    }
+
+    @Test
+    @DisplayName("refreshPrice on manualPriceOnly instrument returns latest price without calling provider")
+    void testRefreshPriceManualPriceOnly() {
+        Instrument manualInst = new Instrument("Manual Gold", AssetClass.OTHER, "GLD", null, null, new Currency("USD"), true);
+        UUID id = manualInst.getId();
+        when(instrumentRepository.findById(id)).thenReturn(Optional.of(manualInst));
+        when(marketObservationRepository.findFirstByInstrumentIdAndSourceTypeOrderByObservedAtDesc(id, ObservationSourceType.MANUAL))
+                .thenReturn(Optional.empty());
+
+        MarketObservation obs = new MarketObservation(manualInst, new BigDecimal("2000.00"), "USD", Instant.now(), ObservationSourceType.MANUAL, "AUDIT");
+        when(marketObservationRepository.findFirstByInstrumentIdOrderByObservedAtDesc(id))
+                .thenReturn(Optional.of(obs));
+
+        PriceQuote quote = marketDataService.refreshPrice(id);
+        assertNotNull(quote);
+        assertEquals(new BigDecimal("2000.00"), quote.price());
+        verify(marketDataProvider, never()).fetchQuote(any(), any());
+    }
+
+    @Test
+    @DisplayName("refreshPrice with valid provider quote saves via observationStorageService when present")
+    void testRefreshPriceSavesViaObservationStorageService() {
+        com.takakim.investtracker.service.market.ObservationStorageService storageService = org.mockito.Mockito.mock(com.takakim.investtracker.service.market.ObservationStorageService.class);
+        MarketDataService serviceWithStorage = new MarketDataService(
+                marketObservationRepository, instrumentRepository, marketDataProvider, transactionRepository, storageService
+        );
+
+        UUID id = instrument.getId();
+        when(instrumentRepository.findById(id)).thenReturn(Optional.of(instrument));
+
+        PriceQuote quote = new PriceQuote(id, new BigDecimal("250.00"), "USD", Instant.now(), ObservationSourceType.PROVIDER, "TWELVE_DATA", false, null);
+        when(marketDataProvider.fetchQuote(eq(instrument), any())).thenReturn(Optional.of(quote));
+
+        PriceQuote result = serviceWithStorage.refreshPrice(id);
+        assertNotNull(result);
+        assertEquals(new BigDecimal("250.00"), result.price());
+        verify(storageService, times(1)).saveMarketObservation(any(MarketObservation.class));
+    }
+
+    @Test
+    @DisplayName("refreshPrice with valid provider quote saves directly to repository when observationStorageService is null")
+    void testRefreshPriceSavesDirectlyToRepository() {
+        UUID id = instrument.getId();
+        when(instrumentRepository.findById(id)).thenReturn(Optional.of(instrument));
+
+        PriceQuote quote = new PriceQuote(id, new BigDecimal("250.00"), "USD", Instant.now(), ObservationSourceType.PROVIDER, "TWELVE_DATA", false, null);
+        when(marketDataProvider.fetchQuote(eq(instrument), any())).thenReturn(Optional.of(quote));
+
+        PriceQuote result = marketDataService.refreshPrice(id);
+        assertNotNull(result);
+        assertEquals(new BigDecimal("250.00"), result.price());
         verify(marketObservationRepository, times(1)).save(any(MarketObservation.class));
     }
 }

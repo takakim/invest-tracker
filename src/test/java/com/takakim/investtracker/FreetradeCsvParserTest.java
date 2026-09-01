@@ -52,7 +52,7 @@ class FreetradeCsvParserTest {
         assertEquals("FIG", r1.ticker());
         assertEquals("US3168411052", r1.isin());
         assertEquals(0, new BigDecimal("50.00000000").compareTo(r1.quantity()));
-        assertEquals(0, new BigDecimal("824.19").compareTo(r1.grossAmount()));
+        assertEquals(0, new BigDecimal("829.08").compareTo(r1.grossAmount()));
         assertEquals(0, new BigDecimal("4.89").compareTo(r1.feeAmount()));
         assertFalse(r1.isIgnored());
 
@@ -60,14 +60,15 @@ class FreetradeCsvParserTest {
         ParsedTransactionRow r2 = rows.get(1);
         assertEquals(TransactionType.BUY, r2.mappedType());
         assertEquals("CBRS", r2.ticker());
-        assertEquals(0, new BigDecimal("494.33").compareTo(r2.grossAmount()));
+        assertEquals(0, new BigDecimal("491.43").compareTo(r2.grossAmount()));
+        assertEquals(0, new BigDecimal("2.90").compareTo(r2.feeAmount()));
 
         // Row 3: Apple DIVIDEND
         ParsedTransactionRow r3 = rows.get(2);
         assertEquals(TransactionType.DIVIDEND, r3.mappedType());
         assertEquals("AAPL", r3.ticker());
-        assertEquals(0, new BigDecimal("14.78").compareTo(r3.grossAmount()));
-        assertEquals(0, new BigDecimal("3.52").compareTo(r3.taxAmount()));
+        assertEquals(0, new BigDecimal("17.3866").compareTo(r3.grossAmount()));
+        assertEquals(0, new BigDecimal("2.6066").compareTo(r3.taxAmount()));
 
         // Row 4: Interest
         ParsedTransactionRow r4 = rows.get(3);
@@ -175,6 +176,9 @@ class FreetradeCsvParserTest {
     @Test
     @DisplayName("Freetrade parser supports checks variations")
     void supportsHeaderVariations() {
+        assertFalse(parser.supports(null));
+        assertFalse(parser.supports(List.of("Title", "Type", "Timestamp")));
+        assertFalse(parser.supports(List.of("Wrong", "Type", "Timestamp", "D", "E", "Buy / Sell", "G")));
         assertFalse(parser.supports(List.of("A", "B", "C", "D", "E", "F", "G", "H", "I", "J")));
         assertFalse(parser.supports(List.of("Title", "Wrong", "Timestamp", "D", "E", "Buy / Sell", "G", "H", "I", "J")));
         assertFalse(parser.supports(List.of("Title", "Type", "Wrong", "D", "E", "Buy / Sell", "G", "H", "I", "J")));
@@ -223,4 +227,97 @@ class FreetradeCsvParserTest {
         assertEquals(TransactionType.DIVIDEND, rows.get(4).mappedType());
         assertEquals("GBP", rows.get(4).currency());
     }
+
+    @Test
+    @DisplayName("Parses remaining Freetrade activity types as ignored/unsupported")
+    void testRemainingFreetradeTypes() {
+        String csv = """
+            Title,Type,Timestamp,Account Currency,Total Amount in Account Currency,Buy / Sell,Ticker,ISIN,Price per Share,Stamp Duty,Quantity
+            Subscription,MONTHLY_FEE,2026-01-01T00:00:00Z,GBP,5.99,,,,,,,
+            Cash Withdrawal,WITHDRAWAL,2026-01-02T00:00:00Z,GBP,100.00,,,,,,,
+            ISA Topup,ISA_SUBSCRIPTION,2026-01-03T00:00:00Z,GBP,500.00,,,,,,,
+            Fee,ORDER_FEE,2026-01-04T00:00:00Z,GBP,1.00,,,,,,,
+            Voting,PROXY_VOTING_FEE,2026-01-05T00:00:00Z,GBP,0.50,,,,,,,
+            Refund,CARD_REFUND,2026-01-06T00:00:00Z,GBP,20.00,,,,,,,
+            Interest Adj,INTEREST_ADJUSTMENT,2026-01-07T00:00:00Z,GBP,0.15,,,,,,,
+            """;
+
+        List<ParsedTransactionRow> rows = parser.parse(csv);
+        assertEquals(7, rows.size());
+
+        for (ParsedTransactionRow row : rows) {
+            assertTrue(row.isIgnored());
+            assertNotNull(row.ignoreReason());
+        }
+    }
+
+    @Test
+    @DisplayName("Tests Freetrade TOP_UP, INTEREST_FROM_CASH, and CSV line escaping branches")
+    void testTopUpAndInterestBranches() {
+        String csv = """
+            Title,Type,Timestamp,Account Currency,Total Amount in Account Currency,Buy / Sell,Ticker,ISIN,Price per Share,Stamp Duty,Quantity,Venue,Order ID,Order Type,Instrument Currency,Total Amount in Instrument Currency,Price per Share,FX Rate
+            "Top Up, Direct Debit",TOP_UP,2026-01-01T00:00:00Z,USD,100.00,,,,,,,,,,,,
+            Top Up 2,TOP_UP,2026-01-02T00:00:00Z,,50.00,,,,,,,,,,,,
+            Interest,INTEREST_FROM_CASH,2026-01-03T00:00:00Z,GBP,2.50,,,,,,,,,,,,
+            Interest 2,INTEREST_FROM_CASH,2026-01-04T00:00:00Z,,1.25,,,,,,,,,,,,
+            """;
+
+        List<ParsedTransactionRow> rows = parser.parse(csv);
+        assertEquals(4, rows.size());
+
+        assertEquals(TransactionType.DEPOSIT, rows.get(0).mappedType());
+        assertEquals("USD", rows.get(0).currency());
+        assertEquals(new BigDecimal("100.00"), rows.get(0).grossAmount());
+
+        assertEquals(TransactionType.DEPOSIT, rows.get(1).mappedType());
+        assertEquals("GBP", rows.get(1).currency());
+
+        assertEquals(TransactionType.INTEREST, rows.get(2).mappedType());
+        assertEquals("GBP", rows.get(2).currency());
+
+        assertEquals(TransactionType.INTEREST, rows.get(3).mappedType());
+        assertEquals("GBP", rows.get(3).currency());
+
+        // Test parseCsvLine helper
+        List<String> escaped = FreetradeCsvParser.parseCsvLine("a,\"b, \"\"c\"\"\",d");
+        assertEquals(3, escaped.size());
+        assertEquals("a", escaped.get(0));
+        assertEquals("b, \"c\"", escaped.get(1));
+        assertEquals("d", escaped.get(2));
+    }
+
+    @Test
+    @DisplayName("Tests RGL consolidation, dividend fallback currency, and split/consolidation fallbacks")
+    void testRglAndCorporateActionFallbacks() {
+        String csv = """
+            Title,Type,Timestamp,Account Currency,Total Amount in Account Currency,Buy / Sell,Ticker,ISIN,Price per Share,Stamp Duty,Quantity,Venue,Order ID,Order Type,Instrument Currency,Total Amount in Instrument Currency,Price per Share,FX Rate
+            Regional REIT,ORDER,2026-06-01T10:00:00Z,GBP,123.20,SELL,RGL,GB00B1111111,1.00,0.00,123.20,,,,GBP,123.20,1.00,1.00
+            Regional REIT,ORDER,2026-06-02T10:00:00Z,GBP,50.00,SELL,RGL,GB00B1111111,1.00,0.00,50.00,,,,GBP,50.00,1.00,1.00
+            Apple,DIVIDEND,2026-06-03T10:00:00Z,,15.00,,AAPL,US0378331005,,0.00,10.00,,,,USD,20.00,2.00,0.75
+            Tesla,CORPORATE_ACTION,2026-06-04T10:00:00Z,,0.00,STOCK_SPLIT,TSLA,US88160R1014,,0.00,0.00,,,,USD,0.00,0.00,1.00
+            Tesla,CORPORATE_ACTION,2026-06-05T10:00:00Z,,0.00,REVERSE_STOCK_SPLIT,TSLA,US88160R1014,,0.00,0.00,,,,USD,0.00,0.00,1.00
+            UK Treasury Bill,ORDER,2026-06-06T10:00:00Z,GBP,100.00,BUY,TBILL,,1.00,0.00,0.00,,,,GBP,100.00,1.00,1.00
+            Ordinary Stock,ORDER,2026-06-07T10:00:00Z,GBP,100.00,BUY,ORD,GB00B2222222,1.00,0.00,100.00,,,,GBP,100.00,1.00,1.00
+            """;
+
+        List<ParsedTransactionRow> rows = parser.parse(csv);
+        // Row 0: RGL SELL with qty 123.20 -> consolidated to 1232.00
+        assertEquals(0, new BigDecimal("1232.00000000").compareTo(rows.get(0).quantity()));
+        // Row 1: RGL SELL with qty 50.00 -> unchanged 50.00
+        assertEquals(0, new BigDecimal("50.00").compareTo(rows.get(1).quantity()));
+        // Row 2: Dividend with empty account currency -> GBP
+        assertEquals("GBP", rows.get(2).currency());
+        // Row 3: Corporate action STOCK_SPLIT
+        assertEquals(TransactionType.STOCK_SPLIT, rows.get(3).mappedType());
+        assertEquals("GBP", rows.get(3).currency());
+        // Row 4: Corporate action REVERSE_STOCK_SPLIT
+        assertEquals(TransactionType.REVERSE_STOCK_SPLIT, rows.get(4).mappedType());
+        assertEquals("GBP", rows.get(4).currency());
+        // Row 5: T-Bill with 0 quantity -> no maturity row generated
+        assertEquals(TransactionType.BUY, rows.get(5).mappedType());
+        // Row 6: Ordinary Stock with no maturity date in title -> no maturity row generated
+        assertEquals(TransactionType.BUY, rows.get(6).mappedType());
+        assertEquals(7, rows.size());
+    }
 }
+

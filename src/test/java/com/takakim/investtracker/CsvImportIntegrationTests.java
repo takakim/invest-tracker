@@ -226,6 +226,68 @@ class CsvImportIntegrationTests {
                         .content(toJson("investengine.csv", ieCsv)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.importedRows").value(1));
+
+        // 10. Supported Brokers & Auto-Detect API
+        mockMvc.perform(get("/api/v1/imports/supported-brokers"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$.length()").value(7));
+
+        mockMvc.perform(post("/api/v1/imports/detect-broker")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"csvContent\":\"Date,Transaction Type,Investment Name,ISIN,Units,Unit Price,Amount,Charges,Net Amount\\n\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.brokerName").value("Vanguard UK"))
+                .andExpect(jsonPath("$.confidence").value("HIGH"))
+                .andExpect(jsonPath("$.isSupported").value(true));
+
+        // 11. Vanguard UK Import Flow
+        String vanguardCsv = """
+            Date,Transaction Type,Investment Name,ISIN,Units,Unit Price,Amount,Charges,Net Amount
+            15/01/2026,Buy,Vanguard S&P 500 UCITS ETF,IE00B3XXRP09,20.0000,£100.00,£2000.00,£0.00,£2000.00
+            """;
+        mockMvc.perform(post("/api/v1/portfolios/" + portfolioId + "/accounts/" + accountId + "/imports/preview")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(toJson("vanguard.csv", vanguardCsv)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.brokerName").value("Vanguard UK"))
+                .andExpect(jsonPath("$.importableRows").value(1));
+
+        // 12. Interactive Brokers Import Flow
+        String ibkrCsv = """
+            Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,C. Price,Proceeds,Comm/Fee,Basis,Realized P/L,MTM P/L,Code
+            Trades,Data,Order,Stocks,USD,AAPL,"2026-01-15, 14:30:00",10,185.50,185.50,-1855.00,-1.00,-1856.00,0,0,O
+            """;
+        mockMvc.perform(post("/api/v1/portfolios/" + portfolioId + "/accounts/" + accountId + "/imports/preview")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(toJson("ibkr.csv", ibkrCsv)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.brokerName").value("Interactive Brokers"))
+                .andExpect(jsonPath("$.importableRows").value(1));
+
+        // 13. DEGIRO Import Flow
+        String degiroCsv = """
+            Date,Time,Product,ISIN,Reference,Venue,Quantity,Price,Local value,Value,Exchange rate,Fee,Total
+            15-01-2026,14:30,VANGUARD S&P 500,IE00B3XXRP09,ORD123,EAM,10,85.50,855.00,855.00,1.0,-1.00,-856.00
+            """;
+        mockMvc.perform(post("/api/v1/portfolios/" + portfolioId + "/accounts/" + accountId + "/imports/preview")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(toJson("degiro.csv", degiroCsv)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.brokerName").value("DEGIRO"))
+                .andExpect(jsonPath("$.importableRows").value(1));
+
+        // 14. AJ Bell Import Flow
+        String ajbellCsv = """
+            Date,Transaction,Security,Ticker,ISIN,Quantity,Price,Value,Charges,Net Value
+            15/01/2026,Buy,Vanguard FTSE 100 UCITS ETF,VUKE,IE00B810Q511,50,£35.00,£1750.00,£1.50,£1751.50
+            """;
+        mockMvc.perform(post("/api/v1/portfolios/" + portfolioId + "/accounts/" + accountId + "/imports/preview")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(toJson("ajbell.csv", ajbellCsv)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.brokerName").value("AJ Bell"))
+                .andExpect(jsonPath("$.importableRows").value(1));
     }
 
     private String toJson(String fileName, String csvContent) {

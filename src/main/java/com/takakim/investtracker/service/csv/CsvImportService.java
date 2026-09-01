@@ -35,6 +35,7 @@ public class CsvImportService {
     private final ImportBatchRepository importBatchRepository;
     private final ImportRecordRepository importRecordRepository;
     private final TransactionService transactionService;
+    private final com.takakim.investtracker.repository.TransactionRepository transactionRepository;
     private final com.takakim.investtracker.service.position.PositionEngine positionEngine;
     private final List<BrokerCsvParser> parsers;
 
@@ -45,7 +46,18 @@ public class CsvImportService {
             ImportRecordRepository importRecordRepository,
             TransactionService transactionService,
             List<BrokerCsvParser> parsers) {
-        this(accountRepository, instrumentRepository, importBatchRepository, importRecordRepository, transactionService, null, parsers);
+        this(accountRepository, instrumentRepository, importBatchRepository, importRecordRepository, transactionService, null, null, parsers);
+    }
+
+    public CsvImportService(
+            AccountRepository accountRepository,
+            InstrumentRepository instrumentRepository,
+            ImportBatchRepository importBatchRepository,
+            ImportRecordRepository importRecordRepository,
+            TransactionService transactionService,
+            com.takakim.investtracker.repository.TransactionRepository transactionRepository,
+            List<BrokerCsvParser> parsers) {
+        this(accountRepository, instrumentRepository, importBatchRepository, importRecordRepository, transactionService, transactionRepository, null, parsers);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -55,6 +67,7 @@ public class CsvImportService {
             ImportBatchRepository importBatchRepository,
             ImportRecordRepository importRecordRepository,
             TransactionService transactionService,
+            com.takakim.investtracker.repository.TransactionRepository transactionRepository,
             com.takakim.investtracker.service.position.PositionEngine positionEngine,
             List<BrokerCsvParser> parsers) {
         this.accountRepository = accountRepository;
@@ -62,9 +75,17 @@ public class CsvImportService {
         this.importBatchRepository = importBatchRepository;
         this.importRecordRepository = importRecordRepository;
         this.transactionService = transactionService;
+        this.transactionRepository = transactionRepository;
         this.positionEngine = positionEngine;
         this.parsers = parsers;
     }
+
+    public record BrokerDetectionResult(
+            String brokerName,
+            String confidence,
+            boolean isSupported,
+            List<String> supportedBrokers
+    ) {}
 
     public record PreviewRow(
             int rowNumber,
@@ -94,11 +115,45 @@ public class CsvImportService {
             List<PreviewRow> rows
     ) {}
 
+    public List<String> getSupportedBrokers() {
+        return parsers.stream()
+                .map(BrokerCsvParser::getBrokerName)
+                .sorted()
+                .toList();
+    }
+
+    public BrokerDetectionResult detectBroker(String csvContent) {
+        List<String> supported = getSupportedBrokers();
+        if (csvContent == null || csvContent.isBlank()) {
+            return new BrokerDetectionResult("Unknown", "LOW", false, supported);
+        }
+
+        String cleanContent = stripBom(csvContent);
+        String[] lines = cleanContent.split("\r?\n");
+        for (int i = 0; i < Math.min(8, lines.length); i++) {
+            String line = lines[i].trim();
+            if (line.isEmpty()) continue;
+            List<String> headers = FreetradeCsvParser.parseCsvLine(line);
+            for (BrokerCsvParser p : parsers) {
+                if (p.supports(headers)) {
+                    return new BrokerDetectionResult(p.getBrokerName(), "HIGH", true, supported);
+                }
+            }
+        }
+
+        return new BrokerDetectionResult("Unknown", "NONE", false, supported);
+    }
+
     @Transactional(readOnly = true)
     public PreviewResult previewImport(UUID portfolioId, UUID accountId, String fileName, String csvContent) {
+        return previewImport(portfolioId, accountId, fileName, csvContent, null);
+    }
+
+    @Transactional(readOnly = true)
+    public PreviewResult previewImport(UUID portfolioId, UUID accountId, String fileName, String csvContent, String overrideBroker) {
         Account account = getAccount(portfolioId, accountId);
-        BrokerCsvParser parser = selectParser(csvContent);
-        List<ParsedTransactionRow> parsedRows = parser.parse(csvContent);
+        BrokerCsvParser parser = selectParser(csvContent, overrideBroker);
+        List<ParsedTransactionRow> parsedRows = parser.parse(stripBom(csvContent));
 
         List<PreviewRow> previewRows = new ArrayList<>();
         int importableCount = 0;
@@ -122,14 +177,14 @@ public class CsvImportService {
             if (isDuplicate) {
                 duplicateCount++;
                 previewRows.add(new PreviewRow(
-                        row.rowNumber(), row.rawType(), row.mappedType().name(), row.instrumentTitle(),
+                        row.rowNumber(), row.rawType(), row.mappedType() != null ? row.mappedType().name() : null, row.instrumentTitle(),
                         row.ticker(), row.isin(), row.quantity(), row.price(), row.grossAmount(),
                         row.feeAmount(), row.taxAmount(), row.currency(), true, false, "Duplicate transaction already imported"
                 ));
             } else {
                 importableCount++;
                 previewRows.add(new PreviewRow(
-                        row.rowNumber(), row.rawType(), row.mappedType().name(), row.instrumentTitle(),
+                        row.rowNumber(), row.rawType(), row.mappedType() != null ? row.mappedType().name() : null, row.instrumentTitle(),
                         row.ticker(), row.isin(), row.quantity(), row.price(), row.grossAmount(),
                         row.feeAmount(), row.taxAmount(), row.currency(), false, false, "Ready for import"
                 ));
@@ -149,9 +204,14 @@ public class CsvImportService {
 
     @Transactional
     public ImportBatch executeImport(UUID portfolioId, UUID accountId, String fileName, String csvContent) {
+        return executeImport(portfolioId, accountId, fileName, csvContent, null);
+    }
+
+    @Transactional
+    public ImportBatch executeImport(UUID portfolioId, UUID accountId, String fileName, String csvContent, String overrideBroker) {
         Account account = getAccount(portfolioId, accountId);
-        BrokerCsvParser parser = selectParser(csvContent);
-        List<ParsedTransactionRow> parsedRows = parser.parse(csvContent);
+        BrokerCsvParser parser = selectParser(csvContent, overrideBroker);
+        List<ParsedTransactionRow> parsedRows = parser.parse(stripBom(csvContent));
 
         ImportBatch batch = new ImportBatch(account, fileName, parser.getBrokerName(), parsedRows.size());
         batch = importBatchRepository.save(batch);
@@ -248,51 +308,232 @@ public class CsvImportService {
         return importBatchRepository.findByAccountIdOrderByCreatedAtDesc(accountId);
     }
 
+    @Transactional
+    public void deleteImportBatch(UUID portfolioId, UUID accountId, UUID batchId) {
+        Account account = getAccount(portfolioId, accountId);
+        ImportBatch batch = importBatchRepository.findById(batchId)
+                .orElseThrow(() -> new ResourceNotFoundException("Import batch not found: " + batchId));
+        if (!batch.getAccount().getId().equals(accountId)) {
+            throw new ResourceNotFoundException("Import batch " + batchId + " does not belong to account " + accountId);
+        }
+
+        List<ImportRecord> records = importRecordRepository.findByBatchIdOrderByRowNumberAsc(batchId);
+        java.util.Map<UUID, Instrument> affectedInstruments = new java.util.TreeMap<>();
+        List<Transaction> txsToDelete = new java.util.ArrayList<>();
+
+        for (ImportRecord record : records) {
+            if (record.getTransaction() != null) {
+                Transaction tx = record.getTransaction();
+                if (tx.getInstrument() != null) {
+                    affectedInstruments.put(tx.getInstrument().getId(), tx.getInstrument());
+                }
+                txsToDelete.add(tx);
+            }
+        }
+
+        importRecordRepository.deleteAll(records);
+        importBatchRepository.delete(batch);
+        transactionRepository.deleteAll(txsToDelete);
+
+        if (positionEngine != null) {
+            for (Instrument instrument : affectedInstruments.values()) {
+                try {
+                    positionEngine.recalculateAndSync(account, instrument);
+                } catch (Exception ignored) {
+                }
+            }
+        }
+    }
+
     private Instrument resolveOrCreateInstrument(ParsedTransactionRow row) {
         if (row.ticker() == null && row.isin() == null) {
             return null;
         }
 
-        if (row.ticker() != null && !row.ticker().isBlank()) {
-            Optional<Instrument> existing = instrumentRepository.findByTicker(row.ticker());
+        String ticker = (row.ticker() != null && !row.ticker().isBlank())
+                ? row.ticker().trim()
+                : inferTicker(row.isin(), row.instrumentTitle());
+
+        if (ticker != null && !ticker.isBlank()) {
+            Optional<Instrument> existing = instrumentRepository.findByTicker(ticker);
             if (existing.isPresent()) {
                 return existing.get();
             }
         }
 
         if (row.isin() != null && !row.isin().isBlank()) {
-            Optional<Instrument> existing = instrumentRepository.findByIsin(row.isin());
+            Optional<Instrument> existing = instrumentRepository.findByIsin(row.isin().trim());
             if (existing.isPresent()) {
                 return existing.get();
             }
         }
 
         String name = row.instrumentTitle() != null && !row.instrumentTitle().isBlank()
-                ? row.instrumentTitle()
-                : (row.ticker() != null && !row.ticker().isBlank() ? row.ticker() : "Imported Asset");
+                ? row.instrumentTitle().trim()
+                : (ticker != null && !ticker.isBlank() ? ticker : "Imported Asset");
 
         String currencyCode = row.instrumentCurrency() != null && !row.instrumentCurrency().isBlank()
                 ? row.instrumentCurrency()
                 : row.currency();
 
-        AssetClass inferredClass = inferAssetClass(name, row.ticker(), row.isin());
-
-        String inferredExchange = null;
-        if (row.isin() != null && row.isin().startsWith("GB")) {
-            inferredExchange = "LSE";
-        } else if ("GBP".equalsIgnoreCase(currencyCode) || "GBX".equalsIgnoreCase(currencyCode)) {
-            inferredExchange = "LSE";
-        }
+        AssetClass inferredClass = inferAssetClass(name, ticker, row.isin());
+        String nativeCurrency = inferNativeCurrency(ticker, row.isin(), row.instrumentCurrency(), row.currency());
+        String inferredExchange = inferExchange(ticker, row.isin(), name, nativeCurrency);
 
         Instrument inst = new Instrument(
                 name,
                 inferredClass,
-                row.ticker(),
+                ticker,
                 row.isin(),
                 inferredExchange,
-                new Currency(currencyCode != null ? currencyCode : "GBP")
+                new Currency(nativeCurrency)
         );
         return instrumentRepository.save(inst);
+    }
+
+    private static final java.util.Map<String, String> KNOWN_TICKER_EXCHANGES = java.util.Map.ofEntries(
+            java.util.Map.entry("AAPL", "NASDAQ"),
+            java.util.Map.entry("AMD", "NASDAQ"),
+            java.util.Map.entry("AMZN", "NASDAQ"),
+            java.util.Map.entry("ALAB", "NASDAQ"),
+            java.util.Map.entry("BBAI", "NASDAQ"),
+            java.util.Map.entry("BIRD", "NASDAQ"),
+            java.util.Map.entry("CARL", "NASDAQ"),
+            java.util.Map.entry("CBRS", "NASDAQ"),
+            java.util.Map.entry("COIN", "NASDAQ"),
+            java.util.Map.entry("COST", "NASDAQ"),
+            java.util.Map.entry("CRWD", "NASDAQ"),
+            java.util.Map.entry("FIG", "NASDAQ"),
+            java.util.Map.entry("FLY", "NASDAQ"),
+            java.util.Map.entry("GOOG", "NASDAQ"),
+            java.util.Map.entry("HOOD", "NASDAQ"),
+            java.util.Map.entry("HON", "NASDAQ"),
+            java.util.Map.entry("HONA", "NASDAQ"),
+            java.util.Map.entry("LUNR", "NASDAQ"),
+            java.util.Map.entry("MRNA", "NASDAQ"),
+            java.util.Map.entry("MRVL", "NASDAQ"),
+            java.util.Map.entry("MSFT", "NASDAQ"),
+            java.util.Map.entry("MU", "NASDAQ"),
+            java.util.Map.entry("NET", "NASDAQ"),
+            java.util.Map.entry("NTDOY", "OTC"),
+            java.util.Map.entry("NVDA", "NASDAQ"),
+            java.util.Map.entry("QBTS", "NASDAQ"),
+            java.util.Map.entry("QCOM", "NASDAQ"),
+            java.util.Map.entry("QS", "NASDAQ"),
+            java.util.Map.entry("RDDT", "NYSE"),
+            java.util.Map.entry("RIVN", "NASDAQ"),
+            java.util.Map.entry("SFTBY", "OTC"),
+            java.util.Map.entry("SMCI", "NASDAQ"),
+            java.util.Map.entry("SMLR", "NASDAQ"),
+            java.util.Map.entry("SOLS", "OTC"),
+            java.util.Map.entry("SOUN", "NASDAQ"),
+            java.util.Map.entry("SPCX", "OTC"),
+            java.util.Map.entry("STX", "NASDAQ"),
+            java.util.Map.entry("TSLA", "NASDAQ"),
+            java.util.Map.entry("BBD", "NYSE"),
+            java.util.Map.entry("BRK.B", "NYSE"),
+            java.util.Map.entry("LUMN", "NYSE"),
+            java.util.Map.entry("NU", "NYSE"),
+            java.util.Map.entry("NVO", "NYSE"),
+            java.util.Map.entry("ORCL", "NYSE"),
+            java.util.Map.entry("PLTR", "NYSE"),
+            java.util.Map.entry("RTX", "NYSE"),
+            java.util.Map.entry("SPOT", "NYSE"),
+            java.util.Map.entry("STLA", "NYSE"),
+            java.util.Map.entry("TM", "NYSE"),
+            java.util.Map.entry("VALE", "NYSE"),
+            java.util.Map.entry("BNPP", "EURONEXT")
+    );
+
+    private static final java.util.Map<String, String> PREFIX_EXCHANGES = java.util.Map.of(
+            "GB", "LSE",
+            "GG", "LSE",
+            "IE", "LSE",
+            "LU", "LSE",
+            "US", "NASDAQ",
+            "FR", "EURONEXT",
+            "DE", "EURONEXT",
+            "NL", "EURONEXT",
+            "KY", "NYSE"
+    );
+
+    private static final java.util.Map<String, String> PREFIX_CURRENCIES = java.util.Map.of(
+            "GB", "GBP",
+            "GG", "GBP",
+            "US", "USD",
+            "KY", "USD",
+            "FR", "EUR",
+            "DE", "EUR",
+            "NL", "EUR"
+    );
+
+    public static String inferExchange(String ticker, String isin, String title, String currencyCode) {
+        if (ticker != null) {
+            String known = KNOWN_TICKER_EXCHANGES.get(ticker.trim().toUpperCase());
+            if (known != null) return known;
+        }
+        if (isin != null && isin.length() >= 2) {
+            String prefix = isin.trim().substring(0, 2).toUpperCase();
+            String exch = PREFIX_EXCHANGES.get(prefix);
+            if (exch != null) return exch;
+        }
+        if ("USD".equalsIgnoreCase(currencyCode)) return "NASDAQ";
+        if ("EUR".equalsIgnoreCase(currencyCode)) return "EURONEXT";
+        return "LSE";
+    }
+
+    public static String inferNativeCurrency(String ticker, String isin, String rawInstCurrency, String rawAccCurrency) {
+        if (ticker != null) {
+            String upperTicker = ticker.trim().toUpperCase();
+            if ("SGLD".equals(upperTicker)) return "USD";
+            String exch = KNOWN_TICKER_EXCHANGES.get(upperTicker);
+            if (exch != null) {
+                if ("EURONEXT".equals(exch)) return "EUR";
+                return "USD";
+            }
+        }
+        if (isin != null && isin.length() >= 2) {
+            String prefix = isin.trim().substring(0, 2).toUpperCase();
+            String curr = PREFIX_CURRENCIES.get(prefix);
+            if (curr != null) return curr;
+        }
+        if (rawInstCurrency != null && !rawInstCurrency.isBlank() && !"GBP/USD".equalsIgnoreCase(rawInstCurrency)) {
+            return rawInstCurrency.trim().toUpperCase();
+        }
+        return (rawAccCurrency != null && !rawAccCurrency.isBlank()) ? rawAccCurrency.trim().toUpperCase() : "GBP";
+    }
+
+    private static final java.util.Map<String, String> KNOWN_ISIN_TICKERS = java.util.Map.ofEntries(
+            java.util.Map.entry("IE000716YHJ7", "FWRG"),
+            java.util.Map.entry("IE0032077012", "EQQQ"),
+            java.util.Map.entry("IE00B3YCGJ38", "SPXP"),
+            java.util.Map.entry("IE00BHZRQZ17", "FLXI"),
+            java.util.Map.entry("IE00BK5BQT80", "VWRP"),
+            java.util.Map.entry("IE00BK5BQV03", "VEVE"),
+            java.util.Map.entry("IE00BK5BR733", "VFEM"),
+            java.util.Map.entry("IE00BM8R0J59", "QYLD"),
+            java.util.Map.entry("IE00B3XXRP09", "VUSA"),
+            java.util.Map.entry("IE00BFMXXD54", "VUAG"),
+            java.util.Map.entry("IE00B3RBWM25", "VWRL"),
+            java.util.Map.entry("GB00B59G4H30", "V80A"),
+            java.util.Map.entry("IE00B4L5Y983", "SWDA"),
+            java.util.Map.entry("IE00B5BMR087", "CSPX"),
+            java.util.Map.entry("IE00BLPK3577", "CYSE"),
+            java.util.Map.entry("IE00BDVPNG13", "INTL"),
+            java.util.Map.entry("IE000940RNE6", "BKCN"),
+            java.util.Map.entry("IE00BJGWQN72", "KLWD"),
+            java.util.Map.entry("IE000W8WMSL2", "QWTM"),
+            java.util.Map.entry("IE000O8KMPM1", "WBIO"),
+            java.util.Map.entry("IE000MO2MB07", "WTNR"),
+            java.util.Map.entry("IE000YDZG487", "HNSS"),
+            java.util.Map.entry("IE00BMC38736", "SMGB"),
+            java.util.Map.entry("IE00B579F325", "SGLD"),
+            java.util.Map.entry("IE00BM67HX07", "XDPG")
+    );
+
+    public static String inferTicker(String isin, String name) {
+        if (isin == null) return null;
+        return KNOWN_ISIN_TICKERS.get(isin.trim().toUpperCase());
     }
 
     public static AssetClass inferAssetClass(String name, String ticker, String isin) {
@@ -305,11 +546,11 @@ public class CsvImportService {
         if (n.contains("reit") || n.contains("property")) {
             return AssetClass.REIT;
         }
+        if (n.contains("fund") || n.contains("oeic") || n.contains("unit trust")) {
+            return AssetClass.MUTUAL_FUND;
+        }
         if (n.contains("etf") || n.contains("vanguard") || n.contains("ishares") || n.contains("spdr") || n.contains("ftse") || n.contains("s&p 500") || t.equals("vwrl") || t.equals("xdpg")) {
             return AssetClass.ETF;
-        }
-        if (n.contains("fund") || n.contains("oeic")) {
-            return AssetClass.MUTUAL_FUND;
         }
         if (n.contains("crypto") || n.contains("bitcoin") || t.equals("btc")) {
             return AssetClass.CRYPTO;
@@ -321,13 +562,33 @@ public class CsvImportService {
         return AssetClass.STOCK;
     }
 
-    private BrokerCsvParser selectParser(String csvContent) {
+    private String stripBom(String s) {
+        if (s != null && s.startsWith("\uFEFF")) {
+            return s.substring(1);
+        }
+        return s;
+    }
+
+    private BrokerCsvParser selectParser(String csvContent, String overrideBroker) {
+        if (overrideBroker != null && !overrideBroker.isBlank()) {
+            for (BrokerCsvParser p : parsers) {
+                if (p.getBrokerName().equalsIgnoreCase(overrideBroker.trim())) {
+                    return p;
+                }
+            }
+            throw new IllegalArgumentException("Unsupported broker: " + overrideBroker);
+        }
+
         if (csvContent == null || csvContent.isBlank()) {
             throw new IllegalArgumentException("CSV file content must not be empty");
         }
-        String[] lines = csvContent.split("\r?\n");
-        for (int i = 0; i < Math.min(5, lines.length); i++) {
-            List<String> headers = FreetradeCsvParser.parseCsvLine(lines[i]);
+
+        String cleanContent = stripBom(csvContent);
+        String[] lines = cleanContent.split("\r?\n");
+        for (int i = 0; i < Math.min(8, lines.length); i++) {
+            String line = lines[i].trim();
+            if (line.isEmpty()) continue;
+            List<String> headers = FreetradeCsvParser.parseCsvLine(line);
             for (BrokerCsvParser p : parsers) {
                 if (p.supports(headers)) {
                     return p;

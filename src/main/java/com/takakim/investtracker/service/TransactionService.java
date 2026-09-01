@@ -25,7 +25,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@Transactional
+@Transactional(noRollbackFor = {IllegalArgumentException.class, com.takakim.investtracker.service.ResourceNotFoundException.class})
 public class TransactionService {
 
     private final PortfolioRepository portfolioRepository;

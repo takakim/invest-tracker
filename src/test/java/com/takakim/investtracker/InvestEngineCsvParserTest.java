@@ -46,6 +46,7 @@ class InvestEngineCsvParserTest {
         assertEquals(TransactionType.BUY, r1.mappedType());
         assertEquals("Global X NASDAQ 100 Covered Call", r1.instrumentTitle());
         assertEquals("IE00BM8R0J59", r1.isin());
+        assertEquals("QYLD", r1.ticker());
         assertEquals(new BigDecimal("18.882175"), r1.quantity());
         assertEquals(new BigDecimal("13.2400"), r1.price());
         assertEquals(new BigDecimal("250.00"), r1.grossAmount());
@@ -56,12 +57,14 @@ class InvestEngineCsvParserTest {
         assertEquals(TransactionType.SELL, r2.mappedType());
         assertEquals("Franklin FTSE India", r2.instrumentTitle());
         assertEquals("IE00BHZRQZ17", r2.isin());
+        assertEquals("FLXI", r2.ticker());
 
         // Row 3: Dividend
         ParsedTransactionRow r3 = rows.get(2);
         assertEquals(TransactionType.DIVIDEND, r3.mappedType());
         assertEquals("Vanguard FTSE All-World", r3.instrumentTitle());
         assertEquals("IE00BK5BQT80", r3.isin());
+        assertEquals("VWRP", r3.ticker());
     }
 
     @Test
@@ -76,17 +79,59 @@ class InvestEngineCsvParserTest {
             Security / ISIN,Transaction Type,Quantity,Share Price,Total Trade Value,Trade Date/Time
             
             ShortRow
-            Unknown Security / ISIN US12345,UnknownType,1,10,10,2025-01-01T00:00:00Z
-            Plain Name,Buy,1,10,10,2025-01-01T00:00:00Z
+            Unknown Security / ISIN US12345,UnknownType,1,10,10,04/03/25 15:06:44
+            Plain Name,Buy,1,10,10,04/03/25 15:06:44
             Null Total,Buy,1,10,,invalid-date
-            Malformed Dec,Buy,bad,bad,bad,2025-01-01T00:00:00Z
+            Empty Date,Buy,1,10,10,
+            Malformed Dec,Buy,bad,bad,bad,04/03/25 15:06:44
+            Invesco S&P 500 / ISIN IE00B3YCGJ38,Stock Split,181.605204,0,0,12/01/26 08:00:00
+            Invesco S&P 500 / ISIN IE00B3YCGJ38,Reverse Stock Split,10.000000,0,0,12/01/26 08:00:00
             """;
         List<ParsedTransactionRow> rows = parser.parse(csv);
-        assertEquals(4, rows.size());
+        assertEquals(7, rows.size());
         assertTrue(rows.get(0).isIgnored());
         assertEquals("Plain Name", rows.get(1).instrumentTitle());
         assertEquals(BigDecimal.ZERO, rows.get(2).grossAmount());
+        assertNotNull(rows.get(3).timestamp());
+        assertEquals(TransactionType.STOCK_SPLIT, rows.get(5).mappedType());
+        assertEquals(new BigDecimal("181.605204"), rows.get(5).quantity());
+        assertNull(rows.get(5).price());
+        assertEquals(BigDecimal.ZERO, rows.get(5).grossAmount());
+        assertEquals(TransactionType.REVERSE_STOCK_SPLIT, rows.get(6).mappedType());
         assertEquals("InvestEngine", parser.getBrokerName());
+    }
+
+    @Test
+    @DisplayName("Parses enriched InvestEngine CSV schema with 12 columns")
+    void parseEnrichedCsv() {
+        String csv = """
+            Security,Ticker,ISIN,Currency,Exchange,Transaction Type,Quantity,Share Price,Total Trade Value,Trade Date/Time,Settlement Date,Broker
+            Invesco S&P 500 UCITS ETF,SPXP,IE00B3YCGJ38,GBP,LSE,Stock Split,181.605204,£0.0000,£0.00,12/01/26 08:00:00,12/01/26,None
+            Invesco S&P 500 UCITS ETF,SPXP,IE00B3YCGJ38,GBP,LSE,Buy,14.396643,£10.3419,£148.89,16/01/26 14:59:41,20/01/26,None
+            Invesco S&P 500 UCITS ETF,SPXP,IE00B3YCGJ38,GBP,LSE,Dividend,10.0,£0.0,£5.50,16/02/26 14:59:41,20/02/26,None
+            """;
+        List<ParsedTransactionRow> rows = parser.parse(csv);
+        assertEquals(3, rows.size());
+
+        ParsedTransactionRow r1 = rows.get(0);
+        assertEquals(TransactionType.STOCK_SPLIT, r1.mappedType());
+        assertEquals("SPXP", r1.ticker());
+        assertEquals("IE00B3YCGJ38", r1.isin());
+        assertEquals("Invesco S&P 500 UCITS ETF", r1.instrumentTitle());
+        assertEquals("GBP", r1.currency());
+        assertEquals(new BigDecimal("181.605204"), r1.quantity());
+        assertNull(r1.price());
+        assertEquals(BigDecimal.ZERO, r1.grossAmount());
+
+        ParsedTransactionRow r2 = rows.get(1);
+        assertEquals(TransactionType.BUY, r2.mappedType());
+        assertEquals(new BigDecimal("14.396643"), r2.quantity());
+        assertEquals(new BigDecimal("10.3419"), r2.price());
+        assertEquals(new BigDecimal("148.89"), r2.grossAmount());
+
+        ParsedTransactionRow r3 = rows.get(2);
+        assertEquals(TransactionType.DIVIDEND, r3.mappedType());
+        assertEquals(new BigDecimal("5.50"), r3.grossAmount());
     }
 
     @Test
