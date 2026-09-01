@@ -104,9 +104,36 @@ public class PositionService {
                 ? positionRepository.findByAccountPortfolioId(portfolioId)
                 : positionRepository.findByAccountPortfolioIdAndStatus(portfolioId, PositionStatus.ACTIVE);
 
-        return positions.stream()
-                .map(p -> computePositionPerformance(p.getAccount(), p.getInstrument(), p.getId()))
-                .toList();
+        List<ApiDtos.PositionPerformanceResponse> results = new java.util.ArrayList<>(
+                positions.stream()
+                        .map(p -> computePositionPerformance(p.getAccount(), p.getInstrument(), p.getId()))
+                        .toList()
+        );
+
+        if (includeClosed) {
+            java.util.Set<String> presentKeys = positions.stream()
+                    .map(p -> p.getAccount().getId() + "_" + p.getInstrument().getId())
+                    .collect(java.util.stream.Collectors.toSet());
+
+            List<Transaction> portfolioTxs = transactionRepository.findByAccountPortfolioIdOrderByTradeDateDesc(portfolioId);
+            java.util.Map<Account, List<Transaction>> txsByAccount = portfolioTxs.stream()
+                    .filter(tx -> tx.getInstrument() != null)
+                    .collect(java.util.stream.Collectors.groupingBy(Transaction::getAccount));
+
+            for (java.util.Map.Entry<Account, List<Transaction>> entry : txsByAccount.entrySet()) {
+                Account acc = entry.getKey();
+                List<Instrument> missingInsts = entry.getValue().stream()
+                        .map(Transaction::getInstrument)
+                        .filter(inst -> !presentKeys.contains(acc.getId() + "_" + inst.getId()))
+                        .distinct()
+                        .toList();
+                for (Instrument inst : missingInsts) {
+                    results.add(computePositionPerformance(acc, inst, null));
+                }
+            }
+        }
+
+        return results;
     }
 
     @Transactional(readOnly = true)
@@ -116,9 +143,31 @@ public class PositionService {
                 ? positionRepository.findByAccountId(accountId)
                 : positionRepository.findByAccountIdAndStatus(accountId, PositionStatus.ACTIVE);
 
-        return positions.stream()
-                .map(p -> computePositionPerformance(account, p.getInstrument(), p.getId()))
-                .toList();
+        List<ApiDtos.PositionPerformanceResponse> results = new java.util.ArrayList<>(
+                positions.stream()
+                        .map(p -> computePositionPerformance(account, p.getInstrument(), p.getId()))
+                        .toList()
+        );
+
+        if (includeClosed) {
+            java.util.Set<UUID> presentInstrumentIds = positions.stream()
+                    .map(p -> p.getInstrument().getId())
+                    .collect(java.util.stream.Collectors.toSet());
+
+            List<Transaction> accountTxs = transactionRepository.findByAccountIdOrderByTradeDateDesc(accountId);
+            List<Instrument> missingInstruments = accountTxs.stream()
+                    .map(Transaction::getInstrument)
+                    .filter(java.util.Objects::nonNull)
+                    .filter(inst -> !presentInstrumentIds.contains(inst.getId()))
+                    .distinct()
+                    .toList();
+
+            for (Instrument inst : missingInstruments) {
+                results.add(computePositionPerformance(account, inst, null));
+            }
+        }
+
+        return results;
     }
 
     public List<PositionCalculationResult> recalculatePortfolio(UUID portfolioId) {

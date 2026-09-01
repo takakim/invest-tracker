@@ -176,6 +176,7 @@ class PerformanceEngineTests {
         assertEquals("TWR", result.returnMethod());
         assertNotNull(result.twrReturn());
         assertNotNull(result.twrAnnualized());
+        assertEquals(0, new BigDecimal("11000.0000").compareTo(result.totalNetDeposits()));
     }
 
     @Test

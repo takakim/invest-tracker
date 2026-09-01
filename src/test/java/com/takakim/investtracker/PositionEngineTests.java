@@ -364,4 +364,32 @@ class PositionEngineTests {
         assertEquals(com.takakim.investtracker.domain.PositionStatus.ARCHIVED, activePos.getStatus());
         verify(positionRepository).save(activePos);
     }
+
+    @Test
+    @DisplayName("PositionEngine recalculateAndSync creates and archives new position when net quantity is zero but history exists")
+    void recalculateAndSyncCreatesArchivedPositionWhenNoPriorPositionExists() {
+        Transaction buy = new Transaction(
+                account, instrument, TransactionType.BUY, Instant.now().minus(5, java.time.temporal.ChronoUnit.DAYS),
+                null, new BigDecimal("10.00000000"), new BigDecimal("100.0000"), new BigDecimal("1000.0000"),
+                null, null, "USD", null, null, null, null
+        );
+        Transaction sell = new Transaction(
+                account, instrument, TransactionType.SELL, Instant.now().minus(2, java.time.temporal.ChronoUnit.DAYS),
+                null, new BigDecimal("10.00000000"), new BigDecimal("120.0000"), new BigDecimal("1200.0000"),
+                null, null, "USD", null, null, null, null
+        );
+        when(transactionRepository.findByAccountIdAndInstrumentIdOrderByTradeDateAsc(account.getId(), instrument.getId()))
+                .thenReturn(List.of(buy, sell));
+
+        when(positionRepository.findByAccountIdAndInstrumentId(account.getId(), instrument.getId()))
+                .thenReturn(Optional.empty());
+
+        PositionCalculationResult res = positionEngine.recalculateAndSync(account, instrument);
+        assertNotNull(res);
+        assertEquals(BigDecimal.ZERO.setScale(8), res.quantity());
+        org.mockito.ArgumentCaptor<Position> captor = org.mockito.ArgumentCaptor.forClass(Position.class);
+        verify(positionRepository).save(captor.capture());
+        assertEquals(BigDecimal.ZERO, captor.getValue().getQuantity());
+        assertEquals(com.takakim.investtracker.domain.PositionStatus.ARCHIVED, captor.getValue().getStatus());
+    }
 }

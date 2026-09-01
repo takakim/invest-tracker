@@ -4,3 +4,4 @@ export * from './ErrorAlert';
 export * from './EmptyState';
 export * from './ConfirmDialog';
 export * from './SortableTableHead';
+export * from './CollapsibleSection';

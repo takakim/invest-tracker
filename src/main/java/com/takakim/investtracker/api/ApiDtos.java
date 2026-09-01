@@ -276,6 +276,7 @@ public final class ApiDtos {
         java.math.BigDecimal totalTaxes,
         java.math.BigDecimal totalNetIncome,
         java.math.BigDecimal totalCostBasis,
+        java.math.BigDecimal totalNetDeposits,
         String currency,
         String valuationBasis,
         List<AccountPerformanceSummaryResponse> byAccount) { }
