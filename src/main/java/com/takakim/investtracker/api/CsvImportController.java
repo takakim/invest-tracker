@@ -109,6 +109,16 @@ public class CsvImportController {
                 .toList();
     }
 
+    @org.springframework.web.bind.annotation.DeleteMapping("/api/v1/portfolios/{portfolioId}/accounts/{accountId}/imports/{batchId}")
+    public ResponseEntity<Void> deleteImportBatch(
+            @PathVariable UUID portfolioId,
+            @PathVariable UUID accountId,
+            @PathVariable UUID batchId) {
+
+        csvImportService.deleteImportBatch(portfolioId, accountId, batchId);
+        return ResponseEntity.noContent().build();
+    }
+
     private ImportBatchResponse toResponse(ImportBatch b) {
         return new ImportBatchResponse(
                 b.getId(),
