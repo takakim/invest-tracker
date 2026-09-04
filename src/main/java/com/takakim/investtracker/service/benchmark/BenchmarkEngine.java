@@ -107,6 +107,13 @@ public class BenchmarkEngine {
                 : portfolioReturn;
 
         // 3. Fetch benchmark prices at periodStart and periodEnd
+        if (marketDataService.getObservationCount(benchmarkInstrumentId) < 10) {
+            try {
+                marketDataService.backfillHistoricalPrices(benchmarkInstrumentId, periodStart, periodEnd);
+            } catch (Exception ignored) {
+            }
+        }
+
         PriceQuote endQuote;
         try {
             endQuote = marketDataService.getLatestPrice(benchmarkInstrumentId, periodEnd);

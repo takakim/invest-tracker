@@ -284,4 +284,39 @@ class BenchmarkEngineTests {
         assertFalse(result.outperforming());
         assertTrue(result.excessReturn().compareTo(BigDecimal.ZERO) < 0);
     }
+
+    @Test
+    void comparePortfolioToBenchmark_edgeCases_coverage() {
+        Instant now = Instant.now();
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(portfolio));
+        when(instrumentRepository.findById(sp500.getId())).thenReturn(Optional.of(sp500));
+        when(transactionRepository.findByAccountPortfolioIdOrderByTradeDateDesc(portfolioId)).thenReturn(List.of());
+
+        // Performance with null returns
+        PerformanceResult perfNull = new PerformanceResult(
+                portfolioId, now, "TWR",
+                null, null, null,
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, "GBP", "COST_BASIS", List.of()
+        );
+        when(performanceEngine.calculate(portfolioId)).thenReturn(perfNull);
+
+        // When observation count >= 10, does not backfill
+        when(marketDataService.getObservationCount(sp500.getId())).thenReturn(15L);
+        when(marketDataService.getLatestPrice(eq(sp500.getId()), any(Instant.class)))
+                .thenReturn(new PriceQuote(sp500.getId(), new BigDecimal("100.00"), "GBP", now, ObservationSourceType.PROVIDER, "FEED", false, null));
+        when(fxRateService.convert(any(Money.class), eq(new Currency("GBP")), any(Instant.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        BenchmarkComparisonResult res = benchmarkEngine.comparePortfolioToBenchmark(portfolioId, sp500.getId(), "1D", now);
+        assertNotNull(res);
+        assertEquals(BigDecimal.ZERO.setScale(4), res.portfolioReturn());
+
+        // When observation count < 10 and backfill throws exception
+        when(marketDataService.getObservationCount(sp500.getId())).thenReturn(2L);
+        org.mockito.Mockito.doThrow(new RuntimeException("API error"))
+                .when(marketDataService).backfillHistoricalPrices(eq(sp500.getId()), any(), any());
+        BenchmarkComparisonResult res2 = benchmarkEngine.comparePortfolioToBenchmark(portfolioId, sp500.getId(), "1D", now);
+        assertNotNull(res2);
+    }
 }

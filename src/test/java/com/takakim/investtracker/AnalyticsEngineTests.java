@@ -39,6 +39,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
@@ -245,5 +246,127 @@ class AnalyticsEngineTests {
         assertEquals(new BigDecimal("0.0000"), result.totalUnrealizedGainLoss());
         assertFalse(result.warnings().isEmpty());
         assertEquals("—", result.topHoldings().get(0).ticker());
+    }
+
+    @Test
+    void calculate_historicalPointInTime_derivesPositionsAndFiltersCash() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(portfolio));
+        when(accountRepository.findAllByPortfolioIdAndStatusOrderByNameAsc(portfolioId, AccountStatus.ACTIVE))
+                .thenReturn(List.of(account));
+
+        Instant historicalAsOf = Instant.parse("2023-01-01T00:00:00Z");
+        Instant pastDate = Instant.parse("2022-06-01T00:00:00Z");
+        Instant futureDate = Instant.parse("2023-06-01T00:00:00Z");
+
+        Transaction depPast = new Transaction(account, null, TransactionType.DEPOSIT, pastDate, null, null, null, new BigDecimal("1000.00"), null, null, "GBP", null, null, null, null);
+        Transaction buyPast = new Transaction(account, vusa, TransactionType.BUY, pastDate, null, new BigDecimal("5"), new BigDecimal("100.00"), new BigDecimal("500.00"), null, null, "GBP", null, null, null, null);
+        Transaction depFuture = new Transaction(account, null, TransactionType.DEPOSIT, futureDate, null, null, null, new BigDecimal("2000.00"), null, null, "GBP", null, null, null, null);
+        Transaction buyFuture = new Transaction(account, vusa, TransactionType.BUY, futureDate, null, new BigDecimal("5"), new BigDecimal("150.00"), new BigDecimal("750.00"), null, null, "GBP", null, null, null, null);
+
+        when(transactionRepository.findByAccountIdOrderByTradeDateDesc(account.getId()))
+                .thenReturn(List.of(buyFuture, depFuture, buyPast, depPast));
+
+        // Position engine returns 5 shares for past history
+        when(positionEngine.calculate(eq(account), eq(vusa), anyList(), any()))
+                .thenReturn(new PositionCalculationResult(account.getId(), vusa.getId(),
+                        CostBasisMethod.FIFO, new BigDecimal("5"), new BigDecimal("500.00"), "GBP",
+                        new BigDecimal("100.00"), BigDecimal.ZERO, List.of(), List.of()));
+
+        // Price quote on historicalAsOf
+        PriceQuote quote = new PriceQuote(
+                vusa.getId(), new BigDecimal("120.00"), "GBP", historicalAsOf,
+                com.takakim.investtracker.domain.ObservationSourceType.PROVIDER, "EXCHANGE", false, null
+        );
+        when(marketDataService.getLatestPrice(eq(vusa.getId()), eq(historicalAsOf))).thenReturn(quote);
+
+        when(fxRateService.convert(any(Money.class), any(Currency.class), any(Instant.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        PortfolioAnalytics result = analyticsEngine.calculate(portfolioId, historicalAsOf);
+
+        // Cash: 1000 - 500 = 500 GBP
+        // Position: 5 * 120 = 600 GBP
+        // Total value = 1100 GBP
+        assertEquals(new BigDecimal("1100.0000"), result.totalCurrentValue());
+        assertEquals(new BigDecimal("1000.0000"), result.totalCostBasis());
+        assertEquals(new BigDecimal("100.0000"), result.totalUnrealizedGainLoss());
+        assertEquals(new BigDecimal("500.0000"), result.totalCashValue());
+        assertEquals(1, result.topHoldings().size());
+        assertEquals(new BigDecimal("5"), result.topHoldings().get(0).quantity());
+    }
+
+    @Test
+    void calculate_historicalPointInTime_handlesWithdrawalFeeAndZeroPositions() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(portfolio));
+        when(accountRepository.findAllByPortfolioIdAndStatusOrderByNameAsc(portfolioId, AccountStatus.ACTIVE))
+                .thenReturn(List.of(account));
+
+        Instant historicalAsOf = Instant.parse("2023-01-01T00:00:00Z");
+        Instant pastDate = Instant.parse("2022-06-01T00:00:00Z");
+
+        Transaction depPast = new Transaction(account, null, TransactionType.DEPOSIT, pastDate, null, null, null, new BigDecimal("1000.00"), null, null, "GBP", null, null, null, null);
+        Transaction feePast = new Transaction(account, null, TransactionType.FEE, pastDate, null, null, null, new BigDecimal("10.00"), new BigDecimal("10.00"), null, "GBP", null, null, null, null);
+        Transaction withPast = new Transaction(account, null, TransactionType.WITHDRAWAL, pastDate, null, null, null, new BigDecimal("90.00"), null, null, "GBP", null, null, null, null);
+        Transaction buyPast = new Transaction(account, vusa, TransactionType.BUY, pastDate, null, new BigDecimal("5"), new BigDecimal("100.00"), new BigDecimal("500.00"), null, null, "GBP", null, null, null, null);
+
+        when(transactionRepository.findByAccountIdOrderByTradeDateDesc(account.getId()))
+                .thenReturn(List.of(buyPast, withPast, feePast, depPast));
+
+        // Position engine returns 0 shares (closed position)
+        when(positionEngine.calculate(eq(account), eq(vusa), anyList(), any()))
+                .thenReturn(new PositionCalculationResult(account.getId(), vusa.getId(),
+                        CostBasisMethod.FIFO, BigDecimal.ZERO, BigDecimal.ZERO, "GBP",
+                        BigDecimal.ZERO, BigDecimal.ZERO, List.of(), List.of()));
+
+        when(fxRateService.convert(any(Money.class), any(Currency.class), any(Instant.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        PortfolioAnalytics result = analyticsEngine.calculate(portfolioId, historicalAsOf);
+
+        // Cash: 1000 - 10 (fee) - 90 (withdrawal) - 500 (buy) = 400 GBP
+        assertEquals(new BigDecimal("400.0000"), result.totalCurrentValue());
+        assertEquals(new BigDecimal("400.0000"), result.totalCashValue());
+        assertTrue(result.topHoldings().isEmpty());
+    }
+
+    @Test
+    void calculate_historicalPointInTime_handlesDividendInterestSellAndNullCostBasis() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(portfolio));
+        when(accountRepository.findAllByPortfolioIdAndStatusOrderByNameAsc(portfolioId, AccountStatus.ACTIVE))
+                .thenReturn(List.of(account));
+
+        Instant historicalAsOf = Instant.parse("2023-01-01T00:00:00Z");
+        Instant pastDate = Instant.parse("2022-06-01T00:00:00Z");
+
+        // DEPOSIT with netAmount null, grossAmount set
+        Transaction depGrossOnly = new Transaction(account, null, TransactionType.DEPOSIT, pastDate, null, null, null, new BigDecimal("500.00"), null, null, "GBP", null, null, null, null);
+        Transaction divTx = new Transaction(account, vusa, TransactionType.DIVIDEND, pastDate, null, null, null, new BigDecimal("25.00"), new BigDecimal("25.00"), null, "GBP", null, null, null, null);
+        Transaction intTx = new Transaction(account, null, TransactionType.INTEREST, pastDate, null, null, null, new BigDecimal("10.00"), new BigDecimal("10.00"), null, "GBP", null, null, null, null);
+        Transaction sellTx = new Transaction(account, vusa, TransactionType.SELL, pastDate, null, new BigDecimal("1"), new BigDecimal("100.00"), new BigDecimal("100.00"), null, null, "GBP", null, null, null, null);
+
+        when(transactionRepository.findByAccountIdOrderByTradeDateDesc(account.getId()))
+                .thenReturn(List.of(sellTx, intTx, divTx, depGrossOnly));
+
+        // Position with null cost basis amount & currency
+        when(positionEngine.calculate(eq(account), eq(vusa), anyList(), any()))
+                .thenReturn(new PositionCalculationResult(account.getId(), vusa.getId(),
+                        CostBasisMethod.FIFO, new BigDecimal("2"), null, null,
+                        null, BigDecimal.ZERO, List.of(), List.of()));
+
+        PriceQuote quote = new PriceQuote(
+                vusa.getId(), new BigDecimal("100.00"), "GBP", historicalAsOf,
+                com.takakim.investtracker.domain.ObservationSourceType.PROVIDER, "EXCHANGE", false, null
+        );
+        when(marketDataService.getLatestPrice(eq(vusa.getId()), eq(historicalAsOf))).thenReturn(quote);
+        when(fxRateService.convert(any(Money.class), any(Currency.class), any(Instant.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        PortfolioAnalytics result = analyticsEngine.calculate(portfolioId, historicalAsOf);
+
+        // Cash: 500 (dep) + 25 (div) + 10 (int) + 100 (sell) = 635 GBP
+        // Position: 2 * 100 = 200 GBP
+        assertEquals(new BigDecimal("835.0000"), result.totalCurrentValue());
+        assertEquals(new BigDecimal("635.0000"), result.totalCashValue());
+        assertEquals(1, result.topHoldings().size());
     }
 }

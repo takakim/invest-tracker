@@ -112,13 +112,17 @@ public class MarketDataService {
             );
         }
 
-        // 2. Check for latest persisted observation in DB (used for all portfolio views without polling external providers)
+        // 2. Check for latest persisted observation in DB on or before targetTime
         Optional<MarketObservation> latestPersisted = marketObservationRepository
                 .findFirstByInstrumentIdOrderByObservedAtDesc(instrumentId);
 
         if (latestPersisted.isPresent()) {
             MarketObservation obs = latestPersisted.get();
-            if (obs.getPrice() != null && obs.getPrice().compareTo(BigDecimal.ZERO) > 0
+            if (asOf != null && obs.getObservedAt().isAfter(targetTime)) {
+                latestPersisted = marketObservationRepository.findFirstByInstrumentIdAndObservedAtBefore(instrumentId, targetTime);
+                obs = latestPersisted.orElse(null);
+            }
+            if (obs != null && obs.getPrice() != null && obs.getPrice().compareTo(BigDecimal.ZERO) > 0
                     && (instrument.getCurrency() == null || instrument.getCurrency().code().equalsIgnoreCase(obs.getCurrency()))) {
                 boolean isStale = isObservationStale(obs.getObservedAt(), targetTime, instrument.getAssetClass());
                 String warning = isStale ? "Observation is older than 24 hours (last observed " + obs.getObservedAt() + ")" : null;
@@ -135,10 +139,11 @@ public class MarketDataService {
             }
         }
 
-        // 3. Fallback to latest transaction trade price if available
+        // 3. Fallback to latest transaction trade price on or before targetTime if available
         List<com.takakim.investtracker.domain.Transaction> txs = transactionRepository.findByInstrumentIdOrderByTradeDateDesc(instrumentId);
         for (com.takakim.investtracker.domain.Transaction tx : txs) {
-            if (tx.getPrice() != null && tx.getPrice().compareTo(BigDecimal.ZERO) > 0) {
+            if (tx.getPrice() != null && tx.getPrice().compareTo(BigDecimal.ZERO) > 0
+                    && (asOf == null || !tx.getTradeDate().isAfter(targetTime))) {
                 boolean isStale = isObservationStale(tx.getTradeDate(), targetTime, instrument.getAssetClass());
                 String warning = "Live price unavailable; using last transaction trade price from " + tx.getTradeDate();
                 PriceQuote quote = new PriceQuote(
@@ -164,6 +169,27 @@ public class MarketDataService {
                 } catch (Exception ignored) {
                 }
                 return quote;
+            }
+        }
+
+        // 4. If historical targetTime requested but no past observation existed, fallback to overall latest observation
+        if (asOf != null) {
+            Optional<MarketObservation> anyPersisted = marketObservationRepository.findFirstByInstrumentIdOrderByObservedAtDesc(instrumentId);
+            if (anyPersisted.isPresent()) {
+                MarketObservation obs = anyPersisted.get();
+                if (obs.getPrice() != null && obs.getPrice().compareTo(BigDecimal.ZERO) > 0
+                        && (instrument.getCurrency() == null || instrument.getCurrency().code().equalsIgnoreCase(obs.getCurrency()))) {
+                    return new PriceQuote(
+                            instrumentId,
+                            obs.getPrice(),
+                            obs.getCurrency(),
+                            obs.getObservedAt(),
+                            obs.getSourceType(),
+                            obs.getSourceReference(),
+                            true,
+                            "Historical price unavailable at " + targetTime + "; using closest known observation"
+                    );
+                }
             }
         }
 
@@ -280,21 +306,33 @@ public class MarketDataService {
         return marketObservationRepository.findByInstrumentIdAndObservedAtBetweenOrderByObservedAtAsc(instrumentId, start, end);
     }
 
+    public long getObservationCount(UUID instrumentId) {
+        return marketObservationRepository.countByInstrumentId(instrumentId);
+    }
+
+    @Transactional
     public List<MarketObservation> syncHistoricalPrices(UUID instrumentId, Instant from, Instant to) {
+        return backfillHistoricalPrices(instrumentId, from, to);
+    }
+
+    @Transactional
+    public List<MarketObservation> backfillHistoricalPrices(UUID instrumentId, Instant from, Instant to) {
         Instrument instrument = instrumentRepository.findById(instrumentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Instrument not found: " + instrumentId));
         List<PriceQuote> quotes = marketDataProvider.fetchHistoricalQuotes(instrument, from, to);
         List<MarketObservation> saved = new java.util.ArrayList<>();
         for (PriceQuote q : quotes) {
-            MarketObservation obs = new MarketObservation(
-                    instrument,
-                    q.price(),
-                    q.currency(),
-                    q.asOf(),
-                    ObservationSourceType.PROVIDER,
-                    q.sourceReference()
-            );
-            saved.add(marketObservationRepository.save(obs));
+            if (!marketObservationRepository.existsByInstrumentIdAndObservedAt(instrumentId, q.asOf())) {
+                MarketObservation obs = new MarketObservation(
+                        instrument,
+                        q.price(),
+                        q.currency(),
+                        q.asOf(),
+                        ObservationSourceType.PROVIDER,
+                        q.sourceReference()
+                );
+                saved.add(marketObservationRepository.save(obs));
+            }
         }
         return saved;
     }

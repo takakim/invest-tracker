@@ -26,8 +26,10 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -93,6 +95,12 @@ public class PortfolioHistoryService {
         if (benchmarkId != null) {
             benchmarkInst = instrumentRepository.findById(benchmarkId).orElse(null);
             if (benchmarkInst != null) {
+                if (marketDataService.getObservationCount(benchmarkId) < 10) {
+                    try {
+                        marketDataService.backfillHistoricalPrices(benchmarkId, periodStart, now);
+                    } catch (Exception ignored) {
+                    }
+                }
                 try {
                     PriceQuote bStartQuote = marketDataService.getLatestPrice(benchmarkId, periodStart);
                     benchmarkStartPrice = extractPositivePrice(bStartQuote);
@@ -125,14 +133,14 @@ public class PortfolioHistoryService {
 
             // Portfolio return percentage relative to starting value / invested capital
             BigDecimal portfolioReturnPct = BigDecimal.ZERO.setScale(SCALE, ROUNDING);
-            if (initialPortfolioValue.compareTo(BigDecimal.ZERO) > 0) {
-                portfolioReturnPct = marketVal.subtract(initialPortfolioValue)
-                        .divide(initialPortfolioValue, 4, ROUNDING)
-                        .multiply(ONE_HUNDRED)
-                        .setScale(SCALE, ROUNDING);
-            } else if (investedCapital.compareTo(BigDecimal.ZERO) > 0) {
+            if (investedCapital.compareTo(BigDecimal.ZERO) > 0) {
                 portfolioReturnPct = marketVal.subtract(investedCapital)
                         .divide(investedCapital, 4, ROUNDING)
+                        .multiply(ONE_HUNDRED)
+                        .setScale(SCALE, ROUNDING);
+            } else if (initialPortfolioValue.compareTo(BigDecimal.ZERO) > 0) {
+                portfolioReturnPct = marketVal.subtract(initialPortfolioValue)
+                        .divide(initialPortfolioValue, 4, ROUNDING)
                         .multiply(ONE_HUNDRED)
                         .setScale(SCALE, ROUNDING);
             }
@@ -143,7 +151,7 @@ public class PortfolioHistoryService {
                 try {
                     PriceQuote bQuote = marketDataService.getLatestPrice(benchmarkInst.getId(), sampleTime);
                     BigDecimal bPrice = extractPositivePrice(bQuote);
-                    if (bPrice != null) {
+                    if (bPrice != null && benchmarkStartPrice.compareTo(BigDecimal.ZERO) > 0) {
                         benchmarkReturnPct = bPrice.subtract(benchmarkStartPrice)
                                 .divide(benchmarkStartPrice, 4, ROUNDING)
                                 .multiply(ONE_HUNDRED)
@@ -184,7 +192,14 @@ public class PortfolioHistoryService {
         BigDecimal startingVal = firstPoint.marketValue();
         BigDecimal endingVal = lastPoint.marketValue();
         BigDecimal netCashFlowsInPeriod = calculateNetDepositsInPeriod(completedTxs, portfolio.getBaseCurrency(), periodStart, now);
-        BigDecimal totalGainLoss = endingVal.subtract(startingVal).subtract(netCashFlowsInPeriod).setScale(SCALE, ROUNDING);
+
+        BigDecimal totalGainLoss;
+        if (startingVal.compareTo(BigDecimal.ZERO) == 0) {
+            BigDecimal totalDeposits = calculateNetDepositsUpTo(completedTxs, portfolio.getBaseCurrency(), now);
+            totalGainLoss = endingVal.subtract(totalDeposits).setScale(SCALE, ROUNDING);
+        } else {
+            totalGainLoss = endingVal.subtract(startingVal).subtract(netCashFlowsInPeriod).setScale(SCALE, ROUNDING);
+        }
 
         BigDecimal finalPortfolioReturnPct = lastPoint.portfolioReturnPercentage();
         BigDecimal finalBenchmarkReturnPct = lastPoint.benchmarkReturnPercentage();
