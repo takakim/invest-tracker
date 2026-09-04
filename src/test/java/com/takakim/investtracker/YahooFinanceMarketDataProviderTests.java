@@ -724,4 +724,121 @@ class YahooFinanceMarketDataProviderTests {
         assertTrue(provider.fetchQuote(aapl, Instant.now()).isEmpty());
         assertTrue(provider.fetchHistoricalQuotes(aapl, null, null).isEmpty());
     }
+
+    @Test
+    @DisplayName("Appends appropriate European exchange suffixes for Yahoo symbols")
+    void testEuropeanExchangeSuffixes() {
+        // Euronext Paris -> BNP.PA
+        Instrument bnp = new Instrument("BNP Paribas", AssetClass.STOCK, "BNP", "FR0000131104", "EURONEXT PARIS", new Currency("EUR"));
+        String jsonBnp = """
+            {
+                "chart": {
+                    "result": [
+                        {
+                            "meta": {
+                                "regularMarketPrice": 65.50,
+                                "currency": "EUR",
+                                "symbol": "BNP.PA"
+                            },
+                            "timestamp": [1700000000],
+                            "indicators": {
+                                "quote": [
+                                    {
+                                        "close": [65.50]
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            }
+            """;
+        mockServer.expect(requestTo("https://query1.finance.yahoo.com/v8/finance/chart/BNP.PA?interval=1d&range=1d"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(jsonBnp, MediaType.APPLICATION_JSON));
+
+        Optional<PriceQuote> bnpQuote = provider.fetchQuote(bnp, Instant.now());
+        mockServer.verify();
+        assertTrue(bnpQuote.isPresent());
+        assertEquals(new BigDecimal("65.50"), bnpQuote.get().price());
+
+        // Amsterdam -> ASML.AS
+        mockServer.reset();
+        Instrument asml = new Instrument("ASML", AssetClass.STOCK, "ASML", "NL0010273215", "EURONEXT AMSTERDAM", new Currency("EUR"));
+        mockServer.expect(requestTo("https://query1.finance.yahoo.com/v8/finance/chart/ASML.AS?interval=1d&range=1d"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(jsonBnp.replace("BNP.PA", "ASML.AS"), MediaType.APPLICATION_JSON));
+        Optional<PriceQuote> asmlQuote = provider.fetchQuote(asml, Instant.now());
+        mockServer.verify();
+        assertTrue(asmlQuote.isPresent());
+
+        // Xetra -> SAP.DE
+        mockServer.reset();
+        Instrument sap = new Instrument("SAP", AssetClass.STOCK, "SAP", "DE0007164600", "XETRA", new Currency("EUR"));
+        mockServer.expect(requestTo("https://query1.finance.yahoo.com/v8/finance/chart/SAP.DE?interval=1d&range=1d"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(jsonBnp.replace("BNP.PA", "SAP.DE"), MediaType.APPLICATION_JSON));
+        Optional<PriceQuote> sapQuote = provider.fetchQuote(sap, Instant.now());
+        mockServer.verify();
+        assertTrue(sapQuote.isPresent());
+
+        // Brussels -> ABI.BR
+        mockServer.reset();
+        Instrument abi = new Instrument("Anheuser", AssetClass.STOCK, "ABI", "BE0974293251", "EURONEXT BRUSSELS", new Currency("EUR"));
+        mockServer.expect(requestTo("https://query1.finance.yahoo.com/v8/finance/chart/ABI.BR?interval=1d&range=1d"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(jsonBnp.replace("BNP.PA", "ABI.BR"), MediaType.APPLICATION_JSON));
+        assertTrue(provider.fetchQuote(abi, Instant.now()).isPresent());
+        mockServer.verify();
+
+        // Lisbon -> EDP.LS
+        mockServer.reset();
+        Instrument edp = new Instrument("EDP", AssetClass.STOCK, "EDP", "PTEDP0AM0009", "EURONEXT LISBON", new Currency("EUR"));
+        mockServer.expect(requestTo("https://query1.finance.yahoo.com/v8/finance/chart/EDP.LS?interval=1d&range=1d"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(jsonBnp.replace("BNP.PA", "EDP.LS"), MediaType.APPLICATION_JSON));
+        assertTrue(provider.fetchQuote(edp, Instant.now()).isPresent());
+        mockServer.verify();
+
+        // Milan -> ENI.MI
+        mockServer.reset();
+        Instrument eni = new Instrument("ENI", AssetClass.STOCK, "ENI", "IT0003132476", "BORSA ITALIANA", new Currency("EUR"));
+        mockServer.expect(requestTo("https://query1.finance.yahoo.com/v8/finance/chart/ENI.MI?interval=1d&range=1d"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(jsonBnp.replace("BNP.PA", "ENI.MI"), MediaType.APPLICATION_JSON));
+        assertTrue(provider.fetchQuote(eni, Instant.now()).isPresent());
+        mockServer.verify();
+
+        // Madrid -> SAN.MC
+        mockServer.reset();
+        Instrument san = new Instrument("Santander", AssetClass.STOCK, "SAN", "ES0113900J37", "BOLSA DE MADRID", new Currency("EUR"));
+        mockServer.expect(requestTo("https://query1.finance.yahoo.com/v8/finance/chart/SAN.MC?interval=1d&range=1d"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(jsonBnp.replace("BNP.PA", "SAN.MC"), MediaType.APPLICATION_JSON));
+        assertTrue(provider.fetchQuote(san, Instant.now()).isPresent());
+        mockServer.verify();
+
+        // Toronto -> RY.TO
+        mockServer.reset();
+        Instrument ry = new Instrument("Royal Bank", AssetClass.STOCK, "RY", "CA7800871021", "TORONTO STOCK EXCHANGE", new Currency("CAD"));
+        mockServer.expect(requestTo("https://query1.finance.yahoo.com/v8/finance/chart/RY.TO?interval=1d&range=1d"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(jsonBnp.replace("BNP.PA", "RY.TO"), MediaType.APPLICATION_JSON));
+        assertTrue(provider.fetchQuote(ry, Instant.now()).isPresent());
+        mockServer.verify();
+    }
+
+    @Test
+    @DisplayName("resolveRange produces correct range strings across durations")
+    void testResolveRangeDurations() {
+        Instant now = Instant.now();
+        assertEquals("1mo", YahooFinanceMarketDataProvider.resolveRange(null, now));
+        assertEquals("1mo", YahooFinanceMarketDataProvider.resolveRange(now.minus(java.time.Duration.ofDays(10)), now));
+        assertEquals("3mo", YahooFinanceMarketDataProvider.resolveRange(now.minus(java.time.Duration.ofDays(45)), now));
+        assertEquals("6mo", YahooFinanceMarketDataProvider.resolveRange(now.minus(java.time.Duration.ofDays(120)), now));
+        assertEquals("1y", YahooFinanceMarketDataProvider.resolveRange(now.minus(java.time.Duration.ofDays(250)), now));
+        assertEquals("2y", YahooFinanceMarketDataProvider.resolveRange(now.minus(java.time.Duration.ofDays(500)), now));
+        assertEquals("5y", YahooFinanceMarketDataProvider.resolveRange(now.minus(java.time.Duration.ofDays(1000)), now));
+        assertEquals("max", YahooFinanceMarketDataProvider.resolveRange(now.minus(java.time.Duration.ofDays(2500)), now));
+    }
 }

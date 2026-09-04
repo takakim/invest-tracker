@@ -695,4 +695,84 @@ class MarketDataServiceTests {
         assertTrue(result.isEmpty());
         verify(marketObservationRepository, never()).save(any(MarketObservation.class));
     }
+
+    @Test
+    @DisplayName("backfillHistoricalPrices saves non-duplicate observations and skips existing ones")
+    void testBackfillHistoricalPrices() {
+        UUID id = instrument.getId();
+        when(instrumentRepository.findById(id)).thenReturn(Optional.of(instrument));
+
+        Instant t1 = Instant.parse("2023-01-01T00:00:00Z");
+        Instant t2 = Instant.parse("2023-01-02T00:00:00Z");
+        PriceQuote q1 = new PriceQuote(id, new BigDecimal("150.00"), "USD", t1, ObservationSourceType.PROVIDER, "YAHOO", false, null);
+        PriceQuote q2 = new PriceQuote(id, new BigDecimal("152.00"), "USD", t2, ObservationSourceType.PROVIDER, "YAHOO", false, null);
+
+        when(marketDataProvider.fetchHistoricalQuotes(instrument, t1, t2)).thenReturn(List.of(q1, q2));
+        when(marketObservationRepository.existsByInstrumentIdAndObservedAt(id, t1)).thenReturn(true);
+        when(marketObservationRepository.existsByInstrumentIdAndObservedAt(id, t2)).thenReturn(false);
+
+        List<MarketObservation> saved = marketDataService.backfillHistoricalPrices(id, t1, t2);
+        assertEquals(1, saved.size());
+        verify(marketObservationRepository, times(1)).save(any(MarketObservation.class));
+
+        // When instrument not found
+        UUID missing = UUID.randomUUID();
+        when(instrumentRepository.findById(missing)).thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class, () -> marketDataService.backfillHistoricalPrices(missing, t1, t2));
+    }
+
+    @Test
+    @DisplayName("getObservationCount delegates to repository")
+    void testGetObservationCount() {
+        UUID id = instrument.getId();
+        when(marketObservationRepository.countByInstrumentId(id)).thenReturn(42L);
+        assertEquals(42L, marketDataService.getObservationCount(id));
+    }
+
+    @Test
+    @DisplayName("getLatestPrice with historical asOf queries findFirstByInstrumentIdAndObservedAtBefore when latest is in future")
+    void testGetLatestPriceHistoricalBeforeObservation() {
+        UUID id = instrument.getId();
+        when(instrumentRepository.findById(id)).thenReturn(Optional.of(instrument));
+
+        Instant now = Instant.now();
+        Instant pastTarget = now.minus(java.time.Duration.ofDays(30));
+        Instant obsPast = now.minus(java.time.Duration.ofDays(35));
+
+        MarketObservation futureObs = new MarketObservation(instrument, new BigDecimal("200.00"), "USD", now, ObservationSourceType.PROVIDER, "EXCHANGE");
+        MarketObservation historicalObs = new MarketObservation(instrument, new BigDecimal("180.00"), "USD", obsPast, ObservationSourceType.PROVIDER, "EXCHANGE");
+
+        when(marketObservationRepository.findFirstByInstrumentIdOrderByObservedAtDesc(id))
+                .thenReturn(Optional.of(futureObs));
+        when(marketObservationRepository.findFirstByInstrumentIdAndObservedAtBefore(id, pastTarget))
+                .thenReturn(Optional.of(historicalObs));
+
+        PriceQuote quote = marketDataService.getLatestPrice(id, pastTarget);
+        assertEquals(new BigDecimal("180.00"), quote.price());
+        assertEquals("USD", quote.currency());
+    }
+
+    @Test
+    @DisplayName("getLatestPrice with historical asOf falls back to future observation when no past observations or trades exist")
+    void testGetLatestPriceHistoricalFallbackToAnyPersisted() {
+        UUID id = instrument.getId();
+        when(instrumentRepository.findById(id)).thenReturn(Optional.of(instrument));
+
+        Instant now = Instant.now();
+        Instant pastTarget = now.minus(java.time.Duration.ofDays(30));
+
+        MarketObservation futureObs = new MarketObservation(instrument, new BigDecimal("200.00"), "USD", now, ObservationSourceType.PROVIDER, "EXCHANGE");
+
+        when(marketObservationRepository.findFirstByInstrumentIdOrderByObservedAtDesc(id))
+                .thenReturn(Optional.of(futureObs));
+        when(marketObservationRepository.findFirstByInstrumentIdAndObservedAtBefore(id, pastTarget))
+                .thenReturn(Optional.empty());
+        when(transactionRepository.findByInstrumentIdOrderByTradeDateDesc(id))
+                .thenReturn(List.of());
+
+        PriceQuote quote = marketDataService.getLatestPrice(id, pastTarget);
+        assertEquals(new BigDecimal("200.00"), quote.price());
+        assertEquals("USD", quote.currency());
+        assertTrue(quote.warning().contains("Historical price unavailable"));
+    }
 }

@@ -5,6 +5,7 @@ import com.takakim.investtracker.service.market.yahoo.YahooFinanceDtos;
 import com.takakim.investtracker.service.market.yahoo.YahooFinanceGateway;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -333,8 +334,154 @@ class YahooFinanceGatewayTests {
         customProps.getYahoo().setReadTimeoutSeconds(0);
         customProps.getYahoo().setMaxRequestsPerMinute(0);
         customProps.getYahoo().setBaseUrl("");
-        customProps.getYahoo().setUserAgent("");
         YahooFinanceGateway zeroGateway = new YahooFinanceGateway(customProps, (RestClient.Builder) null);
         assertFalse(zeroGateway.isConfigured());
+    }
+
+    @Test
+    @DisplayName("fetchHistoricalDailyPrices parses valid chart result into HistoricalPriceBar list")
+    void testFetchHistoricalDailyPricesSuccess() {
+        String json = """
+            {
+                "chart": {
+                    "result": [
+                        {
+                            "meta": {
+                                "currency": "USD",
+                                "symbol": "AAPL"
+                            },
+                            "timestamp": [1700000000, 1700086400],
+                            "indicators": {
+                                "quote": [
+                                    {
+                                        "close": [180.50, 182.75]
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            }
+            """;
+        mockServer.expect(requestTo("https://query1.finance.yahoo.com/v8/finance/chart/AAPL?interval=1d&range=5y"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(json, MediaType.APPLICATION_JSON));
+
+        List<YahooFinanceGateway.HistoricalPriceBar> bars = gateway.fetchHistoricalDailyPrices("AAPL", "5y");
+        mockServer.verify();
+
+        assertEquals(2, bars.size());
+        assertEquals(new BigDecimal("180.50"), bars.get(0).closePrice());
+        assertEquals("USD", bars.get(0).currency());
+        assertEquals(Instant.ofEpochSecond(1700000000), bars.get(0).timestamp());
+        assertEquals(new BigDecimal("182.75"), bars.get(1).closePrice());
+    }
+
+    @Test
+    @DisplayName("fetchHistoricalDailyPrices returns empty list when unconfigured or empty response")
+    void testFetchHistoricalDailyPricesEmpty() {
+        YahooFinanceGateway unconfigured = new YahooFinanceGateway(null);
+        assertTrue(unconfigured.fetchHistoricalDailyPrices("AAPL", "1mo").isEmpty());
+
+        mockServer.reset();
+        mockServer.expect(requestTo("https://query1.finance.yahoo.com/v8/finance/chart/AAPL?interval=1d&range=1mo"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("{\"chart\":{\"result\":[]}}", MediaType.APPLICATION_JSON));
+
+        List<YahooFinanceGateway.HistoricalPriceBar> emptyBars = gateway.fetchHistoricalDailyPrices("AAPL", "1mo");
+        mockServer.verify();
+        assertTrue(emptyBars.isEmpty());
+    }
+
+    @Test
+    @DisplayName("fetchHistoricalDailyPrices handles null indicators, closes, or invalid price values")
+    void testFetchHistoricalDailyPricesMalformedData() {
+        // Missing quote indicators
+        String noIndicators = """
+            {"chart":{"result":[{"meta":{"symbol":"AAPL","currency":"USD"},"timestamp":[1700000000]}]}}
+            """;
+        mockServer.expect(requestTo("https://query1.finance.yahoo.com/v8/finance/chart/AAPL?interval=1d&range=1mo"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(noIndicators, MediaType.APPLICATION_JSON));
+        assertTrue(gateway.fetchHistoricalDailyPrices("AAPL", "1mo").isEmpty());
+        mockServer.verify();
+
+        // Null / empty closes
+        mockServer.reset();
+        String emptyCloses = """
+            {"chart":{"result":[{"meta":{"symbol":"AAPL","currency":"USD"},"timestamp":[1700000000],"indicators":{"quote":[{"close":[]}]}}]}}
+            """;
+        mockServer.expect(requestTo("https://query1.finance.yahoo.com/v8/finance/chart/AAPL?interval=1d&range=1mo"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(emptyCloses, MediaType.APPLICATION_JSON));
+        assertTrue(gateway.fetchHistoricalDailyPrices("AAPL", "1mo").isEmpty());
+        mockServer.verify();
+
+        // Null timestamps
+        mockServer.reset();
+        String nullTimestamps = """
+            {"chart":{"result":[{"meta":{"symbol":"AAPL","currency":"USD"},"indicators":{"quote":[{"close":[100.0]}]}}]}}
+            """;
+        mockServer.expect(requestTo("https://query1.finance.yahoo.com/v8/finance/chart/AAPL?interval=1d&range=1mo"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(nullTimestamps, MediaType.APPLICATION_JSON));
+        assertTrue(gateway.fetchHistoricalDailyPrices("AAPL", "1mo").isEmpty());
+        mockServer.verify();
+    }
+
+    @Test
+    @DisplayName("fetchHistoricalDailyPrices filters null/negative closes and defaults to USD")
+    void testFetchHistoricalDailyPricesFilteringAndDefaults() {
+        String mixedValues = """
+            {"chart":{"result":[{"meta":{"symbol":"AAPL"},"timestamp":[1700000000, 1700086400, 1700172800],"indicators":{"quote":[{"close":[null, -5.0, 150.0]}]}}]}}
+            """;
+        mockServer.expect(requestTo("https://query1.finance.yahoo.com/v8/finance/chart/AAPL?interval=1d&range=1mo"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(mixedValues, MediaType.APPLICATION_JSON));
+        List<YahooFinanceGateway.HistoricalPriceBar> bars = gateway.fetchHistoricalDailyPrices("AAPL", "1mo");
+        mockServer.verify();
+        assertEquals(1, bars.size());
+        assertEquals("USD", bars.get(0).currency());
+        assertEquals(new BigDecimal("150.0"), bars.get(0).closePrice());
+
+        // Empty quote list inside indicators
+        mockServer.reset();
+        String emptyQuoteList = """
+            {"chart":{"result":[{"meta":{"symbol":"AAPL"},"timestamp":[1700000000],"indicators":{"quote":[]}}]}}
+            """;
+        mockServer.expect(requestTo("https://query1.finance.yahoo.com/v8/finance/chart/AAPL?interval=1d&range=1mo"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(emptyQuoteList, MediaType.APPLICATION_JSON));
+        assertTrue(gateway.fetchHistoricalDailyPrices("AAPL", "1mo").isEmpty());
+        mockServer.verify();
+    }
+
+    @Test
+    @DisplayName("handleException covers 404, 500, and 429 with retry-after parsing")
+    void testHandleExceptionBranches() {
+        // 404
+        var ex404 = HttpClientErrorException.create(HttpStatus.NOT_FOUND, "Not Found", HttpHeaders.EMPTY, new byte[0], null);
+        gateway.handleException(ex404, "quote", "AAPL");
+
+        // 500
+        var ex500 = org.springframework.web.client.HttpServerErrorException.create(HttpStatus.INTERNAL_SERVER_ERROR, "Server Error", HttpHeaders.EMPTY, new byte[0], null);
+        gateway.handleException(ex500, "quote", "AAPL");
+
+        // 429 with Retry-After header
+        HttpHeaders headers = new HttpHeaders();
+        headers.set(HttpHeaders.RETRY_AFTER, "30");
+        var ex429 = HttpClientErrorException.create(HttpStatus.TOO_MANY_REQUESTS, "Too Many Requests", headers, new byte[0], null);
+        gateway.handleException(ex429, "quote", "AAPL");
+
+        // 429 with invalid Retry-After header
+        HttpHeaders invalidHeaders = new HttpHeaders();
+        invalidHeaders.set(HttpHeaders.RETRY_AFTER, "not-a-number");
+        var ex429Invalid = HttpClientErrorException.create(HttpStatus.TOO_MANY_REQUESTS, "Too Many Requests", invalidHeaders, new byte[0], null);
+        gateway.handleException(ex429Invalid, "quote", "AAPL");
+
+        // 429 with short retry-after
+        HttpHeaders shortRetry = new HttpHeaders();
+        shortRetry.set(HttpHeaders.RETRY_AFTER, "2");
+        gateway.handle429(shortRetry, "");
     }
 }

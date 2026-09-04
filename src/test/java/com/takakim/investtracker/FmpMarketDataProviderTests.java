@@ -20,6 +20,7 @@ import org.springframework.web.client.RestClient;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
@@ -313,5 +314,47 @@ class FmpMarketDataProviderTests {
         Optional<PriceQuote> quoteEmpty = provider.fetchQuote(aapl, Instant.now());
         mockServer.verify();
         assertTrue(quoteEmpty.isEmpty());
+    }
+
+    @Test
+    @DisplayName("Appends appropriate European exchange suffixes for FMP symbols")
+    void testEuropeanExchangeSuffixes() {
+        Instrument bnp = new Instrument("BNP Paribas", AssetClass.STOCK, "BNP", "FR0000131104", "EURONEXT PARIS", new Currency("EUR"));
+        String jsonBnp = """
+            [
+                {
+                    "symbol": "BNP.PA",
+                    "price": 65.50,
+                    "timestamp": 1725033600
+                }
+            ]
+            """;
+        mockServer.expect(requestTo("https://financialmodelingprep.com/stable/quote?symbol=BNP.PA&apikey=test-fmp-key"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(jsonBnp, MediaType.APPLICATION_JSON));
+
+        Optional<PriceQuote> quote = provider.fetchQuote(bnp, Instant.now());
+        mockServer.verify();
+        assertTrue(quote.isPresent());
+        assertEquals(new BigDecimal("65.50"), quote.get().price());
+    }
+
+    @Test
+    @DisplayName("resolveSymbol covers null, blank, dot, already dotted, and non-LSE branches")
+    void testResolveSymbolBranches() {
+        assertNull(provider.resolveSymbol(null));
+        assertNull(provider.resolveSymbol(new Instrument("No Ticker", AssetClass.STOCK, null, null, null, new Currency("USD"))));
+        assertNull(provider.resolveSymbol(new Instrument("Blank Ticker", AssetClass.STOCK, "   ", null, null, new Currency("USD"))));
+        assertNull(provider.resolveSymbol(new Instrument("Single Dot", AssetClass.STOCK, ".", null, null, new Currency("USD"))));
+
+        Instrument dotted = new Instrument("Pre-suffixed", AssetClass.STOCK, "TEST.DE", null, null, new Currency("EUR"));
+        assertEquals("TEST.DE", provider.resolveSymbol(dotted));
+
+        Instrument trailingDot = new Instrument("Trailing", AssetClass.STOCK, "AAPL.", null, null, new Currency("USD"));
+        assertEquals("AAPL", provider.resolveSymbol(trailingDot));
+
+        Instrument plainUs = new Instrument("US Stock", AssetClass.STOCK, "IBM", "US4592001014", "NYSE", new Currency("USD"));
+        assertEquals("IBM", provider.resolveSymbol(plainUs));
+        assertFalse(provider.isLseInstrument(plainUs));
     }
 }

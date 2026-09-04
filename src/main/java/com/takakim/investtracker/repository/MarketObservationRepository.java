@@ -34,4 +34,17 @@ public interface MarketObservationRepository extends JpaRepository<MarketObserva
 
     List<MarketObservation> findByInstrumentIdAndObservedAtBetweenOrderByObservedAtAsc(
             UUID instrumentId, Instant from, Instant to);
+
+    @Query("SELECT m FROM MarketObservation m WHERE m.instrument.id = :instrumentId AND m.observedAt <= :asOf AND m.price > 0 ORDER BY m.observedAt DESC")
+    List<MarketObservation> findPositiveByInstrumentIdAndObservedAtBeforeOrderByObservedAtDesc(
+            @Param("instrumentId") UUID instrumentId, @Param("asOf") Instant asOf);
+
+    default Optional<MarketObservation> findFirstByInstrumentIdAndObservedAtBefore(UUID instrumentId, Instant asOf) {
+        List<MarketObservation> list = findPositiveByInstrumentIdAndObservedAtBeforeOrderByObservedAtDesc(instrumentId, asOf);
+        return list.isEmpty() ? Optional.empty() : Optional.of(list.get(0));
+    }
+
+    boolean existsByInstrumentIdAndObservedAt(UUID instrumentId, Instant observedAt);
+
+    long countByInstrumentId(UUID instrumentId);
 }

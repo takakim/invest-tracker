@@ -108,7 +108,8 @@ public class YahooFinanceMarketDataProvider implements MarketDataProvider {
             return List.of();
         }
 
-        Optional<YahooFinanceDtos.ChartEntry> entryOpt = gateway.fetchChart(symbol, "1d", "1mo");
+        String range = resolveRange(from, to);
+        Optional<YahooFinanceDtos.ChartEntry> entryOpt = gateway.fetchChart(symbol, "1d", range);
         if (entryOpt.isEmpty()) {
             return List.of();
         }
@@ -166,34 +167,88 @@ public class YahooFinanceMarketDataProvider implements MarketDataProvider {
         if (ticker.endsWith(".")) {
             ticker = ticker.substring(0, ticker.length() - 1);
         }
+        if (ticker.isBlank()) {
+            return null;
+        }
         if ("BRK.B".equals(ticker) || "BRK/B".equals(ticker)) {
             return "BRK-B";
         }
-        if (isLseInstrument(instrument)) {
-            if (!ticker.endsWith(".L")) {
-                return ticker + ".L";
-            }
+        if (ticker.contains(".")) {
+            return ticker;
         }
-        return !ticker.isBlank() ? ticker : null;
+
+        String suffix = resolveExchangeSuffix(instrument);
+        if (suffix != null) {
+            return ticker + suffix;
+        }
+        return ticker;
     }
 
     public boolean isLseInstrument(Instrument instrument) {
+        return ".L".equals(resolveExchangeSuffix(instrument));
+    }
+
+    private record SuffixRule(java.util.regex.Pattern pattern, String isinPrefix, String suffix) {}
+
+    private static final java.util.regex.Pattern LSE_PATTERN = java.util.regex.Pattern.compile("LON|LSE");
+    private static final List<SuffixRule> SUFFIX_RULES = List.of(
+            new SuffixRule(java.util.regex.Pattern.compile("PARIS|EPA|XPAR"), "FR", ".PA"),
+            new SuffixRule(java.util.regex.Pattern.compile("AMSTERDAM|AMS|XAMS"), "NL", ".AS"),
+            new SuffixRule(java.util.regex.Pattern.compile("XETRA|FRANKFURT|FRA|XFRA"), "DE", ".DE"),
+            new SuffixRule(java.util.regex.Pattern.compile("BRUSSELS|BRU|XBRU"), "BE", ".BR"),
+            new SuffixRule(java.util.regex.Pattern.compile("LISBON|XLIS"), "PT", ".LS"),
+            new SuffixRule(java.util.regex.Pattern.compile("MILAN|BORSA|XMIL"), "IT", ".MI"),
+            new SuffixRule(java.util.regex.Pattern.compile("MADRID|BME|XMCE"), "ES", ".MC"),
+            new SuffixRule(java.util.regex.Pattern.compile("TORONTO|TSX|XTSE"), "CA", ".TO")
+    );
+
+    public static String resolveExchangeSuffix(Instrument instrument) {
         if (instrument == null) {
-            return false;
+            return null;
         }
-        if (instrument.getExchange() != null && !instrument.getExchange().isBlank()) {
-            String ex = instrument.getExchange().trim().toUpperCase();
-            if (ex.contains("LON") || ex.contains("LSE")) {
-                return true;
+        String ex = instrument.getExchange() != null ? instrument.getExchange().trim().toUpperCase() : "";
+        String isin = instrument.getIsin() != null ? instrument.getIsin().trim().toUpperCase() : "";
+
+        // 1. London Stock Exchange (.L)
+        if (LSE_PATTERN.matcher(ex).find() || isin.startsWith("GB")
+                || (instrument.getCurrency() != null && ("GBP".equalsIgnoreCase(instrument.getCurrency().code()) || "GBX".equalsIgnoreCase(instrument.getCurrency().code())))) {
+            return ".L";
+        }
+
+        for (SuffixRule rule : SUFFIX_RULES) {
+            if (rule.pattern().matcher(ex).find() || isin.startsWith(rule.isinPrefix())) {
+                return rule.suffix();
             }
         }
-        if (instrument.getIsin() != null && instrument.getIsin().startsWith("GB")) {
-            return true;
+
+        return null;
+    }
+
+    public static String resolveRange(Instant from, Instant to) {
+        if (from == null) {
+            return "1mo";
         }
-        if (instrument.getCurrency() != null && ("GBP".equalsIgnoreCase(instrument.getCurrency().code()) || "GBX".equalsIgnoreCase(instrument.getCurrency().code()))) {
-            return true;
+        Instant end = to != null ? to : Instant.now();
+        long days = java.time.Duration.between(from, end).abs().toDays();
+        if (days > 5 * 365) {
+            return "max";
         }
-        return false;
+        if (days > 2 * 365) {
+            return "5y";
+        }
+        if (days > 365) {
+            return "2y";
+        }
+        if (days > 180) {
+            return "1y";
+        }
+        if (days > 90) {
+            return "6mo";
+        }
+        if (days > 30) {
+            return "3mo";
+        }
+        return "1mo";
     }
 
     private boolean isPenceCurrency(String currency) {

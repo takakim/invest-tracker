@@ -171,6 +171,16 @@ class FmpGatewayTests {
         gateway.handle429(badHeader, "rate limit");
         assertTrue(gateway.isRateLimited());
 
+        HttpHeaders blankHeader = new HttpHeaders();
+        blankHeader.set(HttpHeaders.RETRY_AFTER, "   ");
+        gateway.handle429(blankHeader, "rate limit");
+        assertTrue(gateway.isRateLimited());
+
+        HttpHeaders shortHeader = new HttpHeaders();
+        shortHeader.set(HttpHeaders.RETRY_AFTER, "2");
+        gateway.handle429(shortHeader, "rate limit");
+        assertTrue(gateway.isRateLimited());
+
         gateway.setBlockedUntil(Instant.now().minusSeconds(10));
         assertFalse(gateway.isRateLimited());
     }
@@ -242,5 +252,14 @@ class FmpGatewayTests {
         customProps.getFmp().setBaseUrl("");
         FmpGateway zeroGateway = new FmpGateway(customProps, (RestClient.Builder) null);
         assertFalse(zeroGateway.isConfigured());
+
+        MarketDataProperties configuredProps = new MarketDataProperties();
+        configuredProps.getFmp().setEnabled(true);
+        configuredProps.getFmp().setApiKey("real-key");
+        FmpGateway configuredGateway = new FmpGateway(configuredProps, RestClient.builder());
+        assertTrue(configuredGateway.isConfigured());
+
+        FmpGateway nullPropsTwoArg = new FmpGateway(null, (RestClient) null);
+        assertFalse(nullPropsTwoArg.isConfigured());
     }
 }

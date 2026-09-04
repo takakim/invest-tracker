@@ -3,11 +3,14 @@ package com.takakim.investtracker.service.analytics;
 import com.takakim.investtracker.domain.Account;
 import com.takakim.investtracker.domain.AccountStatus;
 import com.takakim.investtracker.domain.AssetClass;
+import com.takakim.investtracker.domain.CostBasisMethod;
 import com.takakim.investtracker.domain.Currency;
+import com.takakim.investtracker.domain.Instrument;
 import com.takakim.investtracker.domain.Money;
 import com.takakim.investtracker.domain.Portfolio;
 import com.takakim.investtracker.domain.Position;
 import com.takakim.investtracker.domain.PositionStatus;
+import com.takakim.investtracker.domain.Quantity;
 import com.takakim.investtracker.domain.Transaction;
 import com.takakim.investtracker.domain.TransactionType;
 import com.takakim.investtracker.repository.AccountRepository;
@@ -23,6 +26,7 @@ import com.takakim.investtracker.service.position.PositionCalculationResult;
 import com.takakim.investtracker.service.position.PositionEngine;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -30,6 +34,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -38,7 +43,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class AnalyticsEngine {
 
     private static final int SCALE = 4;
-    private static final RoundingMode ROUNDING = RoundingMode.HALF_EVEN;
+    private static final RoundingMode ROUNDING = RoundingMode.HALF_UP;
 
     private final PortfolioRepository portfolioRepository;
     private final AccountRepository accountRepository;
@@ -82,7 +87,7 @@ public class AnalyticsEngine {
         Map<String, BigDecimal> cashByCurrencyMap = new LinkedHashMap<>();
 
         for (Account account : activeAccounts) {
-            BigDecimal accountCash = calculateAccountCash(account.getId());
+            BigDecimal accountCash = calculateAccountCash(account.getId(), targetTime);
             if (accountCash.compareTo(BigDecimal.ZERO) != 0) {
                 Money cashMoney = new Money(accountCash, account.getAccountCurrency());
                 Money cashInBase = fxRateService.convert(cashMoney, baseCurrency, targetTime);
@@ -93,9 +98,15 @@ public class AnalyticsEngine {
             }
         }
 
-        // 2. Fetch and value all active positions
-        List<Position> positions = positionRepository
-                .findByAccountPortfolioIdAndStatus(portfolioId, PositionStatus.ACTIVE);
+        // 2. Fetch and value positions (point-in-time aware)
+        boolean isHistorical = asOf != null && asOf.isBefore(Instant.now().minus(Duration.ofMinutes(5)));
+        List<Position> positions;
+        if (!isHistorical) {
+            positions = positionRepository
+                    .findByAccountPortfolioIdAndStatus(portfolioId, PositionStatus.ACTIVE);
+        } else {
+            positions = derivePositionsAsOf(activeAccounts, targetTime, portfolio.getCostBasisMethod());
+        }
 
         List<HoldingExposure> holdings = new ArrayList<>();
         BigDecimal totalPositionsMarketValue = BigDecimal.ZERO;
@@ -313,21 +324,60 @@ public class AnalyticsEngine {
         );
     }
 
-    private BigDecimal calculateAccountCash(UUID accountId) {
+    private BigDecimal calculateAccountCash(UUID accountId, Instant asOf) {
         List<Transaction> txs = transactionRepository.findByAccountIdOrderByTradeDateDesc(accountId);
         BigDecimal cash = BigDecimal.ZERO;
         for (Transaction tx : txs) {
+            if (asOf != null && tx.getTradeDate().isAfter(asOf)) {
+                continue;
+            }
             TransactionType type = tx.getType();
             if (type == TransactionType.DEPOSIT || type == TransactionType.DIVIDEND || type == TransactionType.INTEREST) {
-                cash = cash.add(tx.getNetAmount());
+                if (tx.getNetAmount() != null) {
+                    cash = cash.add(tx.getNetAmount());
+                }
             } else if (type == TransactionType.SELL) {
-                cash = cash.add(tx.getNetAmount());
+                if (tx.getNetAmount() != null) {
+                    cash = cash.add(tx.getNetAmount());
+                }
             } else if (type == TransactionType.WITHDRAWAL || type == TransactionType.FEE) {
-                cash = cash.subtract(tx.getGrossAmount());
+                BigDecimal amount = tx.getGrossAmount() != null ? tx.getGrossAmount() : tx.getNetAmount();
+                if (amount != null) {
+                    cash = cash.subtract(amount);
+                }
             } else if (type == TransactionType.BUY) {
-                cash = cash.subtract(tx.getNetAmount());
+                BigDecimal amount = tx.getNetAmount() != null ? tx.getNetAmount() : tx.getGrossAmount();
+                if (amount != null) {
+                    cash = cash.subtract(amount);
+                }
             }
         }
         return cash.max(BigDecimal.ZERO);
+    }
+
+    private List<Position> derivePositionsAsOf(List<Account> accounts, Instant asOf, CostBasisMethod method) {
+        List<Position> derived = new ArrayList<>();
+        for (Account account : accounts) {
+            List<Transaction> txs = transactionRepository.findByAccountIdOrderByTradeDateDesc(account.getId());
+            Map<Instrument, List<Transaction>> txsByInstrument = txs.stream()
+                    .filter(tx -> tx.getInstrument() != null && !tx.getTradeDate().isAfter(asOf))
+                    .collect(Collectors.groupingBy(Transaction::getInstrument));
+
+            for (Map.Entry<Instrument, List<Transaction>> entry : txsByInstrument.entrySet()) {
+                Instrument instrument = entry.getKey();
+                List<Transaction> history = entry.getValue().stream()
+                        .sorted(Comparator.comparing(Transaction::getTradeDate))
+                        .toList();
+
+                PositionCalculationResult res = positionEngine.calculate(account, instrument, history, method);
+                if (res != null && res.quantity() != null && res.quantity().compareTo(BigDecimal.ZERO) > 0) {
+                    Money costMoney = (res.costBasisAmount() != null && res.costBasisCurrency() != null)
+                            ? new Money(res.costBasisAmount(), new Currency(res.costBasisCurrency()))
+                            : null;
+                    derived.add(new Position(account, instrument, new Quantity(res.quantity()), costMoney));
+                }
+            }
+        }
+        return derived;
     }
 }

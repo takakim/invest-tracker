@@ -448,4 +448,34 @@ class PortfolioHistoryServiceTests {
         assertNotNull(response);
         assertNull(response.summary().benchmarkReturnPercentage());
     }
+
+    @Test
+    void generateHistory_zeroInvestedCapitalWithInitialValue_andBenchmarkCountBranch() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(portfolio));
+        when(instrumentRepository.findById(benchmark.getId())).thenReturn(Optional.of(benchmark));
+        when(transactionRepository.findByAccountPortfolioIdOrderByTradeDateDesc(portfolioId))
+                .thenReturn(List.of());
+
+        // Observation count >= 10 to bypass backfill
+        when(marketDataService.getObservationCount(benchmark.getId())).thenReturn(25L);
+
+        // Price quote for benchmark
+        when(marketDataService.getLatestPrice(eq(benchmark.getId()), any(Instant.class)))
+                .thenReturn(new PriceQuote(benchmark.getId(), new BigDecimal("100.00"), "USD", Instant.now(), ObservationSourceType.PROVIDER, "TEST", false, null));
+
+        // Analytics with costBasis=0, cash=0, marketVal=1000
+        // This forces investedCapital to 0, so line 141 executes: initialPortfolioValue > 0
+        PortfolioAnalytics mockAnalytics = new PortfolioAnalytics(
+                portfolioId, Instant.now(), "GBP",
+                new BigDecimal("1000.00"), BigDecimal.ZERO,
+                new BigDecimal("1000.00"), BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO,
+                List.of(), List.of(), List.of(), List.of(), List.of()
+        );
+        when(analyticsEngine.calculate(eq(portfolioId), any(Instant.class))).thenReturn(mockAnalytics);
+
+        PortfolioHistoryResponse response = service.generateHistory(portfolioId, "1M", "DAILY", benchmark.getId());
+        assertNotNull(response);
+        assertFalse(response.dataPoints().isEmpty());
+    }
 }

@@ -1,10 +1,13 @@
 package com.takakim.investtracker.service.market.yahoo;
 
 import com.takakim.investtracker.config.MarketDataProperties;
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
+import java.util.List;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -158,6 +161,44 @@ public class YahooFinanceGateway {
             log.warn("Unexpected error requesting Yahoo Finance chart for symbol '{}': {}", symbol, ex.getMessage());
             return Optional.empty();
         }
+    }
+
+    public record HistoricalPriceBar(Instant timestamp, BigDecimal closePrice, String currency) {}
+
+    public List<HistoricalPriceBar> fetchHistoricalDailyPrices(String symbol, String range) {
+        Optional<YahooFinanceDtos.ChartEntry> chartOpt = fetchChart(symbol, "1d", range);
+        if (chartOpt.isEmpty()) {
+            return List.of();
+        }
+
+        YahooFinanceDtos.ChartEntry entry = chartOpt.get();
+        String currency = (entry.meta() != null && entry.meta().currency() != null)
+                ? entry.meta().currency()
+                : "USD";
+
+        List<Long> timestamps = entry.timestamp();
+        if (timestamps == null || timestamps.isEmpty()
+                || entry.indicators() == null
+                || entry.indicators().quote() == null
+                || entry.indicators().quote().isEmpty()) {
+            return List.of();
+        }
+
+        List<BigDecimal> closes = entry.indicators().quote().get(0).close();
+        if (closes == null || closes.isEmpty()) {
+            return List.of();
+        }
+
+        List<HistoricalPriceBar> bars = new ArrayList<>();
+        int count = Math.min(timestamps.size(), closes.size());
+        for (int i = 0; i < count; i++) {
+            Long ts = timestamps.get(i);
+            BigDecimal close = closes.get(i);
+            if (ts != null && close != null && close.compareTo(BigDecimal.ZERO) > 0) {
+                bars.add(new HistoricalPriceBar(Instant.ofEpochSecond(ts), close, currency));
+            }
+        }
+        return bars;
     }
 
     public void handleException(RestClientResponseException ex, String operation, String target) {

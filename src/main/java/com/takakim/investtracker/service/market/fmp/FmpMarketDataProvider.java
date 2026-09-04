@@ -95,37 +95,32 @@ public class FmpMarketDataProvider implements MarketDataProvider {
     }
 
     public String resolveSymbol(Instrument instrument) {
-        if (instrument.getTicker() != null && !instrument.getTicker().isBlank()) {
-            String ticker = instrument.getTicker().trim().toUpperCase();
-            if (ticker.endsWith(".")) {
-                ticker = ticker.substring(0, ticker.length() - 1);
-            }
-            if ("BRK.B".equals(ticker) || "BRK/B".equals(ticker)) {
-                return "BRK-B";
-            }
-            if (isLseInstrument(instrument)) {
-                if (!ticker.endsWith(".L")) {
-                    return ticker + ".L";
-                }
-            }
-            return !ticker.isBlank() ? ticker : null;
+        if (instrument == null || instrument.getTicker() == null || instrument.getTicker().isBlank()) {
+            return null;
         }
-        return null;
+
+        String ticker = instrument.getTicker().trim().toUpperCase();
+        if (ticker.endsWith(".")) {
+            ticker = ticker.substring(0, ticker.length() - 1);
+        }
+        if (ticker.isBlank()) {
+            return null;
+        }
+        if ("BRK.B".equals(ticker) || "BRK/B".equals(ticker)) {
+            return "BRK-B";
+        }
+        if (ticker.contains(".")) {
+            return ticker;
+        }
+
+        String suffix = com.takakim.investtracker.service.market.yahoo.YahooFinanceMarketDataProvider.resolveExchangeSuffix(instrument);
+        if (suffix != null) {
+            return ticker + suffix;
+        }
+        return ticker;
     }
 
     public boolean isLseInstrument(Instrument instrument) {
-        if (instrument.getExchange() != null && !instrument.getExchange().isBlank()) {
-            String ex = instrument.getExchange().trim().toUpperCase();
-            if (ex.contains("LON") || ex.contains("LSE")) {
-                return true;
-            }
-        }
-        if (instrument.getIsin() != null && instrument.getIsin().startsWith("GB")) {
-            return true;
-        }
-        if (instrument.getCurrency() != null && ("GBP".equalsIgnoreCase(instrument.getCurrency().code()) || "GBX".equalsIgnoreCase(instrument.getCurrency().code()))) {
-            return true;
-        }
-        return false;
+        return ".L".equals(com.takakim.investtracker.service.market.yahoo.YahooFinanceMarketDataProvider.resolveExchangeSuffix(instrument));
     }
 }
