@@ -41,9 +41,10 @@ public class CompositeMarketDataProvider implements MarketDataProvider {
         }
 
         // 1. Attempt Twelve Data
+        Optional<PriceQuote> tdQuoteOpt = Optional.empty();
         if (twelveDataProvider != null && twelveDataProvider.isConfigured()) {
             try {
-                Optional<PriceQuote> tdQuoteOpt = twelveDataProvider.fetchQuote(instrument, asOf);
+                tdQuoteOpt = twelveDataProvider.fetchQuote(instrument, asOf);
                 if (tdQuoteOpt.isPresent() && "TWELVE_DATA".equals(tdQuoteOpt.get().sourceReference())) {
                     return tdQuoteOpt;
                 }
@@ -76,7 +77,13 @@ public class CompositeMarketDataProvider implements MarketDataProvider {
             }
         }
 
-        // 4. Fallback to DefaultMarketDataProvider
+        // 4. Fallback to cached Twelve Data quote if available before default mock
+        if (tdQuoteOpt.isPresent() && "TWELVE_DATA_CACHED".equals(tdQuoteOpt.get().sourceReference())) {
+            log.info("Alternative providers failed or unavailable; falling back to cached Twelve Data quote for symbol '{}'", instrument.getTicker());
+            return tdQuoteOpt;
+        }
+
+        // 5. Fallback to DefaultMarketDataProvider
         return defaultProvider.fetchQuote(instrument, asOf);
     }
 

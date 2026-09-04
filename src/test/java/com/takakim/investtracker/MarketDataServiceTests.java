@@ -561,6 +561,36 @@ class MarketDataServiceTests {
     }
 
     @Test
+    @DisplayName("Twelve Data cached fallback quote never overwrites existing persisted observation in database during refresh")
+    void testCachedTwelveDataFallbackDoesNotOverwriteExistingPersistedObservation() {
+        UUID id = instrument.getId();
+        when(instrumentRepository.findById(id)).thenReturn(Optional.of(instrument));
+        when(marketObservationRepository.findFirstByInstrumentIdAndSourceTypeOrderByObservedAtDesc(id, ObservationSourceType.MANUAL))
+                .thenReturn(Optional.empty());
+
+        Instant genuineObsTime = Instant.now().minus(10, ChronoUnit.HOURS);
+        MarketObservation persisted = new MarketObservation(
+                instrument, new BigDecimal("289.47"), "USD", genuineObsTime,
+                ObservationSourceType.PROVIDER, "TWELVE_DATA"
+        );
+        when(marketObservationRepository.findFirstByInstrumentIdOrderByObservedAtDesc(id))
+                .thenReturn(Optional.of(persisted));
+
+        PriceQuote cachedQuote = new PriceQuote(
+                id, new BigDecimal("289.47"), "USD", genuineObsTime,
+                ObservationSourceType.PROVIDER, "TWELVE_DATA_CACHED", true, "Rate limited"
+        );
+        when(marketDataProvider.fetchQuote(eq(instrument), any())).thenReturn(Optional.of(cachedQuote));
+
+        PriceQuote result = marketDataService.refreshPrice(id);
+
+        assertNotNull(result);
+        assertEquals(new BigDecimal("289.47"), result.price());
+        assertEquals("TWELVE_DATA", result.sourceReference());
+        verify(marketObservationRepository, never()).save(any(MarketObservation.class));
+    }
+
+    @Test
     @DisplayName("Default provider mock price is persisted only when instrument has zero prior observations")
     void testDefaultProviderPersistedWhenNoPriorObservationExists() {
         UUID id = instrument.getId();

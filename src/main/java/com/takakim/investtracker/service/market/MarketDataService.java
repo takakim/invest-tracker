@@ -212,8 +212,9 @@ public class MarketDataService {
             if (providerQuoteOpt.isPresent()) {
                 PriceQuote quote = providerQuoteOpt.get();
                 boolean isDefaultMock = "DEFAULT_PROVIDER".equalsIgnoreCase(quote.sourceReference());
+                boolean isCachedFallback = "TWELVE_DATA_CACHED".equalsIgnoreCase(quote.sourceReference());
 
-                if (quote.price() != null && quote.price().compareTo(BigDecimal.ZERO) > 0 && !isDefaultMock) {
+                if (quote.price() != null && quote.price().compareTo(BigDecimal.ZERO) > 0 && !isDefaultMock && !isCachedFallback) {
                     MarketObservation obs = new MarketObservation(
                             instrument,
                             quote.price(),

@@ -621,6 +621,8 @@ class TwelveDataMarketDataProviderTests {
         mockServer.verify();
         assertTrue(fallbackCached.isPresent());
         assertEquals(new BigDecimal("190.2500"), fallbackCached.get().price());
+        assertEquals("TWELVE_DATA_CACHED", fallbackCached.get().sourceReference());
+        assertTrue(fallbackCached.get().isStale());
     }
 
     @Test
