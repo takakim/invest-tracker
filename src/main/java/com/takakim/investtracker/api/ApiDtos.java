@@ -65,6 +65,8 @@ public final class ApiDtos {
         }
     }
 
+    public record RefreshQueueStatusResponse(long pendingCount, long processingCount, long failedCount) { }
+
     public record PositionRequest(
         @NotNull UUID instrumentId,
         @NotNull @jakarta.validation.constraints.DecimalMin("0.0") java.math.BigDecimal quantity,

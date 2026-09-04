@@ -71,6 +71,20 @@ class MarketDataPropertiesTests {
         assertEquals(300, props.getYahoo().getCacheTtlSeconds());
         assertEquals(10, props.getYahoo().getMaxRequestsPerMinute());
         assertEquals("CustomAgent/1.0", props.getYahoo().getUserAgent());
+
+        assertNotNull(props.getRefreshQueue());
+        MarketDataProperties.RefreshQueueProperties rq = new MarketDataProperties.RefreshQueueProperties();
+        rq.setWorkerEnabled(false);
+        rq.setIntervalMs(2000L);
+        rq.setRetryDelaySeconds(45);
+        rq.setMaxAttempts(8);
+
+        props.setRefreshQueue(rq);
+        assertEquals(rq, props.getRefreshQueue());
+        assertFalse(props.getRefreshQueue().isWorkerEnabled());
+        assertEquals(2000L, props.getRefreshQueue().getIntervalMs());
+        assertEquals(45, props.getRefreshQueue().getRetryDelaySeconds());
+        assertEquals(8, props.getRefreshQueue().getMaxAttempts());
     }
 
     @Test

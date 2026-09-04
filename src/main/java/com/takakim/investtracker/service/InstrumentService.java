@@ -23,14 +23,25 @@ public class InstrumentService {
     private final InstrumentRepository repository;
     private final MarketObservationRepository marketObservationRepository;
     private final MarketDataService marketDataService;
+    private final com.takakim.investtracker.service.market.queue.MarketDataRefreshQueueService refreshQueueService;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public InstrumentService(
+            InstrumentRepository repository,
+            MarketObservationRepository marketObservationRepository,
+            MarketDataService marketDataService,
+            com.takakim.investtracker.service.market.queue.MarketDataRefreshQueueService refreshQueueService) {
+        this.repository = repository;
+        this.marketObservationRepository = marketObservationRepository;
+        this.marketDataService = marketDataService;
+        this.refreshQueueService = refreshQueueService;
+    }
 
     public InstrumentService(
             InstrumentRepository repository,
             MarketObservationRepository marketObservationRepository,
             MarketDataService marketDataService) {
-        this.repository = repository;
-        this.marketObservationRepository = marketObservationRepository;
-        this.marketDataService = marketDataService;
+        this(repository, marketObservationRepository, marketDataService, null);
     }
 
     public ApiDtos.InstrumentResponse create(ApiDtos.InstrumentRequest request) {
@@ -78,8 +89,7 @@ public class InstrumentService {
 
     public List<ApiDtos.InstrumentResponse> refreshAllPrices() {
         List<Instrument> instruments = repository.findAllByOrderByNameAsc();
-        if (marketDataService != null) {
-            // Prioritize stalest or unobserved instruments first
+        if (refreshQueueService != null) {
             java.util.List<Instrument> prioritized = new java.util.ArrayList<>(instruments);
             prioritized.sort(java.util.Comparator.comparing((Instrument inst) -> {
                 if (marketObservationRepository == null) {
@@ -89,8 +99,13 @@ public class InstrumentService {
                         .map(MarketObservation::getObservedAt)
                         .orElse(Instant.MIN);
             }));
-
-            for (Instrument inst : prioritized) {
+            List<UUID> ids = prioritized.stream()
+                    .filter(i -> !i.isManualPriceOnly())
+                    .map(Instrument::getId)
+                    .toList();
+            refreshQueueService.enqueueAll(ids);
+        } else if (marketDataService != null) {
+            for (Instrument inst : instruments) {
                 try {
                     marketDataService.refreshPrice(inst.getId());
                 } catch (Exception ignored) {
@@ -103,13 +118,22 @@ public class InstrumentService {
     public ApiDtos.InstrumentResponse refreshPrice(UUID id) {
         Instrument instrument = repository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Instrument not found: " + id));
-        if (marketDataService != null) {
+        if (refreshQueueService != null) {
+            refreshQueueService.enqueue(instrument.getId());
+        } else if (marketDataService != null) {
             try {
                 marketDataService.refreshPrice(instrument.getId());
             } catch (Exception ignored) {
             }
         }
         return toResponse(instrument);
+    }
+
+    @Transactional(readOnly = true)
+    public com.takakim.investtracker.service.market.queue.MarketDataRefreshQueueService.QueueStatus getQueueStatus() {
+        return refreshQueueService != null
+                ? refreshQueueService.getQueueStatus()
+                : new com.takakim.investtracker.service.market.queue.MarketDataRefreshQueueService.QueueStatus(0, 0, 0);
     }
 
     private ApiDtos.InstrumentResponse toResponse(Instrument i) {

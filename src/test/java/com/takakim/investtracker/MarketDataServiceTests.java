@@ -666,4 +666,33 @@ class MarketDataServiceTests {
         assertEquals(new BigDecimal("250.00"), result.price());
         verify(marketObservationRepository, times(1)).save(any(MarketObservation.class));
     }
+
+    @Test
+    @DisplayName("refreshLivePrice returns quote on live provider success")
+    void testRefreshLivePriceSuccess() {
+        UUID id = instrument.getId();
+        when(instrumentRepository.findById(id)).thenReturn(Optional.of(instrument));
+
+        PriceQuote quote = new PriceQuote(id, new BigDecimal("250.00"), "USD", Instant.now(), ObservationSourceType.PROVIDER, "TWELVE_DATA", false, null);
+        when(marketDataProvider.fetchQuote(eq(instrument), any())).thenReturn(Optional.of(quote));
+
+        Optional<PriceQuote> result = marketDataService.refreshLivePrice(id);
+        assertTrue(result.isPresent());
+        assertEquals(new BigDecimal("250.00"), result.get().price());
+        verify(marketObservationRepository, times(1)).save(any(MarketObservation.class));
+    }
+
+    @Test
+    @DisplayName("refreshLivePrice returns empty when provider returns throttled or default mock quote")
+    void testRefreshLivePriceThrottledReturnsEmpty() {
+        UUID id = instrument.getId();
+        when(instrumentRepository.findById(id)).thenReturn(Optional.of(instrument));
+
+        PriceQuote cachedQuote = new PriceQuote(id, new BigDecimal("240.00"), "USD", Instant.now(), ObservationSourceType.PROVIDER, "TWELVE_DATA_CACHED", true, null);
+        when(marketDataProvider.fetchQuote(eq(instrument), any())).thenReturn(Optional.of(cachedQuote));
+
+        Optional<PriceQuote> result = marketDataService.refreshLivePrice(id);
+        assertTrue(result.isEmpty());
+        verify(marketObservationRepository, never()).save(any(MarketObservation.class));
+    }
 }

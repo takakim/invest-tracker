@@ -198,43 +198,51 @@ public class MarketDataService {
                 "No market price available for instrument: " + instrument.getTicker() + " (" + instrumentId + ")");
     }
 
-    public PriceQuote refreshPrice(UUID instrumentId) {
+    public Optional<PriceQuote> refreshLivePrice(UUID instrumentId) {
         Instrument instrument = instrumentRepository.findById(instrumentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Instrument not found: " + instrumentId));
 
         if (instrument.isManualPriceOnly()) {
-            return getLatestPrice(instrumentId, Instant.now());
+            return Optional.of(getLatestPrice(instrumentId, Instant.now()));
         }
 
         Instant targetTime = Instant.now();
-        try {
-            Optional<PriceQuote> providerQuoteOpt = marketDataProvider.fetchQuote(instrument, targetTime);
-            if (providerQuoteOpt.isPresent()) {
-                PriceQuote quote = providerQuoteOpt.get();
-                boolean isDefaultMock = "DEFAULT_PROVIDER".equalsIgnoreCase(quote.sourceReference());
-                boolean isCachedFallback = "TWELVE_DATA_CACHED".equalsIgnoreCase(quote.sourceReference());
+        Optional<PriceQuote> providerQuoteOpt = marketDataProvider.fetchQuote(instrument, targetTime);
+        if (providerQuoteOpt.isPresent()) {
+            PriceQuote quote = providerQuoteOpt.get();
+            boolean isDefaultMock = "DEFAULT_PROVIDER".equalsIgnoreCase(quote.sourceReference());
+            boolean isCachedFallback = "TWELVE_DATA_CACHED".equalsIgnoreCase(quote.sourceReference());
 
-                if (quote.price() != null && quote.price().compareTo(BigDecimal.ZERO) > 0 && !isDefaultMock && !isCachedFallback) {
-                    MarketObservation obs = new MarketObservation(
-                            instrument,
-                            quote.price(),
-                            quote.currency(),
-                            quote.asOf(),
-                            ObservationSourceType.PROVIDER,
-                            quote.sourceReference()
-                    );
-                    if (observationStorageService != null) {
-                        observationStorageService.saveMarketObservation(obs);
-                    } else {
-                        marketObservationRepository.save(obs);
-                    }
-                    return quote;
+            if (quote.price() != null && quote.price().compareTo(BigDecimal.ZERO) > 0 && !isDefaultMock && !isCachedFallback) {
+                MarketObservation obs = new MarketObservation(
+                        instrument,
+                        quote.price(),
+                        quote.currency(),
+                        quote.asOf(),
+                        ObservationSourceType.PROVIDER,
+                        quote.sourceReference()
+                );
+                if (observationStorageService != null) {
+                    observationStorageService.saveMarketObservation(obs);
+                } else {
+                    marketObservationRepository.save(obs);
                 }
+                return Optional.of(quote);
+            }
+        }
+        return Optional.empty();
+    }
+
+    public PriceQuote refreshPrice(UUID instrumentId) {
+        try {
+            Optional<PriceQuote> live = refreshLivePrice(instrumentId);
+            if (live.isPresent()) {
+                return live.get();
             }
         } catch (Exception ignored) {
         }
 
-        return getLatestPrice(instrumentId, targetTime);
+        return getLatestPrice(instrumentId, Instant.now());
     }
 
     public MarketObservation recordManualOverride(

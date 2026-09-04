@@ -7,7 +7,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.takakim.investtracker.api.ApiDtos;
@@ -178,5 +180,56 @@ class InstrumentServiceTests {
 
         ApiDtos.InstrumentResponse res = service.get(id);
         org.junit.jupiter.api.Assertions.assertNull(res.latestPrice());
+    }
+
+    @Test
+    @DisplayName("refreshAllPrices enqueues all non-manual instruments when refreshQueueService is present")
+    void refreshAllPricesWithQueue() {
+        var queueService = mock(com.takakim.investtracker.service.market.queue.MarketDataRefreshQueueService.class);
+        InstrumentService serviceWithQueue = new InstrumentService(repository, marketObservationRepository, marketDataService, queueService);
+
+        Instrument inst1 = new Instrument("Apple", AssetClass.STOCK, "AAPL", null, null, new Currency("USD"), false);
+        Instrument inst2 = new Instrument("Manual Bond", AssetClass.BOND, null, null, null, new Currency("USD"), true);
+        when(repository.findAllByOrderByNameAsc()).thenReturn(List.of(inst1, inst2));
+
+        List<ApiDtos.InstrumentResponse> result = serviceWithQueue.refreshAllPrices();
+
+        assertNotNull(result);
+        verify(queueService).enqueueAll(List.of(inst1.getId()));
+        verifyNoInteractions(marketDataService);
+    }
+
+    @Test
+    @DisplayName("refreshPrice enqueues instrument when refreshQueueService is present")
+    void refreshPriceWithQueue() {
+        var queueService = mock(com.takakim.investtracker.service.market.queue.MarketDataRefreshQueueService.class);
+        InstrumentService serviceWithQueue = new InstrumentService(repository, marketObservationRepository, marketDataService, queueService);
+
+        Instrument inst = new Instrument("Apple", AssetClass.STOCK, "AAPL", null, null, new Currency("USD"), false);
+        UUID id = inst.getId();
+        when(repository.findById(id)).thenReturn(Optional.of(inst));
+
+        ApiDtos.InstrumentResponse res = serviceWithQueue.refreshPrice(id);
+
+        assertNotNull(res);
+        verify(queueService).enqueue(id);
+        verifyNoInteractions(marketDataService);
+    }
+
+    @Test
+    @DisplayName("getQueueStatus delegates to refreshQueueService")
+    void testGetQueueStatus() {
+        var queueService = mock(com.takakim.investtracker.service.market.queue.MarketDataRefreshQueueService.class);
+        when(queueService.getQueueStatus()).thenReturn(new com.takakim.investtracker.service.market.queue.MarketDataRefreshQueueService.QueueStatus(3, 1, 0));
+        InstrumentService serviceWithQueue = new InstrumentService(repository, marketObservationRepository, marketDataService, queueService);
+
+        var status = serviceWithQueue.getQueueStatus();
+        assertEquals(3, status.pendingCount());
+        assertEquals(1, status.processingCount());
+        assertEquals(0, status.failedCount());
+
+        // When queue service is null
+        var fallbackStatus = service.getQueueStatus();
+        assertEquals(0, fallbackStatus.pendingCount());
     }
 }

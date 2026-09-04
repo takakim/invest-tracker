@@ -39,6 +39,11 @@ app:
       connect-timeout-seconds: 5
       read-timeout-seconds: 10
       max-requests-per-minute: 30
+    refresh-queue:
+      worker-enabled: ${REFRESH_WORKER_ENABLED:true}
+      interval-ms: ${REFRESH_WORKER_INTERVAL_MS:1500}
+      retry-delay-seconds: ${REFRESH_RETRY_DELAY_SECONDS:30}
+      max-attempts: ${REFRESH_MAX_ATTEMPTS:5}
 
 management:
   endpoints:
