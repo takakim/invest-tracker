@@ -157,6 +157,82 @@ class CompositeMarketDataProviderTests {
     }
 
     @Test
+    @DisplayName("Falls back to FMP when Twelve Data is rate-limited and returns cached quote")
+    void testTwelveDataRateLimitedFallsBackToFmpWhenCachedQuotePresent() {
+        when(twelveData.isConfigured()).thenReturn(true);
+        PriceQuote cachedQuote = new PriceQuote(
+                aapl.getId(), new BigDecimal("180.00"), "USD",
+                Instant.now().minusSeconds(600), ObservationSourceType.PROVIDER,
+                "TWELVE_DATA_CACHED", true, "Rate limited"
+        );
+        when(twelveData.fetchQuote(eq(aapl), any())).thenReturn(Optional.of(cachedQuote));
+
+        when(fmp.isConfigured()).thenReturn(true);
+        PriceQuote fmpQuote = new PriceQuote(
+                aapl.getId(), new BigDecimal("192.50"), "USD",
+                Instant.now(), ObservationSourceType.PROVIDER,
+                "FMP", false, null
+        );
+        when(fmp.fetchQuote(eq(aapl), any())).thenReturn(Optional.of(fmpQuote));
+
+        Optional<PriceQuote> res = composite.fetchQuote(aapl, Instant.now());
+        assertTrue(res.isPresent());
+        assertEquals("FMP", res.get().sourceReference());
+        assertEquals(new BigDecimal("192.50"), res.get().price());
+    }
+
+    @Test
+    @DisplayName("Falls back to Yahoo Finance when Twelve Data is rate-limited with cached quote and FMP fails")
+    void testTwelveDataRateLimitedAndFmpFailsFallsBackToYahooWhenCachedQuotePresent() {
+        when(twelveData.isConfigured()).thenReturn(true);
+        PriceQuote cachedQuote = new PriceQuote(
+                aapl.getId(), new BigDecimal("180.00"), "USD",
+                Instant.now().minusSeconds(600), ObservationSourceType.PROVIDER,
+                "TWELVE_DATA_CACHED", true, "Rate limited"
+        );
+        when(twelveData.fetchQuote(eq(aapl), any())).thenReturn(Optional.of(cachedQuote));
+
+        when(fmp.isConfigured()).thenReturn(true);
+        when(fmp.fetchQuote(eq(aapl), any())).thenReturn(Optional.empty());
+
+        when(yahoo.isConfigured()).thenReturn(true);
+        PriceQuote yahooQuote = new PriceQuote(
+                aapl.getId(), new BigDecimal("193.10"), "USD",
+                Instant.now(), ObservationSourceType.PROVIDER,
+                "YAHOO_FINANCE", false, null
+        );
+        when(yahoo.fetchQuote(eq(aapl), any())).thenReturn(Optional.of(yahooQuote));
+
+        Optional<PriceQuote> res = composite.fetchQuote(aapl, Instant.now());
+        assertTrue(res.isPresent());
+        assertEquals("YAHOO_FINANCE", res.get().sourceReference());
+        assertEquals(new BigDecimal("193.10"), res.get().price());
+    }
+
+    @Test
+    @DisplayName("Returns cached Twelve Data quote when all live providers fail")
+    void testAllLiveProvidersFailReturnsCachedTwelveDataQuote() {
+        when(twelveData.isConfigured()).thenReturn(true);
+        PriceQuote cachedQuote = new PriceQuote(
+                aapl.getId(), new BigDecimal("180.00"), "USD",
+                Instant.now().minusSeconds(600), ObservationSourceType.PROVIDER,
+                "TWELVE_DATA_CACHED", true, "Rate limited"
+        );
+        when(twelveData.fetchQuote(eq(aapl), any())).thenReturn(Optional.of(cachedQuote));
+
+        when(fmp.isConfigured()).thenReturn(true);
+        when(fmp.fetchQuote(eq(aapl), any())).thenReturn(Optional.empty());
+
+        when(yahoo.isConfigured()).thenReturn(true);
+        when(yahoo.fetchQuote(eq(aapl), any())).thenReturn(Optional.empty());
+
+        Optional<PriceQuote> res = composite.fetchQuote(aapl, Instant.now());
+        assertTrue(res.isPresent());
+        assertEquals("TWELVE_DATA_CACHED", res.get().sourceReference());
+        assertEquals(new BigDecimal("180.00"), res.get().price());
+    }
+
+    @Test
     @DisplayName("Historical quotes fallback logic across tiers")
     void testHistoricalQuotes() {
         // Twelve Data historical

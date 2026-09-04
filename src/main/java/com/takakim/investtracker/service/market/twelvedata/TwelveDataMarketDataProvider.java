@@ -130,7 +130,17 @@ public class TwelveDataMarketDataProvider implements MarketDataProvider {
         // 3. If rate limited or failed, check if we have any cached quote first
         if (cached != null) {
             log.warn("Twelve Data call rate limited or failed; using last cached quote for symbol '{}'", symbol);
-            return Optional.of(cached.quote());
+            PriceQuote staleQuote = new PriceQuote(
+                    cached.quote().instrumentId(),
+                    cached.quote().price(),
+                    cached.quote().currency(),
+                    cached.quote().asOf(),
+                    cached.quote().sourceType(),
+                    "TWELVE_DATA_CACHED",
+                    true,
+                    "Live Twelve Data call failed or rate-limited; returning last cached quote"
+            );
+            return Optional.of(staleQuote);
         }
 
         return fallbackProvider.fetchQuote(instrument, asOf);
