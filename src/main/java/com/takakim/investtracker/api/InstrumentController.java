@@ -37,6 +37,12 @@ public class InstrumentController {
     @PostMapping("/{id}/refresh-price")
     public ApiDtos.InstrumentResponse refreshPrice(@PathVariable UUID id) { return service.refreshPrice(id); }
 
+    @GetMapping("/refresh-queue/status")
+    public ApiDtos.RefreshQueueStatusResponse getQueueStatus() {
+        var status = service.getQueueStatus();
+        return new ApiDtos.RefreshQueueStatusResponse(status.pendingCount(), status.processingCount(), status.failedCount());
+    }
+
     @GetMapping("/{id}")
     public ApiDtos.InstrumentResponse get(@PathVariable UUID id) { return service.get(id); }
 }

@@ -664,6 +664,15 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Instrument' }
         '404': { $ref: '#/components/responses/Problem' }
+  /instruments/refresh-queue/status:
+    get:
+      operationId: getRefreshQueueStatus
+      responses:
+        '200':
+          description: Status of the market data refresh queue
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RefreshQueueStatus' }
   /instruments/{instrumentId}:
     parameters:
       - { $ref: '#/components/parameters/InstrumentId' }
@@ -993,6 +1002,13 @@ components:
         exchange: { type: string, maxLength: 80, nullable: true }
         currency: { type: string, pattern: '^[A-Za-z]{3}$' }
         manualPriceOnly: { type: boolean, default: false }
+    RefreshQueueStatus:
+      type: object
+      required: [pendingCount, processingCount, failedCount]
+      properties:
+        pendingCount: { type: integer, format: int64 }
+        processingCount: { type: integer, format: int64 }
+        failedCount: { type: integer, format: int64 }
     Position:
       type: object
       required: [id, accountId, instrumentId, instrumentName, assetClass, quantity, status, createdAt, updatedAt]

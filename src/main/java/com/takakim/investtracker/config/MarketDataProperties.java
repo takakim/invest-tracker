@@ -10,6 +10,7 @@ public class MarketDataProperties {
     private TwelveDataProperties twelvedata = new TwelveDataProperties();
     private FmpProperties fmp = new FmpProperties();
     private YahooProperties yahoo = new YahooProperties();
+    private RefreshQueueProperties refreshQueue = new RefreshQueueProperties();
 
     public TwelveDataProperties getTwelvedata() {
         return twelvedata;
@@ -33,6 +34,14 @@ public class MarketDataProperties {
 
     public void setYahoo(YahooProperties yahoo) {
         this.yahoo = yahoo;
+    }
+
+    public RefreshQueueProperties getRefreshQueue() {
+        return refreshQueue;
+    }
+
+    public void setRefreshQueue(RefreshQueueProperties refreshQueue) {
+        this.refreshQueue = refreshQueue;
     }
 
     public static class FmpProperties {
@@ -221,6 +230,45 @@ public class MarketDataProperties {
 
         public void setUserAgent(String userAgent) {
             this.userAgent = userAgent;
+        }
+    }
+
+    public static class RefreshQueueProperties {
+        private boolean workerEnabled = true;
+        private long intervalMs = 1500;
+        private int retryDelaySeconds = 30;
+        private int maxAttempts = 5;
+
+        public boolean isWorkerEnabled() {
+            return workerEnabled;
+        }
+
+        public void setWorkerEnabled(boolean workerEnabled) {
+            this.workerEnabled = workerEnabled;
+        }
+
+        public long getIntervalMs() {
+            return intervalMs;
+        }
+
+        public void setIntervalMs(long intervalMs) {
+            this.intervalMs = intervalMs;
+        }
+
+        public int getRetryDelaySeconds() {
+            return retryDelaySeconds;
+        }
+
+        public void setRetryDelaySeconds(int retryDelaySeconds) {
+            this.retryDelaySeconds = retryDelaySeconds;
+        }
+
+        public int getMaxAttempts() {
+            return maxAttempts;
+        }
+
+        public void setMaxAttempts(int maxAttempts) {
+            this.maxAttempts = maxAttempts;
         }
     }
 }

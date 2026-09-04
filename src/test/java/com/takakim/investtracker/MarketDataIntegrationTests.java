@@ -177,4 +177,36 @@ class MarketDataIntegrationTests {
                         .content(invalidFx))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    @DisplayName("Market Data refresh queue endpoints: refresh price, refresh all prices, and get queue status")
+    void testMarketDataRefreshQueueEndpoints() throws Exception {
+        String instJson = """
+            {"name":"Tesla Inc","assetClass":"STOCK","ticker":"TSLA","currency":"USD"}
+            """;
+        String instResp = mockMvc.perform(post("/api/v1/instruments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(instJson))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+
+        String instrumentId = JsonPath.read(instResp, "$.id");
+
+        // Refresh single instrument (enqueues)
+        mockMvc.perform(post("/api/v1/instruments/{id}/refresh-price", instrumentId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id", is(instrumentId)));
+
+        // Refresh all instruments (enqueues)
+        mockMvc.perform(post("/api/v1/instruments/refresh-prices"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()", notNullValue()));
+
+        // Inspect queue status endpoint
+        mockMvc.perform(get("/api/v1/instruments/refresh-queue/status"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.pendingCount", notNullValue()))
+                .andExpect(jsonPath("$.processingCount", notNullValue()))
+                .andExpect(jsonPath("$.failedCount", notNullValue()));
+    }
 }
