@@ -25,9 +25,11 @@ import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
@@ -106,6 +108,22 @@ public class PortfolioHistoryService {
                     benchmarkStartPrice = extractPositivePrice(bStartQuote);
                 } catch (Exception ignored) {
                 }
+            }
+        }
+
+        // Auto-backfill historical quotes for portfolio held instruments if low observation count
+        Set<UUID> heldInstrumentIds = new HashSet<>();
+        for (Transaction tx : completedTxs) {
+            if (tx.getInstrument() != null && tx.getInstrument().getId() != null) {
+                heldInstrumentIds.add(tx.getInstrument().getId());
+            }
+        }
+        for (UUID instId : heldInstrumentIds) {
+            try {
+                if (marketDataService.getObservationCount(instId) < 10) {
+                    marketDataService.backfillHistoricalPrices(instId, periodStart, now);
+                }
+            } catch (Exception ignored) {
             }
         }
 

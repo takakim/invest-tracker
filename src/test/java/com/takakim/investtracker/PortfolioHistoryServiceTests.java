@@ -478,4 +478,35 @@ class PortfolioHistoryServiceTests {
         assertNotNull(response);
         assertFalse(response.dataPoints().isEmpty());
     }
+
+    @Test
+    void generateHistory_heldInstrumentsWithLowObservations_triggersBackfill() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(portfolio));
+
+        Instant tradeDate = Instant.now().minus(100, ChronoUnit.DAYS);
+        Transaction buyTx = new Transaction(
+                account, vusa, TransactionType.BUY, tradeDate, tradeDate,
+                new BigDecimal("10.00"), new BigDecimal("50.00"), new BigDecimal("500.00"),
+                BigDecimal.ZERO, BigDecimal.ZERO, "GBP", null, null, null, null
+        );
+
+        when(transactionRepository.findByAccountPortfolioIdOrderByTradeDateDesc(portfolioId))
+                .thenReturn(List.of(buyTx));
+
+        when(marketDataService.getObservationCount(vusa.getId())).thenReturn(3L);
+
+        PortfolioAnalytics mockAnalytics = new PortfolioAnalytics(
+                portfolioId, Instant.now(), "GBP",
+                new BigDecimal("500.00"), new BigDecimal("500.00"),
+                BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO,
+                List.of(), List.of(), List.of(), List.of(), List.of()
+        );
+        when(analyticsEngine.calculate(eq(portfolioId), any(Instant.class))).thenReturn(mockAnalytics);
+
+        PortfolioHistoryResponse response = service.generateHistory(portfolioId, "1M", "DAILY", null);
+        assertNotNull(response);
+
+        verify(marketDataService).backfillHistoricalPrices(eq(vusa.getId()), any(Instant.class), any(Instant.class));
+    }
 }

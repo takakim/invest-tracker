@@ -483,5 +483,83 @@ class YahooFinanceGatewayTests {
         HttpHeaders shortRetry = new HttpHeaders();
         shortRetry.set(HttpHeaders.RETRY_AFTER, "2");
         gateway.handle429(shortRetry, "");
+
+        // 429 with null headers, empty headers, or blank retry-after
+        gateway.handle429(null, "");
+        gateway.handle429(new HttpHeaders(), "");
+        HttpHeaders blankRetry = new HttpHeaders();
+        blankRetry.set(HttpHeaders.RETRY_AFTER, "   ");
+        gateway.handle429(blankRetry, "");
+    }
+
+    @Test
+    @DisplayName("fetchHistoricalDailyPrices handles null meta, null indicators, and edge case values")
+    void testFetchHistoricalDailyPricesEdgeCases() {
+        properties.getYahoo().setMaxRequestsPerMinute(100);
+        RestClient.Builder testBuilder = RestClient.builder().baseUrl("https://query1.finance.yahoo.com");
+        mockServer = MockRestServiceServer.bindTo(testBuilder).build();
+        gateway = new YahooFinanceGateway(properties, testBuilder.build());
+
+        // meta with null currency (defaults to USD)
+        mockServer.expect(requestTo("https://query1.finance.yahoo.com/v8/finance/chart/AAPL?interval=1d&range=1mo"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("""
+                    {"chart":{"result":[{"meta":{"symbol":"AAPL","currency":null},"timestamp":[1700000000],"indicators":{"quote":[{"close":[100.0]}]}}]}}
+                    """, MediaType.APPLICATION_JSON));
+        List<YahooFinanceGateway.HistoricalPriceBar> bars1 = gateway.fetchHistoricalDailyPrices("AAPL", "1mo");
+        mockServer.verify();
+        assertEquals(1, bars1.size());
+        assertEquals("USD", bars1.get(0).currency());
+
+        // null timestamp
+        mockServer.reset();
+        mockServer.expect(requestTo("https://query1.finance.yahoo.com/v8/finance/chart/AAPL?interval=1d&range=1mo"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("""
+                    {"chart":{"result":[{"meta":{"symbol":"AAPL"},"timestamp":null,"indicators":{"quote":[{"close":[100.0]}]}}]}}
+                    """, MediaType.APPLICATION_JSON));
+        assertTrue(gateway.fetchHistoricalDailyPrices("AAPL", "1mo").isEmpty());
+        mockServer.verify();
+
+        // null indicators
+        mockServer.reset();
+        mockServer.expect(requestTo("https://query1.finance.yahoo.com/v8/finance/chart/AAPL?interval=1d&range=1mo"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("""
+                    {"chart":{"result":[{"meta":{"symbol":"AAPL"},"timestamp":[1700000000],"indicators":null}]}}
+                    """, MediaType.APPLICATION_JSON));
+        assertTrue(gateway.fetchHistoricalDailyPrices("AAPL", "1mo").isEmpty());
+        mockServer.verify();
+
+        // null indicators.quote()
+        mockServer.reset();
+        mockServer.expect(requestTo("https://query1.finance.yahoo.com/v8/finance/chart/AAPL?interval=1d&range=1mo"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("""
+                    {"chart":{"result":[{"meta":{"symbol":"AAPL"},"timestamp":[1700000000],"indicators":{"quote":null}}]}}
+                    """, MediaType.APPLICATION_JSON));
+        assertTrue(gateway.fetchHistoricalDailyPrices("AAPL", "1mo").isEmpty());
+        mockServer.verify();
+
+        // null closes
+        mockServer.reset();
+        mockServer.expect(requestTo("https://query1.finance.yahoo.com/v8/finance/chart/AAPL?interval=1d&range=1mo"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("""
+                    {"chart":{"result":[{"meta":{"symbol":"AAPL"},"timestamp":[1700000000],"indicators":{"quote":[{"close":null}]}}]}}
+                    """, MediaType.APPLICATION_JSON));
+        assertTrue(gateway.fetchHistoricalDailyPrices("AAPL", "1mo").isEmpty());
+        mockServer.verify();
+
+        // null ts or negative close
+        mockServer.reset();
+        mockServer.expect(requestTo("https://query1.finance.yahoo.com/v8/finance/chart/AAPL?interval=1d&range=1mo"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("""
+                    {"chart":{"result":[{"meta":{"symbol":"AAPL","currency":"EUR"},"timestamp":[null, 1700000000],"indicators":{"quote":[{"close":[100.0, -5.0]}]}}]}}
+                    """, MediaType.APPLICATION_JSON));
+        List<YahooFinanceGateway.HistoricalPriceBar> bars2 = gateway.fetchHistoricalDailyPrices("AAPL", "1mo");
+        mockServer.verify();
+        assertTrue(bars2.isEmpty());
     }
 }
