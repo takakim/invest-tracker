@@ -1,10 +1,16 @@
 package com.takakim.investtracker;
 
+import com.takakim.investtracker.domain.Account;
 import com.takakim.investtracker.domain.AssetClass;
+import com.takakim.investtracker.domain.CostBasisMethod;
 import com.takakim.investtracker.domain.Currency;
 import com.takakim.investtracker.domain.Instrument;
 import com.takakim.investtracker.domain.MarketObservation;
 import com.takakim.investtracker.domain.ObservationSourceType;
+import com.takakim.investtracker.domain.Portfolio;
+import com.takakim.investtracker.domain.ReturnMethod;
+import com.takakim.investtracker.domain.Transaction;
+import com.takakim.investtracker.domain.TransactionType;
 import com.takakim.investtracker.repository.InstrumentRepository;
 import com.takakim.investtracker.repository.MarketObservationRepository;
 import com.takakim.investtracker.service.ResourceNotFoundException;
@@ -12,6 +18,7 @@ import com.takakim.investtracker.service.market.MarketDataProvider;
 import com.takakim.investtracker.service.market.MarketDataService;
 import com.takakim.investtracker.service.market.PriceQuote;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -774,5 +781,297 @@ class MarketDataServiceTests {
         assertEquals(new BigDecimal("200.00"), quote.price());
         assertEquals("USD", quote.currency());
         assertTrue(quote.warning().contains("Historical price unavailable"));
+    }
+
+    @Test
+    @DisplayName("adjustPriceForCorporateActions returns unchanged price when null, same time, or no splits")
+    void testAdjustPriceForCorporateActionsTrivial() {
+        UUID id = instrument.getId();
+        Instant now = Instant.now();
+
+        assertEquals(new BigDecimal("100.00"), marketDataService.adjustPriceForCorporateActions(id, new BigDecimal("100.00"), null, now));
+        assertEquals(new BigDecimal("100.00"), marketDataService.adjustPriceForCorporateActions(id, new BigDecimal("100.00"), now, now));
+
+        when(transactionRepository.findByInstrumentIdOrderByTradeDateDesc(id)).thenReturn(List.of());
+        assertEquals(new BigDecimal("100.00"), marketDataService.adjustPriceForCorporateActions(id, new BigDecimal("100.00"), now.minus(java.time.Duration.ofDays(10)), now));
+    }
+
+    @Test
+    @DisplayName("adjustPriceForCorporateActions divides pre-split price by ratio when target is post-split")
+    void testAdjustPriceForCorporateActionsForwardSplit() {
+        UUID id = instrument.getId();
+        Portfolio p = new Portfolio("P", new Currency("USD"), CostBasisMethod.FIFO, ReturnMethod.TWR);
+        Account acc = new Account(p, "A", "B", new Currency("USD"));
+
+        Instant t0 = Instant.parse("2025-01-01T10:00:00Z");
+        Instant tSplit = Instant.parse("2025-06-01T10:00:00Z");
+        Instant tTarget = Instant.parse("2025-07-01T10:00:00Z");
+
+        // Buy 2 shares at t0
+        Transaction buy = new Transaction(
+                acc, instrument, TransactionType.BUY, t0, t0,
+                new BigDecimal("2.00000000"), new BigDecimal("1000.00"), new BigDecimal("2000.00"),
+                BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null
+        );
+
+        // 10-for-1 split at tSplit (+18 shares added to 2 shares = 20 shares total, ratio 10.0)
+        Transaction split = new Transaction(
+                acc, instrument, TransactionType.STOCK_SPLIT, tSplit, tSplit,
+                new BigDecimal("18.00000000"), null, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null
+        );
+
+        when(transactionRepository.findByInstrumentIdOrderByTradeDateDesc(id))
+                .thenReturn(List.of(split, buy));
+        when(transactionRepository.findByAccountIdAndInstrumentIdOrderByTradeDateAsc(acc.getId(), id))
+                .thenReturn(List.of(buy));
+
+        // Pre-split price was 1000.00 observed at t0. Target time is tTarget (after split).
+        // Ratio is (2 + 18) / 2 = 10.0. Price should be 1000 / 10 = 100.00.
+        BigDecimal adjusted = marketDataService.adjustPriceForCorporateActions(id, new BigDecimal("1000.00000000"), t0, tTarget);
+        assertEquals(0, new BigDecimal("100.00000000").compareTo(adjusted));
+    }
+
+    @Test
+    @DisplayName("adjustPriceForCorporateActions multiplies post-split price by ratio when target is pre-split")
+    void testAdjustPriceForCorporateActionsInverseSplit() {
+        UUID id = instrument.getId();
+        Portfolio p = new Portfolio("P", new Currency("USD"), CostBasisMethod.FIFO, ReturnMethod.TWR);
+        Account acc = new Account(p, "A", "B", new Currency("USD"));
+
+        Instant t0 = Instant.parse("2025-01-01T10:00:00Z");
+        Instant tSplit = Instant.parse("2025-06-01T10:00:00Z");
+        Instant tPost = Instant.parse("2025-07-01T10:00:00Z");
+
+        Transaction buy = new Transaction(
+                acc, instrument, TransactionType.BUY, t0, t0,
+                new BigDecimal("2.00000000"), new BigDecimal("1000.00"), new BigDecimal("2000.00"),
+                BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null
+        );
+
+        Transaction split = new Transaction(
+                acc, instrument, TransactionType.STOCK_SPLIT, tSplit, tSplit,
+                new BigDecimal("18.00000000"), null, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null
+        );
+
+        when(transactionRepository.findByInstrumentIdOrderByTradeDateDesc(id))
+                .thenReturn(List.of(split, buy));
+        when(transactionRepository.findByAccountIdAndInstrumentIdOrderByTradeDateAsc(acc.getId(), id))
+                .thenReturn(List.of(buy));
+
+        // Post-split price was 100.00 observed at tPost. Target time is t0 (before split).
+        // Ratio is 10.0. Price should be 100.00 * 10 = 1000.00.
+        BigDecimal adjusted = marketDataService.adjustPriceForCorporateActions(id, new BigDecimal("100.00000000"), tPost, t0);
+        assertEquals(0, new BigDecimal("1000.00000000").compareTo(adjusted));
+    }
+
+    @Test
+    @DisplayName("adjustPriceForCorporateActions handles reverse stock split correctly")
+    void testAdjustPriceForCorporateActionsReverseSplit() {
+        UUID id = instrument.getId();
+        Portfolio p = new Portfolio("P", new Currency("USD"), CostBasisMethod.FIFO, ReturnMethod.TWR);
+        Account acc = new Account(p, "A", "B", new Currency("USD"));
+
+        Instant t0 = Instant.parse("2025-01-01T10:00:00Z");
+        Instant tSplit = Instant.parse("2025-06-01T10:00:00Z");
+        Instant tTarget = Instant.parse("2025-07-01T10:00:00Z");
+
+        // Buy 100 shares at t0
+        Transaction buy = new Transaction(
+                acc, instrument, TransactionType.BUY, t0, t0,
+                new BigDecimal("100.00000000"), new BigDecimal("10.00"), new BigDecimal("1000.00"),
+                BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null
+        );
+
+        // 1-for-10 reverse split at tSplit (-90 shares removed = 10 shares remaining, ratio = 0.1)
+        Transaction revSplit = new Transaction(
+                acc, instrument, TransactionType.REVERSE_STOCK_SPLIT, tSplit, tSplit,
+                new BigDecimal("90.00000000"), null, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null
+        );
+
+        when(transactionRepository.findByInstrumentIdOrderByTradeDateDesc(id))
+                .thenReturn(List.of(revSplit, buy));
+        when(transactionRepository.findByAccountIdAndInstrumentIdOrderByTradeDateAsc(acc.getId(), id))
+                .thenReturn(List.of(buy));
+
+        // Pre-reverse-split price was 10.00. Target time is after reverse split.
+        // Ratio is (100 - 90) / 100 = 0.1. Price should be 10 / 0.1 = 100.00.
+        BigDecimal adjusted = marketDataService.adjustPriceForCorporateActions(id, new BigDecimal("10.00000000"), t0, tTarget);
+        assertEquals(0, new BigDecimal("100.00000000").compareTo(adjusted));
+    }
+
+    @Test
+    @DisplayName("adjustPriceForCorporateActions handles zero preQuantity or postQuantity <= 0 gracefully")
+    void testAdjustPriceForCorporateActionsZeroPreQtyOrNonPositivePostQty() {
+        UUID id = instrument.getId();
+        Portfolio p = new Portfolio("P", new Currency("USD"), CostBasisMethod.FIFO, ReturnMethod.TWR);
+        Account acc = new Account(p, "A", "B", new Currency("USD"));
+
+        Instant t0 = Instant.parse("2025-01-01T10:00:00Z");
+        Instant tSplit = Instant.parse("2025-06-01T10:00:00Z");
+        Instant tTarget = Instant.parse("2025-07-01T10:00:00Z");
+
+        // Split with zero preQty (no prior buy)
+        Transaction splitWithAcc = new Transaction(
+                acc, instrument, TransactionType.STOCK_SPLIT, tSplit, tSplit,
+                new BigDecimal("10.00"), null, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null
+        );
+        when(transactionRepository.findByInstrumentIdOrderByTradeDateDesc(id))
+                .thenReturn(List.of(splitWithAcc));
+        when(transactionRepository.findByAccountIdAndInstrumentIdOrderByTradeDateAsc(acc.getId(), id))
+                .thenReturn(List.of());
+
+        BigDecimal adjustedZeroPre = marketDataService.adjustPriceForCorporateActions(id, new BigDecimal("50.00"), t0, tTarget);
+        assertEquals(new BigDecimal("50.00"), adjustedZeroPre);
+
+        // Reverse split where splitQty >= preQty (postQty <= 0)
+        Transaction buy = new Transaction(
+                acc, instrument, TransactionType.BUY, t0, t0,
+                new BigDecimal("10.00"), new BigDecimal("1.00"), new BigDecimal("10.00"),
+                BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null
+        );
+        Transaction revSplitOver = new Transaction(
+                acc, instrument, TransactionType.REVERSE_STOCK_SPLIT, tSplit, tSplit,
+                new BigDecimal("10.00"), null, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null
+        );
+        when(transactionRepository.findByInstrumentIdOrderByTradeDateDesc(id))
+                .thenReturn(List.of(revSplitOver));
+        when(transactionRepository.findByAccountIdAndInstrumentIdOrderByTradeDateAsc(acc.getId(), id))
+                .thenReturn(List.of(buy));
+
+        BigDecimal adjustedNonPositive = marketDataService.adjustPriceForCorporateActions(id, new BigDecimal("50.00"), t0, tTarget);
+        assertEquals(new BigDecimal("50.00"), adjustedNonPositive);
+    }
+
+    @Test
+    @DisplayName("adjustPriceForCorporateActions handles computeAccountPreQuantity with SELL, SPLIT, and REVERSE_SPLIT")
+    void testComputeAccountPreQuantityDiverseTypes() {
+        UUID id = instrument.getId();
+        Portfolio p = new Portfolio("P", new Currency("USD"), CostBasisMethod.FIFO, ReturnMethod.TWR);
+        Account acc = new Account(p, "A", "B", new Currency("USD"));
+
+        Instant t1 = Instant.parse("2025-01-01T10:00:00Z");
+        Instant t2 = Instant.parse("2025-02-01T10:00:00Z");
+        Instant t3 = Instant.parse("2025-03-01T10:00:00Z");
+        Instant t4 = Instant.parse("2025-04-01T10:00:00Z");
+        Instant tSplit = Instant.parse("2025-06-01T10:00:00Z");
+        Instant tTarget = Instant.parse("2025-07-01T10:00:00Z");
+
+        Transaction buy = new Transaction(
+                acc, instrument, TransactionType.BUY, t1, t1,
+                new BigDecimal("20.00"), new BigDecimal("10.00"), new BigDecimal("200.00"),
+                BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null
+        );
+        Transaction sell = new Transaction(
+                acc, instrument, TransactionType.SELL, t2, t2,
+                new BigDecimal("5.00"), new BigDecimal("10.00"), new BigDecimal("50.00"),
+                BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null
+        );
+        Transaction splitPrior = new Transaction(
+                acc, instrument, TransactionType.STOCK_SPLIT, t3, t3,
+                new BigDecimal("15.00"), null, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null
+        );
+        Transaction revPrior = new Transaction(
+                acc, instrument, TransactionType.REVERSE_STOCK_SPLIT, t4, t4,
+                new BigDecimal("10.00"), null, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null
+        );
+        // Pre-quantity: 20 - 5 + 15 - 10 = 20 shares.
+
+        // Next 2-for-1 split (+20 shares -> 40 shares, ratio 2.0)
+        Transaction mainSplit = new Transaction(
+                acc, instrument, TransactionType.STOCK_SPLIT, tSplit, tSplit,
+                new BigDecimal("20.00"), null, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null
+        );
+
+        when(transactionRepository.findByInstrumentIdOrderByTradeDateDesc(id))
+                .thenReturn(List.of(mainSplit));
+        when(transactionRepository.findByAccountIdAndInstrumentIdOrderByTradeDateAsc(acc.getId(), id))
+                .thenReturn(List.of(buy, sell, splitPrior, revPrior));
+
+        // Pre-split price was 100.00. Ratio = (20 + 20) / 20 = 2.0. Adjusted price = 100 / 2 = 50.00.
+        BigDecimal adjusted = marketDataService.adjustPriceForCorporateActions(id, new BigDecimal("100.00"), t1, tTarget);
+        assertEquals(0, new BigDecimal("50.00").compareTo(adjusted));
+    }
+
+    @Test
+    @DisplayName("getLatestPrice adjusts price from transaction fallback across stock split")
+    void testGetLatestPriceTransactionFallbackAcrossSplit() {
+        UUID id = instrument.getId();
+        when(instrumentRepository.findById(id)).thenReturn(Optional.of(instrument));
+
+        Portfolio p = new Portfolio("P", new Currency("USD"), CostBasisMethod.FIFO, ReturnMethod.TWR);
+        Account acc = new Account(p, "A", "B", new Currency("USD"));
+
+        Instant tTrade = Instant.parse("2025-01-01T10:00:00Z");
+        Instant tSplit = Instant.parse("2025-06-01T10:00:00Z");
+        Instant tTarget = Instant.parse("2025-07-01T10:00:00Z");
+
+        Transaction buy = new Transaction(
+                acc, instrument, TransactionType.BUY, tTrade, tTrade,
+                new BigDecimal("2.00000000"), new BigDecimal("1000.00"), new BigDecimal("2000.00"),
+                BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null
+        );
+        Transaction split = new Transaction(
+                acc, instrument, TransactionType.STOCK_SPLIT, tSplit, tSplit,
+                new BigDecimal("18.00000000"), null, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null
+        );
+
+        when(marketObservationRepository.findFirstByInstrumentIdOrderByObservedAtDesc(id))
+                .thenReturn(Optional.empty());
+        when(transactionRepository.findByInstrumentIdOrderByTradeDateDesc(id))
+                .thenReturn(List.of(split, buy));
+        when(transactionRepository.findByAccountIdAndInstrumentIdOrderByTradeDateAsc(acc.getId(), id))
+                .thenReturn(List.of(buy));
+
+        PriceQuote quote = marketDataService.getLatestPrice(id, tTarget);
+        assertNotNull(quote);
+        // Price of 1000 adjusted by 10x forward split -> 100
+        assertEquals(0, new BigDecimal("100.00").compareTo(quote.price()));
+    }
+
+    @Test
+    @DisplayName("getLatestPrice adjusts price from persisted observation across stock split")
+    void testGetLatestPriceObservationAcrossSplit() {
+        UUID id = instrument.getId();
+        when(instrumentRepository.findById(id)).thenReturn(Optional.of(instrument));
+
+        Portfolio p = new Portfolio("P", new Currency("USD"), CostBasisMethod.FIFO, ReturnMethod.TWR);
+        Account acc = new Account(p, "A", "B", new Currency("USD"));
+
+        Instant tObs = Instant.parse("2025-01-01T10:00:00Z");
+        Instant tSplit = Instant.parse("2025-06-01T10:00:00Z");
+        Instant tTarget = Instant.parse("2025-07-01T10:00:00Z");
+
+        MarketObservation obs = new MarketObservation(instrument, new BigDecimal("1000.00"), "USD", tObs, ObservationSourceType.PROVIDER, "EXCHANGE");
+
+        Transaction buy = new Transaction(
+                acc, instrument, TransactionType.BUY, tObs, tObs,
+                new BigDecimal("2.00000000"), new BigDecimal("1000.00"), new BigDecimal("2000.00"),
+                BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null
+        );
+        Transaction split = new Transaction(
+                acc, instrument, TransactionType.STOCK_SPLIT, tSplit, tSplit,
+                new BigDecimal("18.00000000"), null, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null
+        );
+
+        when(marketObservationRepository.findFirstByInstrumentIdOrderByObservedAtDesc(id))
+                .thenReturn(Optional.of(obs));
+        when(transactionRepository.findByInstrumentIdOrderByTradeDateDesc(id))
+                .thenReturn(List.of(split, buy));
+        when(transactionRepository.findByAccountIdAndInstrumentIdOrderByTradeDateAsc(acc.getId(), id))
+                .thenReturn(List.of(buy));
+
+        PriceQuote quote = marketDataService.getLatestPrice(id, tTarget);
+        assertNotNull(quote);
+        assertEquals(0, new BigDecimal("100.00").compareTo(quote.price()));
     }
 }
