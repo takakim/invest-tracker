@@ -32,4 +32,29 @@ class MarketDataRefreshWorkerTests {
 
         verify(queueService, times(1)).processNextDueTask();
     }
+
+    @Test
+    @DisplayName("checkAndEnqueueStaleFxRates invokes queueService enqueueStaleActiveFxPairs")
+    void testCheckAndEnqueueStaleFxRatesInvokesQueue() {
+        MarketDataRefreshQueueService queueService = mock(MarketDataRefreshQueueService.class);
+        when(queueService.enqueueStaleActiveFxPairs(any())).thenReturn(2);
+        MarketDataRefreshWorker worker = new MarketDataRefreshWorker(queueService);
+
+        worker.checkAndEnqueueStaleFxRates();
+
+        verify(queueService, times(1)).enqueueStaleActiveFxPairs(any());
+    }
+
+    @Test
+    @DisplayName("checkAndEnqueueStaleFxRates swallows unexpected exceptions without throwing")
+    void testCheckAndEnqueueStaleFxRatesSwallowsExceptions() {
+        MarketDataRefreshQueueService queueService = mock(MarketDataRefreshQueueService.class);
+        when(queueService.enqueueStaleActiveFxPairs(any())).thenThrow(new RuntimeException("Queue error"));
+        MarketDataRefreshWorker worker = new MarketDataRefreshWorker(queueService);
+
+        // Should not throw
+        worker.checkAndEnqueueStaleFxRates();
+
+        verify(queueService, times(1)).enqueueStaleActiveFxPairs(any());
+    }
 }
