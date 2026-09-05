@@ -172,7 +172,7 @@ public class YahooFinanceGateway {
         }
 
         YahooFinanceDtos.ChartEntry entry = chartOpt.get();
-        String currency = (entry.meta() != null && entry.meta().currency() != null)
+        String currency = entry.meta().currency() != null
                 ? entry.meta().currency()
                 : "USD";
 

@@ -3,17 +3,24 @@ package com.takakim.investtracker.service.market;
 import com.takakim.investtracker.domain.Instrument;
 import com.takakim.investtracker.domain.MarketObservation;
 import com.takakim.investtracker.domain.ObservationSourceType;
+import com.takakim.investtracker.domain.Transaction;
+import com.takakim.investtracker.domain.TransactionType;
 import com.takakim.investtracker.repository.InstrumentRepository;
 import com.takakim.investtracker.repository.MarketObservationRepository;
 import com.takakim.investtracker.service.ResourceNotFoundException;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
-import com.takakim.investtracker.service.ResourceNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -126,9 +133,10 @@ public class MarketDataService {
                     && (instrument.getCurrency() == null || instrument.getCurrency().code().equalsIgnoreCase(obs.getCurrency()))) {
                 boolean isStale = isObservationStale(obs.getObservedAt(), targetTime, instrument.getAssetClass());
                 String warning = isStale ? "Observation is older than 24 hours (last observed " + obs.getObservedAt() + ")" : null;
+                BigDecimal effectivePrice = adjustPriceForCorporateActions(instrumentId, obs.getPrice(), obs.getObservedAt(), targetTime);
                 return new PriceQuote(
                         instrumentId,
-                        obs.getPrice(),
+                        effectivePrice,
                         obs.getCurrency(),
                         obs.getObservedAt(),
                         obs.getSourceType(),
@@ -146,9 +154,10 @@ public class MarketDataService {
                     && (asOf == null || !tx.getTradeDate().isAfter(targetTime))) {
                 boolean isStale = isObservationStale(tx.getTradeDate(), targetTime, instrument.getAssetClass());
                 String warning = "Live price unavailable; using last transaction trade price from " + tx.getTradeDate();
+                BigDecimal effectivePrice = adjustPriceForCorporateActions(instrumentId, tx.getPrice(), tx.getTradeDate(), targetTime);
                 PriceQuote quote = new PriceQuote(
                         instrumentId,
-                        tx.getPrice(),
+                        effectivePrice,
                         tx.getCurrency(),
                         tx.getTradeDate(),
                         ObservationSourceType.PROVIDER,
@@ -159,7 +168,7 @@ public class MarketDataService {
                 try {
                     MarketObservation obs = new MarketObservation(
                             instrument,
-                            quote.price(),
+                            tx.getPrice(),
                             quote.currency(),
                             quote.asOf(),
                             ObservationSourceType.PROVIDER,
@@ -179,9 +188,10 @@ public class MarketDataService {
                 MarketObservation obs = anyPersisted.get();
                 if (obs.getPrice() != null && obs.getPrice().compareTo(BigDecimal.ZERO) > 0
                         && (instrument.getCurrency() == null || instrument.getCurrency().code().equalsIgnoreCase(obs.getCurrency()))) {
+                    BigDecimal effectivePrice = adjustPriceForCorporateActions(instrumentId, obs.getPrice(), obs.getObservedAt(), targetTime);
                     return new PriceQuote(
                             instrumentId,
-                            obs.getPrice(),
+                            effectivePrice,
                             obs.getCurrency(),
                             obs.getObservedAt(),
                             obs.getSourceType(),
@@ -335,5 +345,96 @@ public class MarketDataService {
             }
         }
         return saved;
+    }
+
+    public BigDecimal adjustPriceForCorporateActions(
+            UUID instrumentId,
+            BigDecimal price,
+            Instant priceTime,
+            Instant targetTime) {
+        if (price == null || priceTime == null || targetTime == null || priceTime.equals(targetTime)) {
+            return price;
+        }
+
+        List<Transaction> allTxs = transactionRepository.findByInstrumentIdOrderByTradeDateDesc(instrumentId);
+        if (allTxs.isEmpty()) {
+            return price;
+        }
+
+        List<Transaction> splitTxs = allTxs.stream()
+                .filter(t -> t.getType() == TransactionType.STOCK_SPLIT || t.getType() == TransactionType.REVERSE_STOCK_SPLIT)
+                .toList();
+
+        if (splitTxs.isEmpty()) {
+            return price;
+        }
+
+        boolean priceBeforeTarget = priceTime.isBefore(targetTime);
+        Instant windowStart = priceBeforeTarget ? priceTime : targetTime;
+        Instant windowEnd = priceBeforeTarget ? targetTime : priceTime;
+
+        List<Transaction> relevantSplits = splitTxs.stream()
+                .filter(t -> t.getTradeDate().isAfter(windowStart) && !t.getTradeDate().isAfter(windowEnd))
+                .sorted(Comparator.comparing(Transaction::getTradeDate))
+                .toList();
+
+        if (relevantSplits.isEmpty()) {
+            return price;
+        }
+
+        Map<String, List<Transaction>> splitsByEvent = new LinkedHashMap<>();
+        for (Transaction split : relevantSplits) {
+            String eventKey = split.getTradeDate().truncatedTo(ChronoUnit.HOURS).toString() + "_" + split.getType();
+            splitsByEvent.computeIfAbsent(eventKey, k -> new ArrayList<>()).add(split);
+        }
+
+        BigDecimal cumulativeRatio = BigDecimal.ONE;
+
+        for (List<Transaction> eventSplits : splitsByEvent.values()) {
+            BigDecimal eventRatio = null;
+            for (Transaction splitTx : eventSplits) {
+                BigDecimal preQty = computeAccountPreQuantity(
+                        splitTx.getAccount().getId(), instrumentId, splitTx.getTradeDate());
+
+                if (preQty.compareTo(BigDecimal.ZERO) > 0) {
+                    BigDecimal splitQty = splitTx.getQuantity();
+                    BigDecimal postQty = splitTx.getType() == TransactionType.STOCK_SPLIT
+                            ? preQty.add(splitQty)
+                            : preQty.subtract(splitQty);
+                    if (postQty.compareTo(BigDecimal.ZERO) > 0) {
+                        eventRatio = postQty.divide(preQty, 8, RoundingMode.HALF_UP);
+                        break;
+                    }
+                }
+            }
+
+            if (eventRatio != null) {
+                cumulativeRatio = cumulativeRatio.multiply(eventRatio);
+            }
+        }
+
+        if (cumulativeRatio.compareTo(BigDecimal.ONE) == 0) {
+            return price;
+        }
+
+        return priceBeforeTarget
+                ? price.divide(cumulativeRatio, 8, RoundingMode.HALF_UP)
+                : price.multiply(cumulativeRatio).setScale(8, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal computeAccountPreQuantity(UUID accountId, UUID instrumentId, Instant splitDate) {
+        List<Transaction> accTxs = transactionRepository.findByAccountIdAndInstrumentIdOrderByTradeDateAsc(accountId, instrumentId);
+        BigDecimal qty = BigDecimal.ZERO;
+        for (Transaction t : accTxs) {
+            if (t.getTradeDate().isBefore(splitDate)) {
+                TransactionType type = t.getType();
+                if (type == TransactionType.BUY || type == TransactionType.STOCK_SPLIT) {
+                    qty = qty.add(t.getQuantity());
+                } else if (type == TransactionType.SELL || type == TransactionType.REVERSE_STOCK_SPLIT) {
+                    qty = qty.subtract(t.getQuantity());
+                }
+            }
+        }
+        return qty;
     }
 }
