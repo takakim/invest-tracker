@@ -17,13 +17,47 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.takakim.investtracker.service.market.queue.MarketDataRefreshQueueService;
+import java.util.Map;
+import org.springframework.beans.factory.annotation.Autowired;
+
 @RestController
 public class FxController {
 
     private final FxRateService fxRateService;
+    private final MarketDataRefreshQueueService refreshQueueService;
+
+    @Autowired
+    public FxController(
+            FxRateService fxRateService,
+            @Autowired(required = false) MarketDataRefreshQueueService refreshQueueService) {
+        this.fxRateService = fxRateService;
+        this.refreshQueueService = refreshQueueService;
+    }
 
     public FxController(FxRateService fxRateService) {
-        this.fxRateService = fxRateService;
+        this(fxRateService, null);
+    }
+
+    @PostMapping("/api/v1/currencies/rates/refresh")
+    public ResponseEntity<Map<String, Object>> refreshRates(
+            @RequestParam(required = false) String base,
+            @RequestParam(required = false) String quote) {
+        if (base != null && quote != null) {
+            boolean enqueued = refreshQueueService != null && refreshQueueService.enqueueFxRate(base, quote);
+            return ResponseEntity.accepted().body(Map.of(
+                    "status", "ENQUEUED",
+                    "baseCurrency", base.toUpperCase(),
+                    "quoteCurrency", quote.toUpperCase(),
+                    "enqueued", enqueued
+            ));
+        } else {
+            int count = refreshQueueService != null ? refreshQueueService.enqueueActiveFxPairs() : 0;
+            return ResponseEntity.accepted().body(Map.of(
+                    "status", "ENQUEUED",
+                    "enqueuedCount", count
+            ));
+        }
     }
 
     @GetMapping("/api/v1/currencies/rates")

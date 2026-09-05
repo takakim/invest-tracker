@@ -11,4 +11,7 @@ public interface InstrumentRepository extends JpaRepository<Instrument, UUID> {
     boolean existsByIsinIgnoreCase(String isin);
     Optional<Instrument> findByTicker(String ticker);
     Optional<Instrument> findByIsin(String isin);
+
+    @org.springframework.data.jpa.repository.Query("SELECT DISTINCT i.currency FROM Instrument i WHERE i.currency IS NOT NULL")
+    List<String> findDistinctCurrencies();
 }

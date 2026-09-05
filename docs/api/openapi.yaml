@@ -783,6 +783,26 @@ paths:
               schema: { $ref: '#/components/schemas/FxRateQuote' }
         '400': { $ref: '#/components/responses/Problem' }
         '404': { $ref: '#/components/responses/Problem' }
+  /currencies/rates/refresh:
+    post:
+      summary: Enqueue asynchronous market data refresh tasks for active currency pairs
+      operationId: refreshFxRates
+      parameters:
+        - in: query
+          name: base
+          required: false
+          schema: { type: string, pattern: '^[A-Za-z]{3}$' }
+        - in: query
+          name: quote
+          required: false
+          schema: { type: string, pattern: '^[A-Za-z]{3}$' }
+      responses:
+        '202':
+          description: Accepted for asynchronous background processing
+          content:
+            application/json:
+              schema:
+                type: object
   /currencies/rates/override:
     post:
       operationId: recordFxRateOverride
