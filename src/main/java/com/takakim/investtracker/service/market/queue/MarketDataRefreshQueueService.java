@@ -30,18 +30,37 @@ public class MarketDataRefreshQueueService {
     private final InstrumentRepository instrumentRepository;
     private final MarketDataService marketDataService;
     private final MarketDataProperties properties;
+    private final com.takakim.investtracker.service.currency.FxRateService fxRateService;
+    private final com.takakim.investtracker.repository.PortfolioRepository portfolioRepository;
+    private final com.takakim.investtracker.repository.AccountRepository accountRepository;
 
     public record QueueStatus(long pendingCount, long processingCount, long failedCount) {}
+    public record CurrencyPair(String baseCurrency, String quoteCurrency) {}
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public MarketDataRefreshQueueService(
+            MarketDataRefreshTaskRepository repository,
+            InstrumentRepository instrumentRepository,
+            MarketDataService marketDataService,
+            MarketDataProperties properties,
+            com.takakim.investtracker.service.currency.FxRateService fxRateService,
+            com.takakim.investtracker.repository.PortfolioRepository portfolioRepository,
+            com.takakim.investtracker.repository.AccountRepository accountRepository) {
+        this.repository = repository;
+        this.instrumentRepository = instrumentRepository;
+        this.marketDataService = marketDataService;
+        this.properties = properties;
+        this.fxRateService = fxRateService;
+        this.portfolioRepository = portfolioRepository;
+        this.accountRepository = accountRepository;
+    }
 
     public MarketDataRefreshQueueService(
             MarketDataRefreshTaskRepository repository,
             InstrumentRepository instrumentRepository,
             MarketDataService marketDataService,
             MarketDataProperties properties) {
-        this.repository = repository;
-        this.instrumentRepository = instrumentRepository;
-        this.marketDataService = marketDataService;
-        this.properties = properties;
+        this(repository, instrumentRepository, marketDataService, properties, null, null, null);
     }
 
     @Transactional
@@ -84,6 +103,92 @@ public class MarketDataRefreshQueueService {
     }
 
     @Transactional
+    public boolean enqueueFxRate(String baseCurrency, String quoteCurrency) {
+        if (baseCurrency == null || quoteCurrency == null) {
+            return false;
+        }
+        String base = baseCurrency.trim().toUpperCase();
+        String quote = quoteCurrency.trim().toUpperCase();
+        if (base.equals(quote) || "GBX".equals(base) || "GBX".equals(quote)) {
+            return false;
+        }
+
+        if (repository.existsActiveByCurrencyPair(base, quote, ACTIVE_STATUSES)) {
+            log.debug("FX pair '{}/{}' already has an active refresh task in queue; skipping duplicate", base, quote);
+            return false;
+        }
+
+        int maxAttempts = properties.getRefreshQueue() != null ? properties.getRefreshQueue().getMaxAttempts() : MarketDataRefreshTask.DEFAULT_MAX_ATTEMPTS;
+        MarketDataRefreshTask task = new MarketDataRefreshTask(base, quote, Instant.now(), maxAttempts);
+        repository.save(task);
+        log.info("Enqueued FX rate refresh task for pair '{}/{}'", base, quote);
+        return true;
+    }
+
+    public Set<CurrencyPair> getActiveCurrencyPairs() {
+        Set<String> baseCurrencies = new java.util.HashSet<>();
+        if (portfolioRepository != null) {
+            baseCurrencies.addAll(portfolioRepository.findDistinctBaseCurrencies());
+        }
+        if (baseCurrencies.isEmpty()) {
+            baseCurrencies.add("GBP");
+        }
+
+        Set<String> foreignCurrencies = new java.util.HashSet<>();
+        if (instrumentRepository != null) {
+            foreignCurrencies.addAll(instrumentRepository.findDistinctCurrencies());
+        }
+        if (accountRepository != null) {
+            foreignCurrencies.addAll(accountRepository.findDistinctAccountCurrencies());
+        }
+
+        Set<CurrencyPair> activePairs = new java.util.LinkedHashSet<>();
+        for (String base : baseCurrencies) {
+            if (base == null || base.isBlank()) continue;
+            String normalizedBase = base.trim().toUpperCase();
+            for (String foreign : foreignCurrencies) {
+                if (foreign == null || foreign.isBlank()) continue;
+                String normalizedForeign = foreign.trim().toUpperCase();
+                if (normalizedForeign.equals(normalizedBase)) continue;
+                if ("GBX".equals(normalizedForeign) || "GBX".equals(normalizedBase)) continue;
+
+                activePairs.add(new CurrencyPair(normalizedForeign, normalizedBase));
+                activePairs.add(new CurrencyPair(normalizedBase, normalizedForeign));
+            }
+        }
+        return activePairs;
+    }
+
+    @Transactional
+    public int enqueueActiveFxPairs() {
+        Set<CurrencyPair> pairs = getActiveCurrencyPairs();
+        int count = 0;
+        for (CurrencyPair pair : pairs) {
+            if (enqueueFxRate(pair.baseCurrency(), pair.quoteCurrency())) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    @Transactional
+    public int enqueueStaleActiveFxPairs(Duration maxAge) {
+        if (fxRateService == null) {
+            return 0;
+        }
+        Set<CurrencyPair> pairs = getActiveCurrencyPairs();
+        int count = 0;
+        for (CurrencyPair pair : pairs) {
+            if (!fxRateService.isRateFresh(pair.baseCurrency(), pair.quoteCurrency(), maxAge)) {
+                if (enqueueFxRate(pair.baseCurrency(), pair.quoteCurrency())) {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
+    @Transactional
     public boolean processNextDueTask() {
         Optional<MarketDataRefreshTask> taskOpt = repository.findNextDueTaskForUpdate(Instant.now());
         if (taskOpt.isEmpty()) {
@@ -94,7 +199,47 @@ public class MarketDataRefreshQueueService {
         task.setStatus(RefreshTaskStatus.PROCESSING);
         task = repository.saveAndFlush(task);
 
+        if (task.isFxTask()) {
+            return processFxTask(task);
+        } else {
+            return processInstrumentTask(task);
+        }
+    }
+
+    private boolean processFxTask(MarketDataRefreshTask task) {
+        String base = task.getBaseCurrency();
+        String quote = task.getQuoteCurrency();
+        String pair = base + "/" + quote;
+
+        if (fxRateService == null) {
+            handleTaskFailure(task, pair, "FxRateService is not available");
+            return true;
+        }
+
+        try {
+            Optional<com.takakim.investtracker.service.currency.FxRateQuote> quoteOpt = fxRateService.refreshRate(base, quote);
+            if (quoteOpt.isPresent()) {
+                com.takakim.investtracker.service.currency.FxRateQuote q = quoteOpt.get();
+                repository.delete(task);
+                log.info("Successfully refreshed live FX rate for pair '{}' via {}: {}. Task completed and removed from queue.",
+                        pair, q.sourceReference(), q.rate());
+                return true;
+            } else {
+                handleTaskFailure(task, pair, "FX provider returned no live rate or was throttled");
+                return true;
+            }
+        } catch (Exception ex) {
+            handleTaskFailure(task, pair, "Exception during FX quote fetch: " + ex.getMessage());
+            return true;
+        }
+    }
+
+    private boolean processInstrumentTask(MarketDataRefreshTask task) {
         Instrument instrument = task.getInstrument();
+        if (instrument == null) {
+            repository.delete(task);
+            return true;
+        }
         UUID instrumentId = instrument.getId();
         String symbol = instrument.getTicker() != null && !instrument.getTicker().isBlank() ? instrument.getTicker() : instrument.getName();
 
@@ -124,7 +269,7 @@ public class MarketDataRefreshQueueService {
             task.setStatus(RefreshTaskStatus.FAILED);
             task.setLastError("Max retry attempts (" + maxAttempts + ") reached: " + reason);
             repository.save(task);
-            log.warn("Market data refresh task for instrument '{}' exceeded max attempts ({}). Marked as FAILED: {}",
+            log.warn("Market data refresh task for '{}' exceeded max attempts ({}). Marked as FAILED: {}",
                     symbol, maxAttempts, reason);
         } else {
             int delaySeconds = properties.getRefreshQueue() != null ? properties.getRefreshQueue().getRetryDelaySeconds() : 30;
@@ -132,7 +277,7 @@ public class MarketDataRefreshQueueService {
             task.setScheduledAt(Instant.now().plus(Duration.ofSeconds(delaySeconds)));
             task.setLastError(reason);
             repository.save(task);
-            log.warn("Live quote unavailable/throttled for instrument '{}' (attempt {}/{}). Delayed retry scheduled in {}s: {}",
+            log.warn("Live quote unavailable/throttled for '{}' (attempt {}/{}). Delayed retry scheduled in {}s: {}",
                     symbol, task.getAttemptCount(), maxAttempts, delaySeconds, reason);
         }
     }

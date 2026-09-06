@@ -11,4 +11,6 @@ public interface FxRateProvider {
     List<FxRateQuote> fetchHistoricalRates(String baseCurrency, String quoteCurrency, Instant from, Instant to);
 
     String getProviderId();
+
+    default void invalidateCache(String baseCurrency, String quoteCurrency) {}
 }

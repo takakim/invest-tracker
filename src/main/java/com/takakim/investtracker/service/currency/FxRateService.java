@@ -189,6 +189,97 @@ public class FxRateService {
         throw new ResourceNotFoundException("No FX rate available for currency pair: " + base + "/" + quote);
     }
 
+    public Optional<FxRateQuote> refreshRate(String baseCurrency, String quoteCurrency) {
+        Objects.requireNonNull(baseCurrency, "baseCurrency must not be null");
+        Objects.requireNonNull(quoteCurrency, "quoteCurrency must not be null");
+
+        String base = baseCurrency.trim().toUpperCase();
+        String quote = quoteCurrency.trim().toUpperCase();
+
+        if (base.equals(quote)) {
+            return Optional.of(new FxRateQuote(
+                    base, quote, BigDecimal.ONE.setScale(FX_SCALE, ROUNDING),
+                    Instant.now(), ObservationSourceType.PROVIDER, "IDENTITY", false, null
+            ));
+        }
+
+        if (base.equals("GBX") && quote.equals("GBP")) {
+            return Optional.of(new FxRateQuote(
+                    base, quote, new BigDecimal("0.01000000"),
+                    Instant.now(), ObservationSourceType.PROVIDER, "SUB_UNIT", false, null
+            ));
+        }
+        if (base.equals("GBP") && quote.equals("GBX")) {
+            return Optional.of(new FxRateQuote(
+                    base, quote, new BigDecimal("100.00000000"),
+                    Instant.now(), ObservationSourceType.PROVIDER, "SUB_UNIT", false, null
+            ));
+        }
+
+        // Invalidate provider cache to ensure fresh quote
+        fxRateProvider.invalidateCache(base, quote);
+
+        Instant targetTime = Instant.now();
+        Optional<FxRateQuote> providerQuote = fxRateProvider.fetchRate(base, quote, targetTime);
+        if (providerQuote.isPresent()) {
+            FxRateQuote q = providerQuote.get();
+            FxObservation obs = new FxObservation(
+                    base, quote, q.rate(), q.asOf(), ObservationSourceType.PROVIDER, q.sourceReference()
+            );
+            if (observationStorageService != null) {
+                observationStorageService.saveFxObservation(obs);
+            } else {
+                fxObservationRepository.save(obs);
+            }
+            return Optional.of(q);
+        }
+
+        // Triangulation through USD
+        if (!"USD".equals(base) && !"USD".equals(quote)) {
+            Optional<FxRateQuote> baseToUsd = fxRateProvider.fetchRate(base, "USD", targetTime);
+            Optional<FxRateQuote> quoteToUsd = fxRateProvider.fetchRate(quote, "USD", targetTime);
+            if (baseToUsd.isPresent() && quoteToUsd.isPresent()) {
+                BigDecimal triangulatedRate = baseToUsd.get().rate()
+                        .divide(quoteToUsd.get().rate(), FX_SCALE, ROUNDING);
+                FxRateQuote q = new FxRateQuote(
+                        base, quote, triangulatedRate, targetTime,
+                        ObservationSourceType.PROVIDER, "TRIANGULATED_USD", true, null
+                );
+                FxObservation obs = new FxObservation(
+                        base, quote, q.rate(), q.asOf(), ObservationSourceType.PROVIDER, "TRIANGULATED_USD"
+                );
+                if (observationStorageService != null) {
+                    observationStorageService.saveFxObservation(obs);
+                } else {
+                    fxObservationRepository.save(obs);
+                }
+                return Optional.of(q);
+            }
+        }
+
+        return Optional.empty();
+    }
+
+    @Transactional(readOnly = true)
+    public boolean isRateFresh(String baseCurrency, String quoteCurrency, Duration maxAge) {
+        if (baseCurrency == null || quoteCurrency == null) {
+            return false;
+        }
+        String base = baseCurrency.trim().toUpperCase();
+        String quote = quoteCurrency.trim().toUpperCase();
+        if (base.equals(quote) || "GBX".equals(base) || "GBX".equals(quote)) {
+            return true;
+        }
+        Optional<FxObservation> obs = fxObservationRepository
+                .findFirstByBaseCurrencyAndQuoteCurrencyOrderByObservedAtDesc(base, quote);
+        if (obs.isEmpty()) {
+            return false;
+        }
+        Duration age = Duration.between(obs.get().getObservedAt(), Instant.now()).abs();
+        Duration threshold = maxAge != null ? maxAge : FRESHNESS_THRESHOLD;
+        return age.compareTo(threshold) <= 0;
+    }
+
     public FxObservation recordManualOverride(
             String baseCurrency,
             String quoteCurrency,

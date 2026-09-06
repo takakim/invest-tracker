@@ -8,4 +8,7 @@ import java.util.UUID;
 
 public interface AccountRepository extends JpaRepository<Account, UUID> {
     List<Account> findAllByPortfolioIdAndStatusOrderByNameAsc(UUID portfolioId, AccountStatus status);
+
+    @org.springframework.data.jpa.repository.Query("SELECT DISTINCT a.accountCurrency FROM Account a WHERE a.status = 'ACTIVE' AND a.accountCurrency IS NOT NULL")
+    List<String> findDistinctAccountCurrencies();
 }

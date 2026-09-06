@@ -71,4 +71,28 @@ class MarketDataRefreshTaskDomainTests {
         assertThrows(NullPointerException.class, () -> task.setStatus(null));
         assertThrows(NullPointerException.class, () -> task.setScheduledAt(null));
     }
+
+    @Test
+    @DisplayName("MarketDataRefreshTask FX constructors and properties work correctly")
+    void testFxTaskProperties() {
+        Instant scheduledAt = Instant.now().plusSeconds(60);
+        MarketDataRefreshTask fxTask = new MarketDataRefreshTask("usd", "gbp", scheduledAt, 3);
+
+        assertNotNull(fxTask.getId());
+        assertNull(fxTask.getInstrument());
+        assertEquals("USD", fxTask.getBaseCurrency());
+        assertEquals("GBP", fxTask.getQuoteCurrency());
+        assertTrue(fxTask.isFxTask());
+        assertEquals(RefreshTaskStatus.PENDING, fxTask.getStatus());
+        assertEquals(scheduledAt, fxTask.getScheduledAt());
+        assertEquals(3, fxTask.getMaxAttempts());
+
+        MarketDataRefreshTask defaultFxTask = new MarketDataRefreshTask("EUR", "GBP", null);
+        assertNotNull(defaultFxTask.getScheduledAt());
+        assertEquals(MarketDataRefreshTask.DEFAULT_MAX_ATTEMPTS, defaultFxTask.getMaxAttempts());
+        assertTrue(defaultFxTask.isFxTask());
+
+        assertThrows(NullPointerException.class, () -> new MarketDataRefreshTask(null, "GBP", Instant.now(), 3));
+        assertThrows(NullPointerException.class, () -> new MarketDataRefreshTask("USD", null, Instant.now(), 3));
+    }
 }

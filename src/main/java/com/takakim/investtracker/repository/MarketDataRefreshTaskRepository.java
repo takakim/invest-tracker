@@ -18,6 +18,9 @@ public interface MarketDataRefreshTaskRepository extends JpaRepository<MarketDat
     @Query("SELECT CASE WHEN COUNT(t) > 0 THEN TRUE ELSE FALSE END FROM MarketDataRefreshTask t WHERE t.instrument.id = :instrumentId AND t.status IN :statuses")
     boolean existsActiveByInstrumentId(@Param("instrumentId") UUID instrumentId, @Param("statuses") Collection<RefreshTaskStatus> statuses);
 
+    @Query("SELECT CASE WHEN COUNT(t) > 0 THEN TRUE ELSE FALSE END FROM MarketDataRefreshTask t WHERE t.baseCurrency = :baseCurrency AND t.quoteCurrency = :quoteCurrency AND t.status IN :statuses")
+    boolean existsActiveByCurrencyPair(@Param("baseCurrency") String baseCurrency, @Param("quoteCurrency") String quoteCurrency, @Param("statuses") Collection<RefreshTaskStatus> statuses);
+
     long countByStatus(RefreshTaskStatus status);
 
     Optional<MarketDataRefreshTask> findFirstByInstrumentIdAndStatusInOrderByCreatedAtDesc(UUID instrumentId, Collection<RefreshTaskStatus> statuses);

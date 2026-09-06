@@ -22,9 +22,15 @@ public class MarketDataRefreshTask {
     @Id
     private UUID id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "instrument_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "instrument_id")
     private Instrument instrument;
+
+    @Column(name = "base_currency", length = 10)
+    private String baseCurrency;
+
+    @Column(name = "quote_currency", length = 10)
+    private String quoteCurrency;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
@@ -66,12 +72,40 @@ public class MarketDataRefreshTask {
         this(instrument, scheduledAt, DEFAULT_MAX_ATTEMPTS);
     }
 
+    public MarketDataRefreshTask(String baseCurrency, String quoteCurrency, Instant scheduledAt, int maxAttempts) {
+        this.id = UUID.randomUUID();
+        this.baseCurrency = Objects.requireNonNull(baseCurrency, "baseCurrency must not be null").trim().toUpperCase();
+        this.quoteCurrency = Objects.requireNonNull(quoteCurrency, "quoteCurrency must not be null").trim().toUpperCase();
+        this.status = RefreshTaskStatus.PENDING;
+        this.scheduledAt = scheduledAt != null ? scheduledAt : Instant.now();
+        this.attemptCount = 0;
+        this.maxAttempts = maxAttempts > 0 ? maxAttempts : DEFAULT_MAX_ATTEMPTS;
+        this.createdAt = Instant.now();
+        this.updatedAt = this.createdAt;
+    }
+
+    public MarketDataRefreshTask(String baseCurrency, String quoteCurrency, Instant scheduledAt) {
+        this(baseCurrency, quoteCurrency, scheduledAt, DEFAULT_MAX_ATTEMPTS);
+    }
+
     public UUID getId() {
         return id;
     }
 
     public Instrument getInstrument() {
         return instrument;
+    }
+
+    public String getBaseCurrency() {
+        return baseCurrency;
+    }
+
+    public String getQuoteCurrency() {
+        return quoteCurrency;
+    }
+
+    public boolean isFxTask() {
+        return baseCurrency != null && quoteCurrency != null;
     }
 
     public RefreshTaskStatus getStatus() {
