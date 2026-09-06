@@ -104,6 +104,7 @@ public class InstrumentService {
                     .map(Instrument::getId)
                     .toList();
             refreshQueueService.enqueueAll(ids);
+            refreshQueueService.enqueueActiveFxPairs();
         } else if (marketDataService != null) {
             for (Instrument inst : instruments) {
                 try {

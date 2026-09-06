@@ -10,6 +10,7 @@ import com.takakim.investtracker.service.currency.FxRateProvider;
 import com.takakim.investtracker.service.currency.FxRateQuote;
 import com.takakim.investtracker.service.currency.FxRateService;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -380,6 +381,140 @@ class FxRateServiceTests {
         assertFalse(FxRateService.isObservationFresh(fridayObs, null));
         assertTrue(FxRateService.isObservationStale(null, sunday));
         assertTrue(FxRateService.isObservationStale(fridayObs, null));
+    }
+
+    @Test
+    @DisplayName("refreshRate fetches fresh rate from provider and saves observation")
+    void testRefreshRateDirectSuccess() {
+        FxRateQuote providerQuote = new FxRateQuote(
+                "USD", "GBP", new BigDecimal("0.74000000"), Instant.now(),
+                ObservationSourceType.PROVIDER, "TWELVE_DATA", false, null
+        );
+        when(fxRateProvider.fetchRate(eq("USD"), eq("GBP"), any())).thenReturn(Optional.of(providerQuote));
+
+        Optional<FxRateQuote> result = fxRateService.refreshRate("USD", "GBP");
+
+        assertTrue(result.isPresent());
+        assertEquals(new BigDecimal("0.74000000"), result.get().rate());
+        verify(fxRateProvider).invalidateCache("USD", "GBP");
+        verify(fxObservationRepository).save(any(FxObservation.class));
+    }
+
+    @Test
+    @DisplayName("refreshRate handles identity and GBX sub-unit conversions directly")
+    void testRefreshRateIdentityAndSubUnit() {
+        Optional<FxRateQuote> identity = fxRateService.refreshRate("USD", "USD");
+        assertTrue(identity.isPresent());
+        assertEquals(0, BigDecimal.ONE.compareTo(identity.get().rate()));
+
+        Optional<FxRateQuote> gbxToGbp = fxRateService.refreshRate("GBX", "GBP");
+        assertTrue(gbxToGbp.isPresent());
+        assertEquals(new BigDecimal("0.01000000"), gbxToGbp.get().rate());
+
+        Optional<FxRateQuote> gbpToGbx = fxRateService.refreshRate("GBP", "GBX");
+        assertTrue(gbpToGbx.isPresent());
+        assertEquals(new BigDecimal("100.00000000"), gbpToGbx.get().rate());
+
+        verifyNoInteractions(fxRateProvider);
+    }
+
+    @Test
+    @DisplayName("refreshRate triangulates through USD when direct fetch is unavailable")
+    void testRefreshRateTriangulated() {
+        when(fxRateProvider.fetchRate(eq("EUR"), eq("GBP"), any())).thenReturn(Optional.empty());
+        when(fxRateProvider.fetchRate(eq("EUR"), eq("USD"), any())).thenReturn(Optional.of(
+                new FxRateQuote("EUR", "USD", new BigDecimal("1.10000000"), Instant.now(), ObservationSourceType.PROVIDER, "TWELVE_DATA", false, null)
+        ));
+        when(fxRateProvider.fetchRate(eq("GBP"), eq("USD"), any())).thenReturn(Optional.of(
+                new FxRateQuote("GBP", "USD", new BigDecimal("1.30000000"), Instant.now(), ObservationSourceType.PROVIDER, "TWELVE_DATA", false, null)
+        ));
+
+        Optional<FxRateQuote> result = fxRateService.refreshRate("EUR", "GBP");
+
+        assertTrue(result.isPresent());
+        assertEquals("TRIANGULATED_USD", result.get().sourceReference());
+        verify(fxObservationRepository).save(any(FxObservation.class));
+    }
+
+    @Test
+    @DisplayName("refreshRate returns empty when provider returns no data")
+    void testRefreshRateNotFound() {
+        when(fxRateProvider.fetchRate(anyString(), anyString(), any())).thenReturn(Optional.empty());
+
+        Optional<FxRateQuote> result = fxRateService.refreshRate("EUR", "GBP");
+
+        assertTrue(result.isEmpty());
+        verify(fxObservationRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("isRateFresh properly validates age of latest observation")
+    void testIsRateFresh() {
+        assertFalse(fxRateService.isRateFresh(null, "GBP", Duration.ofMinutes(15)));
+        assertFalse(fxRateService.isRateFresh("USD", null, Duration.ofMinutes(15)));
+        assertTrue(fxRateService.isRateFresh("USD", "USD", Duration.ofMinutes(15)));
+        assertTrue(fxRateService.isRateFresh("GBX", "GBP", Duration.ofMinutes(15)));
+
+        when(fxObservationRepository.findFirstByBaseCurrencyAndQuoteCurrencyOrderByObservedAtDesc("USD", "GBP"))
+                .thenReturn(Optional.empty());
+        assertFalse(fxRateService.isRateFresh("USD", "GBP", Duration.ofMinutes(15)));
+
+        FxObservation freshObs = new FxObservation("USD", "GBP", new BigDecimal("0.74"), Instant.now().minus(Duration.ofSeconds(60)), ObservationSourceType.PROVIDER, "TWELVE_DATA");
+        when(fxObservationRepository.findFirstByBaseCurrencyAndQuoteCurrencyOrderByObservedAtDesc("USD", "GBP"))
+                .thenReturn(Optional.of(freshObs));
+        assertTrue(fxRateService.isRateFresh("USD", "GBP", Duration.ofMinutes(15)));
+        assertFalse(fxRateService.isRateFresh("USD", "GBP", Duration.ofSeconds(30)));
+        assertTrue(fxRateService.isRateFresh("USD", "GBP", null));
+        assertTrue(fxRateService.isRateFresh("GBP", "GBX", Duration.ofMinutes(15)));
+    }
+
+    @Test
+    @DisplayName("refreshRate saves via observationStorageService when available")
+    void testRefreshRateWithStorageService() {
+        com.takakim.investtracker.service.market.ObservationStorageService storageService =
+                mock(com.takakim.investtracker.service.market.ObservationStorageService.class);
+        FxRateService serviceWithStorage = new FxRateService(fxObservationRepository, fxRateProvider, storageService);
+
+        FxRateQuote providerQuote = new FxRateQuote(
+                "USD", "GBP", new BigDecimal("0.74000000"), Instant.now(),
+                ObservationSourceType.PROVIDER, "TWELVE_DATA", false, null
+        );
+        when(fxRateProvider.fetchRate(eq("USD"), eq("GBP"), any())).thenReturn(Optional.of(providerQuote));
+
+        Optional<FxRateQuote> result = serviceWithStorage.refreshRate("USD", "GBP");
+        assertTrue(result.isPresent());
+        verify(storageService).saveFxObservation(any(FxObservation.class));
+    }
+
+    @Test
+    @DisplayName("refreshRate triangulated saves via observationStorageService when available")
+    void testRefreshRateTriangulatedWithStorageService() {
+        com.takakim.investtracker.service.market.ObservationStorageService storageService =
+                mock(com.takakim.investtracker.service.market.ObservationStorageService.class);
+        FxRateService serviceWithStorage = new FxRateService(fxObservationRepository, fxRateProvider, storageService);
+
+        when(fxRateProvider.fetchRate(eq("EUR"), eq("GBP"), any())).thenReturn(Optional.empty());
+        when(fxRateProvider.fetchRate(eq("EUR"), eq("USD"), any())).thenReturn(Optional.of(
+                new FxRateQuote("EUR", "USD", new BigDecimal("1.10000000"), Instant.now(), ObservationSourceType.PROVIDER, "TWELVE_DATA", false, null)
+        ));
+        when(fxRateProvider.fetchRate(eq("GBP"), eq("USD"), any())).thenReturn(Optional.of(
+                new FxRateQuote("GBP", "USD", new BigDecimal("1.30000000"), Instant.now(), ObservationSourceType.PROVIDER, "TWELVE_DATA", false, null)
+        ));
+
+        Optional<FxRateQuote> result = serviceWithStorage.refreshRate("EUR", "GBP");
+        assertTrue(result.isPresent());
+        verify(storageService).saveFxObservation(any(FxObservation.class));
+    }
+
+    @Test
+    @DisplayName("isObservationStale validates weekday 24h threshold properly")
+    void testIsObservationStaleWeekday() {
+        Instant tuesday = Instant.parse("2026-09-01T14:00:00Z");
+        Instant freshObs = tuesday.minus(Duration.ofHours(10));
+        Instant staleObs = tuesday.minus(Duration.ofHours(25));
+
+        assertFalse(FxRateService.isObservationStale(freshObs, tuesday));
+        assertTrue(FxRateService.isObservationStale(staleObs, tuesday));
     }
 }
 

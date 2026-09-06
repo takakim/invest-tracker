@@ -26,4 +26,19 @@ public class MarketDataRefreshWorker {
             log.error("Unexpected error in market data refresh worker cycle: {}", ex.getMessage(), ex);
         }
     }
+
+    @Scheduled(
+            fixedDelayString = "${app.market-data.refresh-queue.fx-check-interval-ms:900000}",
+            initialDelay = 15000
+    )
+    public void checkAndEnqueueStaleFxRates() {
+        try {
+            int enqueued = queueService.enqueueStaleActiveFxPairs(java.time.Duration.ofMinutes(15));
+            if (enqueued > 0) {
+                log.info("Enqueued {} stale active FX currency pairs into market data refresh queue", enqueued);
+            }
+        } catch (Exception ex) {
+            log.error("Unexpected error in FX rate check worker cycle: {}", ex.getMessage(), ex);
+        }
+    }
 }

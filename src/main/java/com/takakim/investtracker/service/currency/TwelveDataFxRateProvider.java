@@ -137,6 +137,17 @@ public class TwelveDataFxRateProvider implements FxRateProvider {
         return "TWELVE_DATA";
     }
 
+    @Override
+    public void invalidateCache(String baseCurrency, String quoteCurrency) {
+        if (baseCurrency != null && quoteCurrency != null) {
+            String base = baseCurrency.trim().toUpperCase();
+            String quote = quoteCurrency.trim().toUpperCase();
+            fxCache.remove(base + "/" + quote);
+            fxCache.remove(quote + "/" + base);
+            log.debug("Invalidated in-memory FX cache for '{}/{}'", base, quote);
+        }
+    }
+
     private boolean isServiceConfigured() {
         MarketDataProperties.TwelveDataProperties config = properties != null ? properties.getTwelvedata() : null;
         return config != null && config.isEnabled() && config.getApiKey() != null && !config.getApiKey().isBlank();
