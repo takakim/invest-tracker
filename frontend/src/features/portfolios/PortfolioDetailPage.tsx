@@ -56,6 +56,7 @@ import {
 } from '../accounts/useAccounts';
 import { PortfolioFormModal } from './PortfolioFormModal';
 import { AccountFormModal } from '../accounts/AccountFormModal';
+import { AccountSectionCard } from '../accounts/AccountSectionCard';
 import { PositionTable } from '../positions/PositionTable';
 import { TransactionTable } from '../transactions/TransactionTable';
 import PerformanceSummaryCard from '../performance/PerformanceSummaryCard';
@@ -101,8 +102,6 @@ export function PortfolioDetailPage() {
   const [portfolioArchiveOpen, setPortfolioArchiveOpen] = useState(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
 
-  const [accountTabMap, setAccountTabMap] = useState<Record<string, number>>({});
-
   // Collapsible section states
   const SECTION_KEYS = [
     'valuation',
@@ -146,9 +145,6 @@ export function PortfolioDetailPage() {
     setExpandedSections(allClosed);
   };
 
-  const handleTabChange = (accountId: string, newValue: number) => {
-    setAccountTabMap((prev) => ({ ...prev, [accountId]: newValue }));
-  };
   const [accountModalOpen, setAccountModalOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [archiveAccountTarget, setArchiveAccountTarget] = useState<Account | null>(null);
@@ -490,92 +486,13 @@ export function PortfolioDetailPage() {
         ) : (
           <Stack spacing={3} sx={{ mt: 1 }}>
             {accounts.map((account) => (
-              <Paper key={account.id} variant="outlined" sx={{ p: 3, borderRadius: 3 }}>
-                <Stack
-                  direction={{ xs: 'column', sm: 'row' }}
-                  sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, gap: 2, mb: 2 }}
-                >
-                  <Box>
-                    <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 0.5 }}>
-                      <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                        {account.name}
-                      </Typography>
-                      <Chip label={account.brokerName} size="small" variant="outlined" />
-                      <Chip
-                        label={account.accountCurrency}
-                        size="small"
-                        color="primary"
-                        variant="outlined"
-                      />
-                      <Chip
-                        label={account.status}
-                        size="small"
-                        color={account.status === 'ACTIVE' ? 'success' : 'default'}
-                      />
-                    </Stack>
-                    <Typography variant="caption" color="text.secondary">
-                      ID: {account.id}
-                    </Typography>
-                  </Box>
-
-                  <Stack direction="row" spacing={0.5}>
-                    <Tooltip title="Edit account">
-                      <IconButton
-                        size="small"
-                        onClick={() => handleOpenEditAccount(account)}
-                        aria-label={`edit ${account.name}`}
-                      >
-                        <EditOutlinedIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Archive account">
-                      <IconButton
-                        size="small"
-                        color="error"
-                        onClick={() => setArchiveAccountTarget(account)}
-                        aria-label={`archive ${account.name}`}
-                      >
-                        <ArchiveOutlinedIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                  </Stack>
-                </Stack>
-
-                <Divider sx={{ mb: 2 }} />
-
-                <Tabs
-                  value={accountTabMap[account.id] ?? 0}
-                  onChange={(_, val) => handleTabChange(account.id, val)}
-                  sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}
-                >
-                  <Tab
-                    label="Position Holdings"
-                    icon={<ShowChartOutlinedIcon fontSize="small" />}
-                    iconPosition="start"
-                  />
-                  <Tab
-                    label="Transaction Ledger"
-                    icon={<ReceiptLongOutlinedIcon fontSize="small" />}
-                    iconPosition="start"
-                  />
-                </Tabs>
-
-                {(accountTabMap[account.id] ?? 0) === 0 ? (
-                  <PositionTable
-                    portfolioId={portfolio.id}
-                    accountId={account.id}
-                    defaultCurrency={account.accountCurrency || portfolio.baseCurrency}
-                    isReadOnly={portfolio.status !== 'ACTIVE' || account.status !== 'ACTIVE'}
-                  />
-                ) : (
-                  <TransactionTable
-                    portfolioId={portfolio.id}
-                    accountId={account.id}
-                    defaultCurrency={account.accountCurrency || portfolio.baseCurrency}
-                    isReadOnly={portfolio.status !== 'ACTIVE' || account.status !== 'ACTIVE'}
-                  />
-                )}
-              </Paper>
+              <AccountSectionCard
+                key={account.id}
+                portfolio={portfolio}
+                account={account}
+                onEdit={handleOpenEditAccount}
+                onArchive={setArchiveAccountTarget}
+              />
             ))}
           </Stack>
         )}

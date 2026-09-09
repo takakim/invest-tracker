@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Box,
   Button,
   Chip,
   IconButton,
+  InputAdornment,
   Paper,
   Stack,
   Table,
@@ -12,6 +13,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TextField,
   Tooltip,
   Typography,
 } from '@mui/material';
@@ -19,6 +21,8 @@ import AddIcon from '@mui/icons-material/Add';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import ReceiptLongOutlinedIcon from '@mui/icons-material/ReceiptLongOutlined';
 import EditNoteOutlinedIcon from '@mui/icons-material/EditNoteOutlined';
+import DownloadIcon from '@mui/icons-material/Download';
+import SearchIcon from '@mui/icons-material/Search';
 
 import { useTransactionsList, useCreateTransaction, useCorrectTransaction } from './useTransactions';
 import { TransactionFormModal } from './TransactionFormModal';
@@ -34,13 +38,27 @@ interface TransactionTableProps {
   isReadOnly?: boolean;
 }
 
+const FILTER_TYPES: (TransactionType | 'ALL')[] = [
+  'ALL',
+  'BUY',
+  'SELL',
+  'DIVIDEND',
+  'INTEREST',
+  'DEPOSIT',
+  'WITHDRAWAL',
+  'FEE',
+];
+
 export function TransactionTable({
   portfolioId,
   accountId,
   defaultCurrency = 'GBP',
   isReadOnly = false,
 }: TransactionTableProps) {
-  const [selectedTypeFilter, setSelectedTypeFilter] = useState<TransactionType | undefined>(undefined);
+  const [selectedTypeFilter, setSelectedTypeFilter] = useState<TransactionType | 'ALL'>('ALL');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
 
@@ -49,9 +67,90 @@ export function TransactionTable({
     isLoading,
     error,
     refetch,
-  } = useTransactionsList(portfolioId, accountId, selectedTypeFilter);
+  } = useTransactionsList(portfolioId, accountId);
 
   const createMutation = useCreateTransaction(portfolioId, accountId);
+
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter((tx) => {
+      if (selectedTypeFilter !== 'ALL' && tx.type !== selectedTypeFilter) {
+        return false;
+      }
+      if (startDate) {
+        const txDate = tx.tradeDate.slice(0, 10);
+        if (txDate < startDate) return false;
+      }
+      if (endDate) {
+        const txDate = tx.tradeDate.slice(0, 10);
+        if (txDate > endDate) return false;
+      }
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const matchesInstrument = tx.instrumentName?.toLowerCase().includes(q);
+        const matchesTicker = tx.instrumentTicker?.toLowerCase().includes(q);
+        const matchesNotes = tx.notes?.toLowerCase().includes(q);
+        const matchesType = tx.type.toLowerCase().includes(q);
+        if (!matchesInstrument && !matchesTicker && !matchesNotes && !matchesType) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [transactions, selectedTypeFilter, startDate, endDate, searchQuery]);
+
+  const handleExportCsv = () => {
+    if (filteredTransactions.length === 0) return;
+    const headers = [
+      'Date',
+      'Type',
+      'Instrument',
+      'Ticker',
+      'Quantity',
+      'Price',
+      'Gross Amount',
+      'Fee Amount',
+      'Tax Amount',
+      'Net Amount',
+      'Currency',
+      'Status',
+      'Notes',
+    ];
+    const rows = filteredTransactions.map((tx) => [
+      `"${tx.tradeDate}"`,
+      `"${tx.type}"`,
+      `"${(tx.instrumentName || '').replace(/"/g, '""')}"`,
+      `"${(tx.instrumentTicker || '').replace(/"/g, '""')}"`,
+      tx.quantity != null ? tx.quantity : '',
+      tx.price != null ? tx.price : '',
+      tx.grossAmount != null ? tx.grossAmount : '',
+      tx.feeAmount != null ? tx.feeAmount : '',
+      tx.taxAmount != null ? tx.taxAmount : '',
+      tx.netAmount != null ? tx.netAmount : '',
+      `"${tx.currency}"`,
+      `"${tx.status}"`,
+      `"${(tx.notes || '').replace(/"/g, '""')}"`,
+    ]);
+    const csvContent =
+      'data:text/csv;charset=utf-8,' +
+      [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `transactions-account-${accountId}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleResetFilters = () => {
+    setSelectedTypeFilter('ALL');
+    setSearchQuery('');
+    setStartDate('');
+    setEndDate('');
+  };
+
+  const hasActiveFilters =
+    selectedTypeFilter !== 'ALL' || Boolean(searchQuery.trim()) || Boolean(startDate) || Boolean(endDate);
 
   const handleFormSubmit = async (formData: TransactionFormData) => {
     const payload: TransactionCreateInput = {
@@ -94,8 +193,8 @@ export function TransactionTable({
   return (
     <Box sx={{ mt: 3 }}>
       <Stack
-        direction={{ xs: 'column', sm: 'row' }}
-        sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, gap: 2, mb: 2 }}
+        direction={{ xs: 'column', md: 'row' }}
+        sx={{ justifyContent: 'space-between', alignItems: { md: 'center' }, gap: 2, mb: 2 }}
       >
         <Box>
           <Typography variant="h6" sx={{ fontWeight: 600 }}>
@@ -105,27 +204,112 @@ export function TransactionTable({
             Immutable log of trade executions, cash movements, dividends, and fees.
           </Typography>
         </Box>
-        {!isReadOnly && (
-          <Stack direction="row" spacing={1}>
-            <Button
-              variant="outlined"
-              size="small"
-              startIcon={<UploadFileIcon />}
-              onClick={() => setImportModalOpen(true)}
-            >
-              Import CSV
-            </Button>
-            <Button
-              variant="contained"
-              size="small"
-              startIcon={<AddIcon />}
-              onClick={() => setFormOpen(true)}
-            >
-              Record Transaction
-            </Button>
-          </Stack>
-        )}
+        <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<DownloadIcon />}
+            onClick={handleExportCsv}
+            disabled={filteredTransactions.length === 0}
+          >
+            Export CSV
+          </Button>
+          {!isReadOnly && (
+            <>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<UploadFileIcon />}
+                onClick={() => setImportModalOpen(true)}
+              >
+                Import CSV
+              </Button>
+              <Button
+                variant="contained"
+                size="small"
+                startIcon={<AddIcon />}
+                onClick={() => setFormOpen(true)}
+              >
+                Record Transaction
+              </Button>
+            </>
+          )}
+        </Stack>
       </Stack>
+
+      {/* Filter Controls Bar */}
+      <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2 }}>
+        <Stack spacing={1.5}>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ alignItems: { md: 'center' } }}>
+            <TextField
+              placeholder="Search by instrument name, ticker, notes, or type..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              size="small"
+              sx={{ flexGrow: 1 }}
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon color="action" fontSize="small" />
+                    </InputAdornment>
+                  ),
+                },
+              }}
+            />
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+              <TextField
+                label="From Date"
+                type="date"
+                size="small"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                slotProps={{ inputLabel: { shrink: true } }}
+                sx={{ width: { xs: '50%', sm: 160 } }}
+              />
+              <TextField
+                label="To Date"
+                type="date"
+                size="small"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                slotProps={{ inputLabel: { shrink: true } }}
+                sx={{ width: { xs: '50%', sm: 160 } }}
+              />
+              {hasActiveFilters && (
+                <Button size="small" onClick={handleResetFilters} color="inherit">
+                  Reset
+                </Button>
+              )}
+            </Stack>
+          </Stack>
+
+          {/* Type Filter Chips */}
+          <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap', gap: 0.5, alignItems: 'center' }}>
+            <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5, fontWeight: 600 }}>
+              Type:
+            </Typography>
+            {FILTER_TYPES.map((t) => {
+              const isSelected = selectedTypeFilter === t;
+              return (
+                <Chip
+                  key={t}
+                  label={t}
+                  size="small"
+                  clickable
+                  variant={isSelected ? 'filled' : 'outlined'}
+                  color={isSelected ? (t === 'ALL' ? 'primary' : (getTypeChipColor(t as TransactionType) as any)) : 'default'}
+                  onClick={() => setSelectedTypeFilter(t)}
+                  sx={{ height: 24, fontSize: '0.75rem' }}
+                />
+              );
+            })}
+            <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto', pl: 1 }}>
+              Showing {filteredTransactions.length} of {transactions.length}
+            </Typography>
+          </Stack>
+        </Stack>
+      </Paper>
 
       <ErrorAlert error={error} onClose={() => refetch()} />
 
@@ -137,6 +321,14 @@ export function TransactionTable({
           description="Record buys, sells, dividends, or deposits to populate your ledger."
           actionLabel={!isReadOnly ? 'Record Transaction' : undefined}
           onAction={() => setFormOpen(true)}
+          icon={<ReceiptLongOutlinedIcon sx={{ fontSize: 48, opacity: 0.7 }} />}
+        />
+      ) : filteredTransactions.length === 0 ? (
+        <EmptyState
+          title="No Matching Transactions"
+          description="No transactions matched your search or date criteria."
+          actionLabel="Reset Filters"
+          onAction={handleResetFilters}
           icon={<ReceiptLongOutlinedIcon sx={{ fontSize: 48, opacity: 0.7 }} />}
         />
       ) : (
@@ -155,7 +347,7 @@ export function TransactionTable({
               </TableRow>
             </TableHead>
             <TableBody>
-              {transactions.map((tx) => (
+              {filteredTransactions.map((tx) => (
                 <TableRow
                   key={tx.id}
                   hover
@@ -183,7 +375,7 @@ export function TransactionTable({
                       </Stack>
                     ) : (
                       <Typography variant="body2" color="text.secondary">
-                        Cash Flow
+                        {tx.notes || 'Cash Flow'}
                       </Typography>
                     )}
                   </TableCell>
