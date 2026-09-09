@@ -284,4 +284,59 @@ describe('DividendDetailPage', () => {
     // Should show top yielding insight (VUSA has highest yield)
     expect(screen.getByText('Top Yielding Holding')).toBeInTheDocument();
   });
+
+  it('holdings filter toggle defaults to dividend-paying only and reveals all when toggled', async () => {
+    // Add a holding with 0 all-time received (non-dividend payer)
+    const analyticsWithNonPayer = {
+      ...mockDividendAnalytics,
+      holdings: [
+        ...mockDividendAnalytics.holdings,
+        {
+          instrumentId: 'inst-no-div',
+          instrumentName: 'No Dividend Stock',
+          ticker: 'NODIV',
+          isin: null,
+          assetClass: 'STOCK' as const,
+          currentShares: 50,
+          totalReceivedAllTime: 0,
+          totalReceivedYtd: 0,
+          totalReceivedTtm: 0,
+          trailingTwelveMonthsDps: 0,
+          projectedAnnualIncome: 0,
+          currentYieldPercentage: 0,
+          yieldOnCostPercentage: 0,
+          currency: 'GBP',
+        },
+      ],
+    };
+    vi.spyOn(portfolioApi, 'get').mockResolvedValue(mockPortfolio);
+    vi.spyOn(analyticsApi, 'getDividendAnalytics').mockResolvedValue(analyticsWithNonPayer);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { container } = render(
+      <QueryClientProvider client={qc}>
+        <ThemeProvider theme={theme}>
+          <MemoryRouter initialEntries={['/portfolios/port-123/dividends']}>
+            <Routes>
+              <Route path="/portfolios/:id/dividends" element={<DividendDetailPage />} />
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </QueryClientProvider>,
+    );
+
+    // By default NODIV should be hidden (no dividends paid)
+    await waitFor(() => {
+      expect(screen.getByText('Holdings Income Breakdown')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('NODIV')).toBeNull();
+    expect(screen.getByText('Dividend-paying only')).toBeInTheDocument();
+
+    // Toggle switch on → all holdings shown
+    const toggle = container.querySelector('#switch-show-all-holdings') as HTMLInputElement;
+    fireEvent.click(toggle);
+    await waitFor(() => {
+      expect(screen.getByText('NODIV')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Showing all holdings')).toBeInTheDocument();
+  });
 });
