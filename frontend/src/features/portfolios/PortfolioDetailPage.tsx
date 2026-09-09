@@ -62,6 +62,7 @@ import PerformanceSummaryCard from '../performance/PerformanceSummaryCard';
 import { ValuationMetricsCard } from '../analytics/ValuationMetricsCard';
 import { AssetAllocationCard } from '../analytics/AssetAllocationCard';
 import { DividendAnalyticsCard } from '../analytics/DividendAnalyticsCard';
+import { DividendSummaryCard } from '../analytics/DividendSummaryCard';
 import { PortfolioHistoryCard } from '../analytics/PortfolioHistoryCard';
 import { ExportReportModal } from '../analytics/ExportReportModal';
 import { TargetAllocationCard, RebalancingCalculatorCard } from '../rebalancing';
@@ -428,7 +429,7 @@ export function PortfolioDetailPage() {
         expanded={expandedSections.dividends}
         onToggle={(expanded) => toggleSection('dividends', expanded)}
       >
-        <DividendAnalyticsCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
+        <DividendSummaryCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
       </CollapsibleSection>
 
       {/* Target Asset Allocation Strategy */}
