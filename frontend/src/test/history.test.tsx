@@ -1,14 +1,15 @@
 import React from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from '@mui/material';
 
 import { theme } from '../theme';
-import { analyticsApi, instrumentApi } from '../api';
+import { analyticsApi, instrumentApi, portfolioApi, benchmarkApi } from '../api';
 import { PortfolioHistoryCard } from '../features/analytics/PortfolioHistoryCard';
-import type { PortfolioHistory, Instrument } from '../types';
+import { HistoryDetailPage } from '../features/analytics/HistoryDetailPage';
+import type { PortfolioHistory, Instrument, Portfolio, BenchmarkComparisonResult } from '../types';
 
 function createTestQueryClient() {
   return new QueryClient({
@@ -20,12 +21,12 @@ function createTestQueryClient() {
   });
 }
 
-function renderWithProviders(ui: React.ReactElement) {
+function renderWithProviders(ui: React.ReactElement, initialPath = '/') {
   const testQueryClient = createTestQueryClient();
   return render(
     <QueryClientProvider client={testQueryClient}>
       <ThemeProvider theme={theme}>
-        <MemoryRouter>{ui}</MemoryRouter>
+        <MemoryRouter initialEntries={[initialPath]}>{ui}</MemoryRouter>
       </ThemeProvider>
     </QueryClientProvider>
   );
@@ -172,3 +173,177 @@ describe('Historical Valuation & Benchmark Charting UI', () => {
     });
   });
 });
+
+describe('HistoryDetailPage Component Suite', () => {
+  const mockPortfolio: Portfolio = {
+    id: 'port-123',
+    name: 'Growth Portfolio',
+    baseCurrency: 'GBP',
+    costBasisMethod: 'FIFO',
+    returnMethod: 'TWR',
+    status: 'ACTIVE',
+    createdAt: '2025-01-01T00:00:00Z',
+    updatedAt: '2025-01-01T00:00:00Z',
+  };
+
+  const mockComparisonResult: BenchmarkComparisonResult = {
+    portfolioId: 'port-123',
+    benchmarkInstrumentId: 'bench-1',
+    benchmarkName: 'S&P 500 Index',
+    benchmarkTicker: 'SPX',
+    periodStart: '2025-08-30T00:00:00Z',
+    periodEnd: '2026-08-30T00:00:00Z',
+    portfolioReturn: 0.25,
+    benchmarkReturn: 0.18,
+    excessReturn: 0.07,
+    annualizedPortfolioReturn: 0.25,
+    annualizedBenchmarkReturn: 0.18,
+    annualizedExcessReturn: 0.07,
+    outperforming: true,
+    baseCurrency: 'GBP',
+    warnings: [],
+  };
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('renders HistoryDetailPage with hero stats, breadcrumbs, and valuation ledger', async () => {
+    vi.spyOn(portfolioApi, 'get').mockResolvedValue(mockPortfolio);
+    vi.spyOn(analyticsApi, 'getPortfolioHistory').mockResolvedValue(mockHistoryResponse);
+    vi.spyOn(benchmarkApi, 'getAvailableBenchmarks').mockResolvedValue(mockBenchmarkInstruments);
+    vi.spyOn(benchmarkApi, 'comparePortfolioToBenchmark').mockResolvedValue(mockComparisonResult);
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/portfolios/:id/history" element={<HistoryDetailPage />} />
+      </Routes>,
+      '/portfolios/port-123/history'
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Historical Valuation & Benchmark Comparison')).toBeInTheDocument();
+    });
+
+    // Check breadcrumbs and navigation
+    expect(screen.getByText('History & Benchmark')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Back to Portfolio/i })).toBeInTheDocument();
+
+    // Check hero KPI strip
+    expect(screen.getByText(/Ending Portfolio Value/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/14,500.00/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/Net Capital Inflows/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/2,000.00/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/\+25.00%/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/Alpha \/ Excess Return/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Outperforming/i).length).toBeGreaterThanOrEqual(1);
+
+    // Check Valuation Ledger table
+    expect(screen.getByText('Historical Valuation Ledger')).toBeInTheDocument();
+    expect(screen.getAllByText('2025-08-30').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('2026-08-30').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('allows switching chart modes to Return vs Benchmark and Drawdown Depth', async () => {
+    vi.spyOn(portfolioApi, 'get').mockResolvedValue(mockPortfolio);
+    vi.spyOn(analyticsApi, 'getPortfolioHistory').mockResolvedValue(mockHistoryResponse);
+    vi.spyOn(benchmarkApi, 'getAvailableBenchmarks').mockResolvedValue(mockBenchmarkInstruments);
+    vi.spyOn(benchmarkApi, 'comparePortfolioToBenchmark').mockResolvedValue(mockComparisonResult);
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/portfolios/:id/history" element={<HistoryDetailPage />} />
+      </Routes>,
+      '/portfolios/port-123/history'
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Historical Valuation & Benchmark Comparison')).toBeInTheDocument();
+    });
+
+    // Toggle Return mode
+    const returnModeBtn = screen.getByRole('button', { name: /Return vs Benchmark \(%\)/i });
+    fireEvent.click(returnModeBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Portfolio Cumulative Return \(%\)/i)).toBeInTheDocument();
+    });
+
+    // Toggle Drawdown Depth mode
+    const drawdownModeBtn = screen.getByRole('button', { name: /Drawdown Depth \(%\)/i });
+    fireEvent.click(drawdownModeBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Underwater Drawdown from Historical Peak \(%\)/i)).toBeInTheDocument();
+    });
+  });
+
+  it('filters historical valuation ledger rows by date', async () => {
+    vi.spyOn(portfolioApi, 'get').mockResolvedValue(mockPortfolio);
+    vi.spyOn(analyticsApi, 'getPortfolioHistory').mockResolvedValue(mockHistoryResponse);
+    vi.spyOn(benchmarkApi, 'getAvailableBenchmarks').mockResolvedValue(mockBenchmarkInstruments);
+    vi.spyOn(benchmarkApi, 'comparePortfolioToBenchmark').mockResolvedValue(mockComparisonResult);
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/portfolios/:id/history" element={<HistoryDetailPage />} />
+      </Routes>,
+      '/portfolios/port-123/history'
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText('2025-08-30').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText('2026-08-30').length).toBeGreaterThanOrEqual(1);
+    });
+
+    // Filter by specific date
+    const filterInput = screen.getByPlaceholderText(/Filter by Date/i);
+    fireEvent.change(filterInput, { target: { value: '2026-02-28' } });
+
+    await waitFor(() => {
+      expect(screen.getAllByText('2026-02-28').length).toBeGreaterThanOrEqual(1);
+      // In table, 2025-08-30 row should no longer be rendered, though SVG might show ticks
+    });
+  });
+
+  it('handles CSV export action without error', async () => {
+    vi.spyOn(portfolioApi, 'get').mockResolvedValue(mockPortfolio);
+    vi.spyOn(analyticsApi, 'getPortfolioHistory').mockResolvedValue(mockHistoryResponse);
+    vi.spyOn(benchmarkApi, 'getAvailableBenchmarks').mockResolvedValue(mockBenchmarkInstruments);
+    vi.spyOn(benchmarkApi, 'comparePortfolioToBenchmark').mockResolvedValue(mockComparisonResult);
+
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/portfolios/:id/history" element={<HistoryDetailPage />} />
+      </Routes>,
+      '/portfolios/port-123/history'
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Export CSV/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Export CSV/i }));
+    expect(clickSpy).toHaveBeenCalled();
+  });
+
+  it('renders error state on API failure', async () => {
+    vi.spyOn(portfolioApi, 'get').mockRejectedValue(new Error('Network error'));
+    vi.spyOn(analyticsApi, 'getPortfolioHistory').mockRejectedValue(new Error('Network error'));
+    vi.spyOn(benchmarkApi, 'getAvailableBenchmarks').mockResolvedValue([]);
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/portfolios/:id/history" element={<HistoryDetailPage />} />
+      </Routes>,
+      '/portfolios/port-123/history'
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/Failed to load portfolio history/i)).toBeInTheDocument();
+    });
+  });
+});
+

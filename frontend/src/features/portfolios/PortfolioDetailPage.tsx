@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link as RouterLink, useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -41,7 +41,6 @@ import AccountBalanceWalletOutlinedIcon from '@mui/icons-material/AccountBalance
 import PieChartOutlineOutlinedIcon from '@mui/icons-material/PieChartOutlineOutlined';
 import TrendingUpOutlinedIcon from '@mui/icons-material/TrendingUpOutlined';
 import QueryStatsOutlinedIcon from '@mui/icons-material/QueryStatsOutlined';
-import CompareArrowsOutlinedIcon from '@mui/icons-material/CompareArrowsOutlined';
 import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined';
 import TuneOutlinedIcon from '@mui/icons-material/TuneOutlined';
 import BalanceOutlinedIcon from '@mui/icons-material/BalanceOutlined';
@@ -56,16 +55,19 @@ import {
 } from '../accounts/useAccounts';
 import { PortfolioFormModal } from './PortfolioFormModal';
 import { AccountFormModal } from '../accounts/AccountFormModal';
+import { AccountSectionCard } from '../accounts/AccountSectionCard';
 import { PositionTable } from '../positions/PositionTable';
 import { TransactionTable } from '../transactions/TransactionTable';
 import PerformanceSummaryCard from '../performance/PerformanceSummaryCard';
 import { ValuationMetricsCard } from '../analytics/ValuationMetricsCard';
 import { AssetAllocationCard } from '../analytics/AssetAllocationCard';
 import { DividendAnalyticsCard } from '../analytics/DividendAnalyticsCard';
+import { DividendSummaryCard } from '../analytics/DividendSummaryCard';
 import { PortfolioHistoryCard } from '../analytics/PortfolioHistoryCard';
 import { ExportReportModal } from '../analytics/ExportReportModal';
+import { usePortfolioAnalytics } from '../analytics/useAnalytics';
 import { TargetAllocationCard, RebalancingCalculatorCard } from '../rebalancing';
-import { BenchmarkComparisonCard } from '../benchmark/BenchmarkComparisonCard';
+import { StickyHeroBar } from './StickyHeroBar';
 import { CollapsibleSection, ConfirmDialog, EmptyState, ErrorAlert, LoadingState } from '../../components';
 import type { Account, AccountCreateInput, PortfolioCreateInput } from '../../types';
 
@@ -100,17 +102,13 @@ export function PortfolioDetailPage() {
   const [portfolioArchiveOpen, setPortfolioArchiveOpen] = useState(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
 
-  const [accountTabMap, setAccountTabMap] = useState<Record<string, number>>({});
-
   // Collapsible section states
   const SECTION_KEYS = [
     'valuation',
     'allocation',
     'performance',
     'history',
-    'benchmark',
     'dividends',
-    'targetAllocation',
     'rebalancing',
     'accounts',
   ] as const;
@@ -121,12 +119,51 @@ export function PortfolioDetailPage() {
     allocation: true,
     performance: true,
     history: true,
-    benchmark: true,
     dividends: true,
-    targetAllocation: true,
     rebalancing: true,
     accounts: true,
   });
+
+  const [stickyVisible, setStickyVisible] = useState(false);
+  const [activeSection, setActiveSection] = useState<SectionKey>('valuation');
+
+  const { data: analytics } = usePortfolioAnalytics(portfolioId);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setStickyVisible(window.scrollY > 280);
+
+      // Determine active section based on scroll position
+      for (const key of SECTION_KEYS) {
+        const el = document.getElementById(`section-${key}`);
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          if (rect.top <= 140 && rect.bottom > 140) {
+            setActiveSection(key);
+            break;
+          }
+        }
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const handleJumpToSection = (key: string) => {
+    const secKey = key as SectionKey;
+    setExpandedSections((prev) => ({ ...prev, [secKey]: true }));
+    setActiveSection(secKey);
+
+    setTimeout(() => {
+      const el = document.getElementById(`section-${secKey}`);
+      if (el) {
+        const yOffset = -70;
+        const y = el.getBoundingClientRect().top + window.pageYOffset + yOffset;
+        window.scrollTo({ top: y, behavior: 'smooth' });
+      }
+    }, 50);
+  };
 
   const toggleSection = (key: SectionKey, next?: boolean) => {
     setExpandedSections((prev) => ({
@@ -145,9 +182,6 @@ export function PortfolioDetailPage() {
     setExpandedSections(allClosed);
   };
 
-  const handleTabChange = (accountId: string, newValue: number) => {
-    setAccountTabMap((prev) => ({ ...prev, [accountId]: newValue }));
-  };
   const [accountModalOpen, setAccountModalOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [archiveAccountTarget, setArchiveAccountTarget] = useState<Account | null>(null);
@@ -223,6 +257,20 @@ export function PortfolioDetailPage() {
 
   return (
     <Box>
+      {/* Sticky Hero Bar */}
+      <StickyHeroBar
+        portfolioName={portfolio.name}
+        currency={portfolio.baseCurrency}
+        totalMarketValue={analytics?.totalCurrentValue}
+        unrealizedReturnPercentage={analytics?.totalUnrealizedReturnPercentage}
+        unrealizedGainLoss={analytics?.totalUnrealizedGainLoss}
+        visible={stickyVisible}
+        activeSectionKey={activeSection}
+        onJumpToSection={handleJumpToSection}
+        onAddAccount={handleOpenCreateAccount}
+        onExportReport={() => setExportModalOpen(true)}
+      />
+
       {/* Breadcrumbs */}
       <Breadcrumbs sx={{ mb: 3 }} aria-label="breadcrumb">
         <Link component={RouterLink} underline="hover" color="inherit" to="/portfolios">
@@ -367,6 +415,7 @@ export function PortfolioDetailPage() {
 
       {/* Valuation & Unrealized P&L */}
       <CollapsibleSection
+        id="section-valuation"
         title="Valuation & Unrealized P&L"
         subtitle="Current live valuations, cost basis, and unrealized returns across portfolio holdings"
         icon={<AccountBalanceWalletOutlinedIcon />}
@@ -378,6 +427,7 @@ export function PortfolioDetailPage() {
 
       {/* Asset Allocation Breakdown */}
       <CollapsibleSection
+        id="section-allocation"
         title="Asset Allocation Breakdown"
         subtitle="Diversification by asset class, geography, sector, and currency"
         icon={<PieChartOutlineOutlinedIcon />}
@@ -389,6 +439,7 @@ export function PortfolioDetailPage() {
 
       {/* Portfolio Performance */}
       <CollapsibleSection
+        id="section-performance"
         title="Portfolio Performance"
         subtitle="Time-Weighted Return (TWR) and Money-Weighted Return (MWR) with income breakdown"
         icon={<TrendingUpOutlinedIcon />}
@@ -400,6 +451,7 @@ export function PortfolioDetailPage() {
 
       {/* Historical Valuation & Wealth Growth Charting */}
       <CollapsibleSection
+        id="section-history"
         title="Historical Valuation & Wealth Growth"
         subtitle="Time series valuation, invested capital comparison, drawdowns, and benchmark tracking"
         icon={<QueryStatsOutlinedIcon />}
@@ -409,52 +461,36 @@ export function PortfolioDetailPage() {
         <PortfolioHistoryCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
       </CollapsibleSection>
 
-      {/* Benchmark Comparison & Alpha */}
-      <CollapsibleSection
-        title="Benchmark Comparison & Alpha"
-        subtitle="Excess returns, beta, tracking error, and comparative performance against index benchmarks"
-        icon={<CompareArrowsOutlinedIcon />}
-        expanded={expandedSections.benchmark}
-        onToggle={(expanded) => toggleSection('benchmark', expanded)}
-      >
-        <BenchmarkComparisonCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
-      </CollapsibleSection>
-
       {/* Dividend Analytics & Income Projection */}
       <CollapsibleSection
+        id="section-dividends"
         title="Dividend Analytics & Income Projection"
         subtitle="Yield, monthly income projections, ex-dividend schedule, and dividend safety"
         icon={<PaymentsOutlinedIcon />}
         expanded={expandedSections.dividends}
         onToggle={(expanded) => toggleSection('dividends', expanded)}
       >
-        <DividendAnalyticsCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
+        <DividendSummaryCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
       </CollapsibleSection>
 
-      {/* Target Asset Allocation Strategy */}
+      {/* Target Allocation Strategy & Rebalancing */}
       <CollapsibleSection
-        title="Target Asset Allocation Strategy"
-        subtitle="Target models, allocation bounds, and portfolio drift tracking"
+        id="section-rebalancing"
+        title="Target Allocation Strategy & Rebalancing"
+        subtitle="Strategic target models, drift tracking, and actionable rebalancing trade orders"
         icon={<TuneOutlinedIcon />}
-        expanded={expandedSections.targetAllocation}
-        onToggle={(expanded) => toggleSection('targetAllocation', expanded)}
-      >
-        <TargetAllocationCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
-      </CollapsibleSection>
-
-      {/* Portfolio Rebalancing Calculator */}
-      <CollapsibleSection
-        title="Portfolio Rebalancing Calculator"
-        subtitle="Order sizing and cash-neutral rebalancing suggestions"
-        icon={<BalanceOutlinedIcon />}
         expanded={expandedSections.rebalancing}
         onToggle={(expanded) => toggleSection('rebalancing', expanded)}
       >
-        <RebalancingCalculatorCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
+        <Stack spacing={2.5}>
+          <TargetAllocationCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
+          <RebalancingCalculatorCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
+        </Stack>
       </CollapsibleSection>
 
       {/* Accounts Section */}
       <CollapsibleSection
+        id="section-accounts"
         title="Accounts"
         headingVariant="h5"
         subtitle="Brokerage, custody, and cash accounts with tax-lot holdings and transaction ledgers"
@@ -489,92 +525,13 @@ export function PortfolioDetailPage() {
         ) : (
           <Stack spacing={3} sx={{ mt: 1 }}>
             {accounts.map((account) => (
-              <Paper key={account.id} variant="outlined" sx={{ p: 3, borderRadius: 3 }}>
-                <Stack
-                  direction={{ xs: 'column', sm: 'row' }}
-                  sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, gap: 2, mb: 2 }}
-                >
-                  <Box>
-                    <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 0.5 }}>
-                      <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                        {account.name}
-                      </Typography>
-                      <Chip label={account.brokerName} size="small" variant="outlined" />
-                      <Chip
-                        label={account.accountCurrency}
-                        size="small"
-                        color="primary"
-                        variant="outlined"
-                      />
-                      <Chip
-                        label={account.status}
-                        size="small"
-                        color={account.status === 'ACTIVE' ? 'success' : 'default'}
-                      />
-                    </Stack>
-                    <Typography variant="caption" color="text.secondary">
-                      ID: {account.id}
-                    </Typography>
-                  </Box>
-
-                  <Stack direction="row" spacing={0.5}>
-                    <Tooltip title="Edit account">
-                      <IconButton
-                        size="small"
-                        onClick={() => handleOpenEditAccount(account)}
-                        aria-label={`edit ${account.name}`}
-                      >
-                        <EditOutlinedIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Archive account">
-                      <IconButton
-                        size="small"
-                        color="error"
-                        onClick={() => setArchiveAccountTarget(account)}
-                        aria-label={`archive ${account.name}`}
-                      >
-                        <ArchiveOutlinedIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                  </Stack>
-                </Stack>
-
-                <Divider sx={{ mb: 2 }} />
-
-                <Tabs
-                  value={accountTabMap[account.id] ?? 0}
-                  onChange={(_, val) => handleTabChange(account.id, val)}
-                  sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}
-                >
-                  <Tab
-                    label="Position Holdings"
-                    icon={<ShowChartOutlinedIcon fontSize="small" />}
-                    iconPosition="start"
-                  />
-                  <Tab
-                    label="Transaction Ledger"
-                    icon={<ReceiptLongOutlinedIcon fontSize="small" />}
-                    iconPosition="start"
-                  />
-                </Tabs>
-
-                {(accountTabMap[account.id] ?? 0) === 0 ? (
-                  <PositionTable
-                    portfolioId={portfolio.id}
-                    accountId={account.id}
-                    defaultCurrency={account.accountCurrency || portfolio.baseCurrency}
-                    isReadOnly={portfolio.status !== 'ACTIVE' || account.status !== 'ACTIVE'}
-                  />
-                ) : (
-                  <TransactionTable
-                    portfolioId={portfolio.id}
-                    accountId={account.id}
-                    defaultCurrency={account.accountCurrency || portfolio.baseCurrency}
-                    isReadOnly={portfolio.status !== 'ACTIVE' || account.status !== 'ACTIVE'}
-                  />
-                )}
-              </Paper>
+              <AccountSectionCard
+                key={account.id}
+                portfolio={portfolio}
+                account={account}
+                onEdit={handleOpenEditAccount}
+                onArchive={setArchiveAccountTarget}
+              />
             ))}
           </Stack>
         )}

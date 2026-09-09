@@ -18,11 +18,13 @@ import {
   TableHead,
   TableRow,
 } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
 import DonutLargeOutlinedIcon from '@mui/icons-material/DonutLargeOutlined';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import TuneOutlinedIcon from '@mui/icons-material/TuneOutlined';
 import CheckCircleOutlineOutlinedIcon from '@mui/icons-material/CheckCircleOutlineOutlined';
 import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined';
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { useTargetAllocation, useRebalancingAnalysis } from './useRebalancing';
 import { TargetAllocationModal } from './TargetAllocationModal';
 
@@ -32,6 +34,7 @@ interface TargetAllocationCardProps {
 }
 
 export function TargetAllocationCard({ portfolioId, currency }: TargetAllocationCardProps) {
+  const navigate = useNavigate();
   const [modalOpen, setModalOpen] = useState(false);
   const { data: targetPlan, isLoading: isPlanLoading } = useTargetAllocation(portfolioId);
   const { data: rebalanceAnalysis, isLoading: isRebalanceLoading } = useRebalancingAnalysis(portfolioId);
@@ -147,6 +150,14 @@ export function TargetAllocationCard({ portfolioId, currency }: TargetAllocation
                   onClick={() => setModalOpen(true)}
                 >
                   Edit Targets
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  endIcon={<ArrowForwardIcon fontSize="small" />}
+                  onClick={() => navigate(`/portfolios/${portfolioId}/rebalancing`)}
+                >
+                  Rebalancing Detail
                 </Button>
               </Stack>
             </Stack>
