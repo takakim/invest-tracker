@@ -4,8 +4,6 @@ import {
   Box,
   Breadcrumbs,
   Button,
-  Card,
-  CardContent,
   Chip,
   Divider,
   Grid,
@@ -14,6 +12,7 @@ import {
   Skeleton,
   Slider,
   Stack,
+  Switch,
   Table,
   TableBody,
   TableCell,
@@ -26,6 +25,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
+
 import PaidOutlinedIcon from '@mui/icons-material/PaidOutlined';
 import PercentOutlinedIcon from '@mui/icons-material/PercentOutlined';
 import TrendingUpOutlinedIcon from '@mui/icons-material/TrendingUpOutlined';
@@ -66,22 +66,43 @@ function computeProjection(
 ): ProjectionYear[] {
   const dgr = dgrPct / 100;
   const rp = reinvestPct / 100;
-  let portfolioValueDRIP = currentPortfolioValue;
+
+  // Derive the base dividend yield from current portfolio state.
+  // When reinvestment % > 0 the reinvested dividends grow the portfolio value,
+  // which then generates additional yield — compounding income over time.
+  // DGR is applied to the yield rate each year (dividend growth outpaces price).
+  const baseYield = currentPortfolioValue > 0 ? projectedAnnualIncome / currentPortfolioValue : 0;
+
+  let portfolioValueDRIP = currentPortfolioValue > 0 ? currentPortfolioValue : 1;
+  let currentYield = baseYield;
   let cumulativeDRIP = 0;
   let cumulativeCash = 0;
-  let annualIncome = projectedAnnualIncome;
+
+  // Fallback: if no portfolio value can be estimated, grow income by DGR alone
+  // (reinvestment has no compounding effect in this case)
+  const useFallback = currentPortfolioValue <= 0;
+  let fallbackIncome = projectedAnnualIncome;
 
   const rows: ProjectionYear[] = [];
   for (let y = 1; y <= years; y++) {
-    if (y > 1) {
-      annualIncome = annualIncome * (1 + dgr);
+    let annualIncome: number;
+
+    if (useFallback) {
+      // Simple DGR-only model — reinvest % has no compounding effect
+      if (y > 1) fallbackIncome = fallbackIncome * (1 + dgr);
+      annualIncome = fallbackIncome;
+    } else {
+      // Full DRIP model: income = yield_rate × portfolio_value
+      // DGR grows the yield rate; reinvestment grows the portfolio value.
+      if (y > 1) currentYield = currentYield * (1 + dgr);
+      annualIncome = portfolioValueDRIP * currentYield;
     }
-    // DRIP: reinvested dividends grow portfolio value
+
     const reinvested = annualIncome * rp;
     const cashTaken = annualIncome * (1 - rp);
     portfolioValueDRIP = portfolioValueDRIP + reinvested;
-    cumulativeDRIP += annualIncome;     // total dividends generated
-    cumulativeCash += cashTaken;       // cash kept (not reinvested)
+    cumulativeDRIP += annualIncome;
+    cumulativeCash += cashTaken;
 
     rows.push({
       year: y,
@@ -437,6 +458,7 @@ export function DividendDetailPage() {
   const [historyTab, setHistoryTab] = useState<'yearly' | 'monthly'>('yearly');
   const [sortField, setSortField] = useState<keyof HoldingDividendMetric>('projectedAnnualIncome');
   const [sortAsc, setSortAsc] = useState(false);
+  const [showAllHoldings, setShowAllHoldings] = useState(false);
 
   const projectedAnnual = Number(analytics?.projectedAnnualDividendIncome ?? 0);
   // Estimate current portfolio value from analytics or fallback to 0
@@ -471,13 +493,18 @@ export function DividendDetailPage() {
   }, [projectionRows, monthlyTargetNum]);
 
   const holdings = analytics?.holdings ?? [];
+  // Filter to only dividend-paying holdings unless 'show all' is toggled on
+  const filteredHoldings = useMemo(
+    () => showAllHoldings ? holdings : holdings.filter((h) => Number(h.totalReceivedAllTime ?? 0) > 0),
+    [holdings, showAllHoldings],
+  );
   const sortedHoldings = useMemo(() => {
-    return [...holdings].sort((a, b) => {
+    return [...filteredHoldings].sort((a, b) => {
       const av = Number(a[sortField] ?? 0);
       const bv = Number(b[sortField] ?? 0);
       return sortAsc ? av - bv : bv - av;
     });
-  }, [holdings, sortField, sortAsc]);
+  }, [filteredHoldings, sortField, sortAsc]);
 
   const calendar = analytics?.projectedMonthlyCalendar ?? analytics?.projectedCalendar ?? [];
   const insights = useMemo(
@@ -709,12 +736,35 @@ export function DividendDetailPage() {
 
       {/* ── Section 3: Holdings Breakdown ── */}
       <Paper variant="outlined" sx={{ p: 3, borderRadius: 2, mb: 3 }}>
-        <Stack direction="row" sx={{ alignItems: 'center', mb: 2, gap: 1 }}>
-          <AccountBalanceWalletOutlinedIcon color="primary" />
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>
-            Holdings Income Breakdown
-          </Typography>
-          <Chip label={`${holdings.length} holdings`} size="small" variant="outlined" />
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          sx={{ alignItems: { sm: 'center' }, justifyContent: 'space-between', mb: 2, gap: 1 }}
+        >
+          <Stack direction="row" sx={{ alignItems: 'center', gap: 1 }}>
+            <AccountBalanceWalletOutlinedIcon color="primary" />
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>
+              Holdings Income Breakdown
+            </Typography>
+            <Chip
+              label={`${sortedHoldings.length}${!showAllHoldings && holdings.length > sortedHoldings.length ? ` of ${holdings.length}` : ''} holdings`}
+              size="small"
+              variant="outlined"
+            />
+          </Stack>
+          <Stack direction="row" sx={{ alignItems: 'center', gap: 0.5 }}>
+            <Typography variant="caption" color={showAllHoldings ? 'text.primary' : 'text.secondary'} sx={{ fontWeight: showAllHoldings ? 600 : 400 }}>
+              {showAllHoldings ? 'Showing all holdings' : 'Dividend-paying only'}
+            </Typography>
+            <Tooltip title={showAllHoldings ? 'Show only holdings that have paid dividends' : 'Show all portfolio holdings including non-dividend ones'}>
+              <Switch
+                size="small"
+                checked={showAllHoldings}
+                onChange={(e) => setShowAllHoldings(e.target.checked)}
+                slotProps={{ input: { 'aria-label': 'toggle all holdings' } }}
+                id="switch-show-all-holdings"
+              />
+            </Tooltip>
+          </Stack>
         </Stack>
         <TableContainer>
           <Table size="small" aria-label="holdings dividend breakdown">
@@ -763,7 +813,9 @@ export function DividendDetailPage() {
               {sortedHoldings.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={8} align="center" sx={{ py: 3, color: 'text.secondary' }}>
-                    No dividend-bearing holdings recorded yet.
+                    {showAllHoldings
+                      ? 'No holdings recorded yet.'
+                      : 'No dividend-paying holdings yet. Toggle the switch above to see all holdings.'}
                   </TableCell>
                 </TableRow>
               )}
