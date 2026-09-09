@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
+  Button,
   Card,
   CardContent,
   Chip,
@@ -25,6 +27,7 @@ import TrendingDownOutlinedIcon from '@mui/icons-material/TrendingDownOutlined';
 import AccountBalanceWalletOutlinedIcon from '@mui/icons-material/AccountBalanceWalletOutlined';
 import QueryStatsOutlinedIcon from '@mui/icons-material/QueryStatsOutlined';
 import LayersOutlinedIcon from '@mui/icons-material/LayersOutlined';
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { usePortfolioHistory } from './useAnalytics';
 import { useBenchmarkList } from '../benchmark/useBenchmark';
 import type { HistoricalValuationPoint } from '../../types';
@@ -38,6 +41,7 @@ type ChartMode = 'VALUE' | 'RETURN';
 type TimePeriod = '1M' | '3M' | '6M' | 'YTD' | '1Y' | '3Y' | 'ALL';
 
 export function PortfolioHistoryCard({ portfolioId, currency }: PortfolioHistoryCardProps) {
+  const navigate = useNavigate();
   const [period, setPeriod] = useState<TimePeriod>('1Y');
   const [mode, setMode] = useState<ChartMode>('VALUE');
   const [benchmarkId, setBenchmarkId] = useState<string>('');
@@ -220,6 +224,16 @@ export function PortfolioHistoryCard({ portfolioId, currency }: PortfolioHistory
                   </Select>
                 </FormControl>
               )}
+
+              {/* Full History Page CTA */}
+              <Button
+                variant="outlined"
+                size="small"
+                endIcon={<ArrowForwardIcon fontSize="small" />}
+                onClick={() => navigate(`/portfolios/${portfolioId}/history`)}
+              >
+                Full History & Benchmark
+              </Button>
             </Stack>
           </Stack>
 

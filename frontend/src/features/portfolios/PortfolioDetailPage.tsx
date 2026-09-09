@@ -41,7 +41,6 @@ import AccountBalanceWalletOutlinedIcon from '@mui/icons-material/AccountBalance
 import PieChartOutlineOutlinedIcon from '@mui/icons-material/PieChartOutlineOutlined';
 import TrendingUpOutlinedIcon from '@mui/icons-material/TrendingUpOutlined';
 import QueryStatsOutlinedIcon from '@mui/icons-material/QueryStatsOutlined';
-import CompareArrowsOutlinedIcon from '@mui/icons-material/CompareArrowsOutlined';
 import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined';
 import TuneOutlinedIcon from '@mui/icons-material/TuneOutlined';
 import BalanceOutlinedIcon from '@mui/icons-material/BalanceOutlined';
@@ -67,7 +66,6 @@ import { DividendSummaryCard } from '../analytics/DividendSummaryCard';
 import { PortfolioHistoryCard } from '../analytics/PortfolioHistoryCard';
 import { ExportReportModal } from '../analytics/ExportReportModal';
 import { TargetAllocationCard, RebalancingCalculatorCard } from '../rebalancing';
-import { BenchmarkComparisonCard } from '../benchmark/BenchmarkComparisonCard';
 import { CollapsibleSection, ConfirmDialog, EmptyState, ErrorAlert, LoadingState } from '../../components';
 import type { Account, AccountCreateInput, PortfolioCreateInput } from '../../types';
 
@@ -108,7 +106,6 @@ export function PortfolioDetailPage() {
     'allocation',
     'performance',
     'history',
-    'benchmark',
     'dividends',
     'targetAllocation',
     'rebalancing',
@@ -121,7 +118,6 @@ export function PortfolioDetailPage() {
     allocation: true,
     performance: true,
     history: true,
-    benchmark: true,
     dividends: true,
     targetAllocation: true,
     rebalancing: true,
@@ -404,17 +400,6 @@ export function PortfolioDetailPage() {
         onToggle={(expanded) => toggleSection('history', expanded)}
       >
         <PortfolioHistoryCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
-      </CollapsibleSection>
-
-      {/* Benchmark Comparison & Alpha */}
-      <CollapsibleSection
-        title="Benchmark Comparison & Alpha"
-        subtitle="Excess returns, beta, tracking error, and comparative performance against index benchmarks"
-        icon={<CompareArrowsOutlinedIcon />}
-        expanded={expandedSections.benchmark}
-        onToggle={(expanded) => toggleSection('benchmark', expanded)}
-      >
-        <BenchmarkComparisonCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
       </CollapsibleSection>
 
       {/* Dividend Analytics & Income Projection */}
