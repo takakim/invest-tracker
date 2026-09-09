@@ -1,14 +1,19 @@
 import React from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from '@mui/material';
 
 import { theme } from '../theme';
-import { rebalancingApi, instrumentApi } from '../api';
-import { TargetAllocationCard, RebalancingCalculatorCard, TargetAllocationModal } from '../features/rebalancing';
-import type { TargetAllocationPlan, RebalanceAnalysis, Instrument } from '../types';
+import { rebalancingApi, instrumentApi, portfolioApi } from '../api';
+import {
+  TargetAllocationCard,
+  RebalancingCalculatorCard,
+  TargetAllocationModal,
+  RebalancingDetailPage,
+} from '../features/rebalancing';
+import type { TargetAllocationPlan, RebalanceAnalysis, Instrument, Portfolio } from '../types';
 
 function createTestQueryClient() {
   return new QueryClient({
@@ -20,12 +25,12 @@ function createTestQueryClient() {
   });
 }
 
-function renderWithProviders(ui: React.ReactElement) {
+function renderWithProviders(ui: React.ReactElement, initialPath = '/') {
   const testQueryClient = createTestQueryClient();
   return render(
     <QueryClientProvider client={testQueryClient}>
       <ThemeProvider theme={theme}>
-        <MemoryRouter>{ui}</MemoryRouter>
+        <MemoryRouter initialEntries={[initialPath]}>{ui}</MemoryRouter>
       </ThemeProvider>
     </QueryClientProvider>
   );
@@ -278,4 +283,171 @@ describe('Target Allocation & Rebalancing UI', () => {
       });
     });
   });
+
+  describe('RebalancingDetailPage Component Suite', () => {
+    const mockPortfolio: Portfolio = {
+      id: 'port-1',
+      name: 'Growth Portfolio',
+      baseCurrency: 'GBP',
+      costBasisMethod: 'FIFO',
+      returnMethod: 'TWR',
+      status: 'ACTIVE',
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+    };
+
+    it('renders RebalancingDetailPage with hero stats, drift table, and trade orders', async () => {
+      vi.spyOn(portfolioApi, 'get').mockResolvedValue(mockPortfolio);
+      vi.spyOn(rebalancingApi, 'getTargetAllocation').mockResolvedValue(mockPlan);
+      vi.spyOn(rebalancingApi, 'getRebalancingAnalysis').mockResolvedValue(mockAnalysis);
+
+      renderWithProviders(
+        <Routes>
+          <Route path="/portfolios/:id/rebalancing" element={<RebalancingDetailPage />} />
+        </Routes>,
+        '/portfolios/port-1/rebalancing'
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Strategic Target Allocation & Rebalancing Engine')).toBeInTheDocument();
+      });
+
+      // Breadcrumbs & Navigation
+      expect(screen.getByText('Target Allocation & Rebalancing')).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: /Back to Portfolio/i })).toBeInTheDocument();
+
+      // Hero KPIs
+      expect(screen.getByText('60/30/10 Core Strategy')).toBeInTheDocument();
+      expect(screen.getAllByText('±5%').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText('Drift Exceeded')).toBeInTheDocument();
+      expect(screen.getByText(/2 Orders/i)).toBeInTheDocument();
+
+      // Comparison table
+      expect(screen.getByText('Target Allocation Model vs Current Exposure')).toBeInTheDocument();
+      expect(screen.getAllByText('Stocks & Equities').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText('ETFs').length).toBeGreaterThanOrEqual(1);
+
+      // Orders ledger
+      expect(screen.getByText(/Actionable Rebalancing Trade Orders/i)).toBeInTheDocument();
+      expect(screen.getByText('SELL')).toBeInTheDocument();
+      expect(screen.getByText('BUY')).toBeInTheDocument();
+    });
+
+    it('renders unconfigured state when no target plan exists', async () => {
+      vi.spyOn(portfolioApi, 'get').mockResolvedValue(mockPortfolio);
+      vi.spyOn(rebalancingApi, 'getTargetAllocation').mockResolvedValue(null);
+
+      renderWithProviders(
+        <Routes>
+          <Route path="/portfolios/:id/rebalancing" element={<RebalancingDetailPage />} />
+        </Routes>,
+        '/portfolios/port-1/rebalancing'
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/No Target Allocation Configured/i)).toBeInTheDocument();
+      });
+      expect(screen.getByRole('button', { name: /Configure Strategy Targets Now/i })).toBeInTheDocument();
+    });
+
+    it('allows toggling Cash Injection simulator and inputting amount', async () => {
+      vi.spyOn(portfolioApi, 'get').mockResolvedValue(mockPortfolio);
+      vi.spyOn(rebalancingApi, 'getTargetAllocation').mockResolvedValue(mockPlan);
+      const analysisSpy = vi.spyOn(rebalancingApi, 'getRebalancingAnalysis').mockResolvedValue(mockAnalysis);
+
+      renderWithProviders(
+        <Routes>
+          <Route path="/portfolios/:id/rebalancing" element={<RebalancingDetailPage />} />
+        </Routes>,
+        '/portfolios/port-1/rebalancing'
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Strategic Target Allocation & Rebalancing Engine')).toBeInTheDocument();
+      });
+
+      // Switch to Cash Injection mode
+      const cashInjBtn = screen.getByRole('button', { name: /Cash Injection \(Buy-Only\)/i });
+      fireEvent.click(cashInjBtn);
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText('e.g. 1000')).toBeInTheDocument();
+      });
+
+      // Click +£1,000 chip
+      fireEvent.click(screen.getByText('+GBP 1,000'));
+
+      await waitFor(() => {
+        expect(analysisSpy).toHaveBeenCalledWith('port-1', 1000);
+      });
+    });
+
+    it('handles Copy Plan and CSV Export without errors', async () => {
+      vi.spyOn(portfolioApi, 'get').mockResolvedValue(mockPortfolio);
+      vi.spyOn(rebalancingApi, 'getTargetAllocation').mockResolvedValue(mockPlan);
+      vi.spyOn(rebalancingApi, 'getRebalancingAnalysis').mockResolvedValue(mockAnalysis);
+
+      const writeTextMock = vi.fn().mockResolvedValue(undefined);
+      Object.assign(navigator, {
+        clipboard: {
+          writeText: writeTextMock,
+        },
+      });
+
+      const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+      renderWithProviders(
+        <Routes>
+          <Route path="/portfolios/:id/rebalancing" element={<RebalancingDetailPage />} />
+        </Routes>,
+        '/portfolios/port-1/rebalancing'
+      );
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /Copy Plan/i })).toBeInTheDocument();
+      });
+
+      // Click Copy Plan
+      fireEvent.click(screen.getByRole('button', { name: /Copy Plan/i }));
+      expect(writeTextMock).toHaveBeenCalled();
+      expect(await screen.findByText('Rebalancing plan copied to clipboard!')).toBeInTheDocument();
+
+      // Click Export CSV
+      fireEvent.click(screen.getByRole('button', { name: /Export CSV/i }));
+      expect(clickSpy).toHaveBeenCalled();
+    });
+
+    it('handles Delete Target Plan with confirmation dialog', async () => {
+      vi.spyOn(portfolioApi, 'get').mockResolvedValue(mockPortfolio);
+      vi.spyOn(rebalancingApi, 'getTargetAllocation').mockResolvedValue(mockPlan);
+      vi.spyOn(rebalancingApi, 'getRebalancingAnalysis').mockResolvedValue(mockAnalysis);
+      const deleteSpy = vi.spyOn(rebalancingApi, 'deleteTargetAllocation').mockResolvedValue();
+
+      renderWithProviders(
+        <Routes>
+          <Route path="/portfolios/:id/rebalancing" element={<RebalancingDetailPage />} />
+        </Routes>,
+        '/portfolios/port-1/rebalancing'
+      );
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /Delete Plan/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /Delete Plan/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText('Delete Target Allocation Plan')).toBeInTheDocument();
+      });
+
+      // Confirm deletion inside dialog
+      const confirmBtn = screen.getByRole('button', { name: 'Delete Plan' });
+      fireEvent.click(confirmBtn);
+
+      await waitFor(() => {
+        expect(deleteSpy).toHaveBeenCalledWith('port-1');
+      });
+    });
+  });
 });
+

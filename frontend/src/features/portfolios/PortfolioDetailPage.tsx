@@ -107,7 +107,6 @@ export function PortfolioDetailPage() {
     'performance',
     'history',
     'dividends',
-    'targetAllocation',
     'rebalancing',
     'accounts',
   ] as const;
@@ -119,7 +118,6 @@ export function PortfolioDetailPage() {
     performance: true,
     history: true,
     dividends: true,
-    targetAllocation: true,
     rebalancing: true,
     accounts: true,
   });
@@ -413,26 +411,18 @@ export function PortfolioDetailPage() {
         <DividendSummaryCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
       </CollapsibleSection>
 
-      {/* Target Asset Allocation Strategy */}
+      {/* Target Allocation Strategy & Rebalancing */}
       <CollapsibleSection
-        title="Target Asset Allocation Strategy"
-        subtitle="Target models, allocation bounds, and portfolio drift tracking"
+        title="Target Allocation Strategy & Rebalancing"
+        subtitle="Strategic target models, drift tracking, and actionable rebalancing trade orders"
         icon={<TuneOutlinedIcon />}
-        expanded={expandedSections.targetAllocation}
-        onToggle={(expanded) => toggleSection('targetAllocation', expanded)}
-      >
-        <TargetAllocationCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
-      </CollapsibleSection>
-
-      {/* Portfolio Rebalancing Calculator */}
-      <CollapsibleSection
-        title="Portfolio Rebalancing Calculator"
-        subtitle="Order sizing and cash-neutral rebalancing suggestions"
-        icon={<BalanceOutlinedIcon />}
         expanded={expandedSections.rebalancing}
         onToggle={(expanded) => toggleSection('rebalancing', expanded)}
       >
-        <RebalancingCalculatorCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
+        <Stack spacing={2.5}>
+          <TargetAllocationCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
+          <RebalancingCalculatorCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
+        </Stack>
       </CollapsibleSection>
 
       {/* Accounts Section */}
