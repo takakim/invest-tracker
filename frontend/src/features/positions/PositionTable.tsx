@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Box,
   Button,
   Chip,
   IconButton,
+  InputAdornment,
   Paper,
   Stack,
   Tab,
@@ -14,6 +15,7 @@ import {
   TableHead,
   TableRow,
   Tabs,
+  TextField,
   Tooltip,
   Typography,
 } from '@mui/material';
@@ -23,6 +25,7 @@ import ArchiveOutlinedIcon from '@mui/icons-material/ArchiveOutlined';
 import ShowChartOutlinedIcon from '@mui/icons-material/ShowChartOutlined';
 import LayersOutlinedIcon from '@mui/icons-material/LayersOutlined';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import SearchIcon from '@mui/icons-material/Search';
 
 import {
   usePositionsList,
@@ -72,6 +75,7 @@ export function PositionTable({
   const [archiveTarget, setArchiveTarget] = useState<PositionPerformance | null>(null);
   const [selectedLotsPosition, setSelectedLotsPosition] = useState<Position | null>(null);
   const [selectedPerfPosition, setSelectedPerfPosition] = useState<Position | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const [order, setOrder] = useState<Order>('asc');
   const [orderBy, setOrderBy] = useState<string>('instrumentName');
 
@@ -81,7 +85,22 @@ export function PositionTable({
     setOrderBy(property);
   };
 
-  const sortedItems = sortRows(performanceItems, order, orderBy);
+  const filteredItems = useMemo(() => {
+    if (!searchQuery.trim()) return performanceItems;
+    const q = searchQuery.toLowerCase().trim();
+    return performanceItems.filter((item) => {
+      return (
+        item.instrumentName.toLowerCase().includes(q) ||
+        (item.ticker && item.ticker.toLowerCase().includes(q)) ||
+        (item.isin && item.isin.toLowerCase().includes(q)) ||
+        (item.assetClass && item.assetClass.toLowerCase().includes(q))
+      );
+    });
+  }, [performanceItems, searchQuery]);
+
+  const sortedItems = useMemo(() => {
+    return sortRows(filteredItems, order, orderBy);
+  }, [filteredItems, order, orderBy]);
 
   const handleOpenCreate = () => {
     setEditingPosition(null);
@@ -186,28 +205,28 @@ export function PositionTable({
   return (
     <Box sx={{ mt: 3 }}>
       <Stack
-        direction={{ xs: 'column', sm: 'row' }}
-        sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 2, gap: 2 }}
+        direction={{ xs: 'column', md: 'row' }}
+        sx={{ justifyContent: 'space-between', alignItems: { md: 'center' }, mb: 2, gap: 2 }}
       >
         <Box>
           <Typography variant="h6" sx={{ fontWeight: 600 }}>
             Position Holdings & Performance
           </Typography>
           <Typography variant="caption" color="text.secondary">
-            Instruments, cost basis, realized gains, and performance lifecycle in this account.
+            Instruments, live valuation, cost basis, unrealized P&L, and total return.
           </Typography>
         </Box>
-        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: { sm: 'center' } }}>
           <Tabs
             value={includeClosed ? 1 : 0}
             onChange={(_, val) => setIncludeClosed(val === 1)}
             sx={{ minHeight: 36, '& .MuiTab-root': { minHeight: 36, py: 0.5, px: 1.5, fontSize: '0.85rem' } }}
           >
             <Tab label="Active Holdings" />
-            <Tab label="All (incl. Closed / Past)" />
+            <Tab label="All (incl. Closed)" />
           </Tabs>
           {!isReadOnly && (
-            <>
+            <Stack direction="row" spacing={1}>
               <Button
                 variant="outlined"
                 size="small"
@@ -225,16 +244,35 @@ export function PositionTable({
               >
                 Add Holding
               </Button>
-            </>
+            </Stack>
           )}
         </Stack>
       </Stack>
+
+      <Box sx={{ mb: 2 }}>
+        <TextField
+          placeholder="Filter holdings by name, ticker, ISIN, asset class..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          size="small"
+          fullWidth
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon color="action" fontSize="small" />
+                </InputAdornment>
+              ),
+            },
+          }}
+        />
+      </Box>
 
       <ErrorAlert error={error} onClose={() => refetch()} />
 
       {isLoading ? (
         <LoadingState variant="table" count={2} />
-      ) : sortedItems.length === 0 ? (
+      ) : performanceItems.length === 0 ? (
         <EmptyState
           title={includeClosed ? "No Position History in this Account" : "No Active Holdings in this Account"}
           description={includeClosed ? "Import or record transactions to track portfolio holdings and historical performance." : "Add instrument holdings or switch to view past closed positions."}
@@ -242,18 +280,28 @@ export function PositionTable({
           onAction={handleOpenCreate}
           icon={<ShowChartOutlinedIcon sx={{ fontSize: 48, opacity: 0.7 }} />}
         />
+      ) : sortedItems.length === 0 ? (
+        <EmptyState
+          title="No Matching Holdings"
+          description={`No positions matched your search query "${searchQuery}".`}
+          actionLabel="Clear Filter"
+          onAction={() => setSearchQuery('')}
+          icon={<SearchIcon sx={{ fontSize: 48, opacity: 0.7 }} />}
+        />
       ) : (
         <TableContainer component={Paper} sx={{ borderRadius: 2 }}>
           <Table aria-label="positions table" size="small">
             <SortableTableHead<PositionPerformance>
               headCells={[
                 { id: 'instrumentName', label: 'Instrument', sortable: true },
-                { id: 'assetClass', label: 'Asset Class', sortable: true },
                 { id: 'ticker', label: 'Ticker / ISIN', sortable: true },
                 { id: 'status', label: 'Status', sortable: true },
                 { id: 'currentQuantity', label: 'Shares', align: 'right', sortable: true },
+                { id: 'currentPrice', label: 'Live Price', align: 'right', sortable: true },
+                { id: 'currentMarketValue', label: 'Market Value', align: 'right', sortable: true },
                 { id: 'currentCostBasis', label: 'Cost Basis', align: 'right', sortable: true },
-                { id: 'netTotalReturnAmount', label: 'Net Total Return', align: 'right', sortable: true },
+                { id: 'unrealizedGainLoss', label: 'Unrealized P&L', align: 'right', sortable: true },
+                { id: 'netTotalReturnAmount', label: 'Total Return', align: 'right', sortable: true },
                 { id: 'actions', label: 'Actions', align: 'right', sortable: false },
               ]}
               order={order}
@@ -266,11 +314,19 @@ export function PositionTable({
                 const returnColor = isProfitable ? 'success.main' : 'error.main';
                 const isItemClosed = item.status === 'CLOSED' || item.currentQuantity === 0;
 
+                const unrealized = item.unrealizedGainLoss ?? 0;
+                const unrealizedPct = item.currentCostBasis > 0 ? (unrealized / item.currentCostBasis) * 100 : 0;
+                const unrealizedColor = unrealized >= 0 ? 'success.main' : 'error.main';
+
                 return (
                   <TableRow key={item.positionId || `${item.instrumentId}-${idx}`} hover>
-                    <TableCell sx={{ fontWeight: 600 }}>{item.instrumentName}</TableCell>
-                    <TableCell>
-                      <Chip label={item.assetClass} size="small" variant="outlined" />
+                    <TableCell sx={{ fontWeight: 600, minWidth: 160 }}>
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {item.instrumentName}
+                        </Typography>
+                        <Chip label={item.assetClass} size="small" variant="outlined" sx={{ height: 18, fontSize: '0.65rem', mt: 0.25 }} />
+                      </Box>
                     </TableCell>
                     <TableCell>
                       {item.ticker ? (
@@ -303,6 +359,28 @@ export function PositionTable({
                       })}
                     </TableCell>
                     <TableCell align="right">
+                      {item.currentPrice != null && item.currentPrice > 0 ? (
+                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                          {item.currency} {item.currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                        </Typography>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">
+                          —
+                        </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell align="right">
+                      {item.currentMarketValue != null && item.currentMarketValue > 0 ? (
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {item.currency} {item.currentMarketValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </Typography>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">
+                          —
+                        </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell align="right">
                       {item.currentCostBasis != null && item.currentCostBasis > 0 ? (
                         `${item.currency} ${item.currentCostBasis.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                       ) : (
@@ -312,10 +390,22 @@ export function PositionTable({
                       )}
                     </TableCell>
                     <TableCell align="right">
-                      <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end', alignItems: 'center' }}>
+                      <Stack direction="column" sx={{ alignItems: 'flex-end' }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600, color: unrealizedColor }}>
+                          {unrealized >= 0 ? '+' : ''}
+                          {item.currency} {unrealized.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </Typography>
+                        <Typography variant="caption" sx={{ fontWeight: 500, color: unrealizedColor }}>
+                          ({unrealizedPct >= 0 ? '+' : ''}
+                          {unrealizedPct.toFixed(2)}%)
+                        </Typography>
+                      </Stack>
+                    </TableCell>
+                    <TableCell align="right">
+                      <Stack direction="column" sx={{ alignItems: 'flex-end' }}>
                         <Typography variant="body2" sx={{ fontWeight: 700, color: returnColor }}>
                           {item.netTotalReturnAmount >= 0 ? '+' : ''}
-                          {item.netTotalReturnAmount.toFixed(2)} {item.currency}
+                          {item.currency} {item.netTotalReturnAmount.toFixed(2)}
                         </Typography>
                         <Typography variant="caption" sx={{ fontWeight: 600, color: returnColor }}>
                           ({item.totalReturnPercentage >= 0 ? '+' : ''}
