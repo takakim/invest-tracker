@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
+  Button,
   Card,
   CardContent,
   Chip,
@@ -14,13 +16,18 @@ import {
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import TrendingDownIcon from '@mui/icons-material/TrendingDown';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { usePerformance } from './usePerformance';
+import { usePortfolioHistory } from '../analytics/useAnalytics';
 import type { PerformanceResult } from '../../types';
 
 interface Props {
   portfolioId: string;
   currency?: string;
 }
+
+const PERIODS = ['1M', '3M', '6M', 'YTD', '1Y', 'ALL'] as const;
+type Period = (typeof PERIODS)[number];
 
 function formatPct(value: number | null | undefined): string {
   if (value == null) return '—';
@@ -72,16 +79,20 @@ function Metric({ label, value, positive, tooltip }: MetricProps) {
 
 interface ReturnBadgeProps {
   result: PerformanceResult;
+  selectedPeriod: Period;
+  periodReturnPct: number | null;
+  periodGainLoss?: number | null;
 }
 
-function ReturnBadge({ result }: ReturnBadgeProps) {
-  const returnValue =
+function ReturnBadge({ result, selectedPeriod, periodReturnPct, periodGainLoss }: ReturnBadgeProps) {
+  const allTimeReturn =
     result.returnMethod === 'TWR' ? result.twrReturn : result.mwrReturn;
+  const displayValue = selectedPeriod === 'ALL' ? allTimeReturn : periodReturnPct;
   const annualized = result.returnMethod === 'TWR' ? result.twrAnnualized : null;
-  const isPositive = returnValue != null && returnValue >= 0;
+  const isPositive = displayValue != null && displayValue >= 0;
 
   return (
-    <Stack sx={{ alignItems: 'flex-start' }} spacing={1}>
+    <Stack sx={{ alignItems: { xs: 'flex-start', sm: 'flex-end' } }} spacing={1}>
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
         <Box
           sx={{
@@ -99,34 +110,50 @@ function ReturnBadge({ result }: ReturnBadgeProps) {
             <TrendingDownIcon sx={{ color: 'white', fontSize: 28 }} />
           )}
         </Box>
-        <Stack>
+        <Stack sx={{ alignItems: { sm: 'flex-end' } }}>
           <Typography variant="h4" sx={{ fontWeight: 800 }} color={isPositive ? 'success.main' : 'error.main'}>
-            {formatPct(returnValue)}
+            {formatPct(displayValue)}
           </Typography>
-          {annualized != null && (
-            <Typography variant="caption" color="text.secondary">
-              {formatPct(annualized)} annualized
-            </Typography>
-          )}
+          <Typography variant="caption" color="text.secondary">
+            {selectedPeriod === 'ALL'
+              ? `${annualized != null ? `${formatPct(annualized)} annualized · ` : ''}All Time`
+              : `${selectedPeriod} Period Return`}
+            {periodGainLoss != null && ` (${periodGainLoss >= 0 ? '+' : ''}${formatMoney(periodGainLoss, result.currency)})`}
+          </Typography>
         </Stack>
       </Stack>
-      <Chip
-        label={result.returnMethod}
-        size="small"
-        variant="outlined"
-        color="primary"
-        sx={{ fontWeight: 600, fontSize: 11 }}
-      />
+      <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center' }}>
+        <Chip
+          label={result.returnMethod}
+          size="small"
+          variant="outlined"
+          color="primary"
+          sx={{ fontWeight: 600, fontSize: 11, height: 20 }}
+        />
+        <Chip
+          label={selectedPeriod}
+          size="small"
+          color="primary"
+          sx={{ fontWeight: 600, fontSize: 11, height: 20 }}
+        />
+      </Stack>
     </Stack>
   );
 }
 
 /**
- * PerformanceSummaryCard — displays TWR/MWR return with income and cost breakdowns.
- * Renders on the portfolio detail page.
+ * PerformanceSummaryCard — displays TWR/MWR return with period switching,
+ * income and cost breakdowns, and a CTA to the full Performance Detail page.
  */
 export default function PerformanceSummaryCard({ portfolioId, currency }: Props) {
+  const navigate = useNavigate();
+  const [selectedPeriod, setSelectedPeriod] = useState<Period>('ALL');
+
   const { data, isLoading, isError, error } = usePerformance(portfolioId);
+  const { data: historyData } = usePortfolioHistory(
+    portfolioId,
+    selectedPeriod !== 'ALL' ? { period: selectedPeriod } : undefined,
+  );
 
   if (isLoading) {
     return (
@@ -158,6 +185,18 @@ export default function PerformanceSummaryCard({ portfolioId, currency }: Props)
 
   const curr = currency ?? data.currency;
 
+  const periodReturnPct =
+    selectedPeriod === 'ALL'
+      ? data.returnMethod === 'TWR'
+        ? data.twrReturn
+        : data.mwrReturn
+      : historyData?.summary?.portfolioReturnPercentage != null
+        ? historyData.summary.portfolioReturnPercentage / 100
+        : null;
+
+  const periodGainLoss =
+    selectedPeriod !== 'ALL' ? historyData?.summary?.totalGainLoss : null;
+
   return (
     <Card
       variant="outlined"
@@ -168,19 +207,55 @@ export default function PerformanceSummaryCard({ portfolioId, currency }: Props)
     >
       <CardContent sx={{ p: 3 }}>
         <Stack spacing={3}>
-          {/* Header */}
-          <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <Stack spacing={0.5}>
+          {/* Header & Controls */}
+          <Stack
+            direction={{ xs: 'column', md: 'row' }}
+            sx={{ justifyContent: 'space-between', alignItems: { md: 'center' }, gap: 2 }}
+          >
+            <Box>
               <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 700, letterSpacing: 1.2 }}>
                 Portfolio Performance
               </Typography>
-              <Typography variant="caption" color="text.disabled">
+              <Typography variant="body2" color="text.secondary">
                 Valuation basis: {data.valuationBasis.replace('_', ' ')}
               </Typography>
-            </Stack>
-            <ReturnBadge result={data} />
-          </Stack>
+              {/* Period Selector Chips */}
+              <Stack direction="row" spacing={0.75} sx={{ mt: 1.5, flexWrap: 'wrap', gap: 0.5 }}>
+                {PERIODS.map((period) => {
+                  const isSelected = selectedPeriod === period;
+                  return (
+                    <Chip
+                      key={period}
+                      label={period}
+                      size="small"
+                      clickable
+                      variant={isSelected ? 'filled' : 'outlined'}
+                      color={isSelected ? 'primary' : 'default'}
+                      onClick={() => setSelectedPeriod(period)}
+                      sx={{ fontWeight: 600, fontSize: '0.75rem', height: 26 }}
+                    />
+                  );
+                })}
+              </Stack>
+            </Box>
 
+            <Stack direction="column" sx={{ alignItems: { xs: 'flex-start', md: 'flex-end' }, gap: 1.5 }}>
+              <ReturnBadge
+                result={data}
+                selectedPeriod={selectedPeriod}
+                periodReturnPct={periodReturnPct}
+                periodGainLoss={periodGainLoss}
+              />
+              <Button
+                variant="outlined"
+                size="small"
+                endIcon={<ArrowForwardIcon fontSize="small" />}
+                onClick={() => navigate(`/portfolios/${portfolioId}/performance`)}
+              >
+                View Performance Detail
+              </Button>
+            </Stack>
+          </Stack>
 
           <Divider />
 
@@ -236,4 +311,3 @@ export default function PerformanceSummaryCard({ portfolioId, currency }: Props)
     </Card>
   );
 }
-
