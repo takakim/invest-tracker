@@ -9,6 +9,7 @@ import { DividendDetailPage } from '../features/analytics/DividendDetailPage';
 import { AccountDetailPage } from '../features/accounts/AccountDetailPage';
 import { PerformanceDetailPage } from '../features/performance/PerformanceDetailPage';
 import { HistoryDetailPage } from '../features/analytics/HistoryDetailPage';
+import { AllocationDetailPage } from '../features/analytics/AllocationDetailPage';
 
 export function AppRoutes() {
   return (
@@ -17,6 +18,7 @@ export function AppRoutes() {
       <Route path="/portfolios" element={<PortfolioListPage />} />
       <Route path="/portfolios/:id" element={<PortfolioDetailPage />} />
       <Route path="/portfolios/:id/performance" element={<PerformanceDetailPage />} />
+      <Route path="/portfolios/:id/allocation" element={<AllocationDetailPage />} />
       <Route path="/portfolios/:id/history" element={<HistoryDetailPage />} />
       <Route path="/portfolios/:id/dividends" element={<DividendDetailPage />} />
       <Route path="/portfolios/:id/accounts/:accountId" element={<AccountDetailPage />} />

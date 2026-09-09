@@ -6,4 +6,6 @@ export * from './DividendAnalyticsCard';
 export * from './DividendSummaryCard';
 export * from './DividendDetailPage';
 export * from './PortfolioHistoryCard';
-
+export * from './HistoryDetailPage';
+export * from './DonutChart';
+export * from './AllocationDetailPage';
