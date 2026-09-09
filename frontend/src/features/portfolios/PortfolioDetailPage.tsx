@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link as RouterLink, useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -65,7 +65,9 @@ import { DividendAnalyticsCard } from '../analytics/DividendAnalyticsCard';
 import { DividendSummaryCard } from '../analytics/DividendSummaryCard';
 import { PortfolioHistoryCard } from '../analytics/PortfolioHistoryCard';
 import { ExportReportModal } from '../analytics/ExportReportModal';
+import { usePortfolioAnalytics } from '../analytics/useAnalytics';
 import { TargetAllocationCard, RebalancingCalculatorCard } from '../rebalancing';
+import { StickyHeroBar } from './StickyHeroBar';
 import { CollapsibleSection, ConfirmDialog, EmptyState, ErrorAlert, LoadingState } from '../../components';
 import type { Account, AccountCreateInput, PortfolioCreateInput } from '../../types';
 
@@ -121,6 +123,47 @@ export function PortfolioDetailPage() {
     rebalancing: true,
     accounts: true,
   });
+
+  const [stickyVisible, setStickyVisible] = useState(false);
+  const [activeSection, setActiveSection] = useState<SectionKey>('valuation');
+
+  const { data: analytics } = usePortfolioAnalytics(portfolioId);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setStickyVisible(window.scrollY > 280);
+
+      // Determine active section based on scroll position
+      for (const key of SECTION_KEYS) {
+        const el = document.getElementById(`section-${key}`);
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          if (rect.top <= 140 && rect.bottom > 140) {
+            setActiveSection(key);
+            break;
+          }
+        }
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const handleJumpToSection = (key: string) => {
+    const secKey = key as SectionKey;
+    setExpandedSections((prev) => ({ ...prev, [secKey]: true }));
+    setActiveSection(secKey);
+
+    setTimeout(() => {
+      const el = document.getElementById(`section-${secKey}`);
+      if (el) {
+        const yOffset = -70;
+        const y = el.getBoundingClientRect().top + window.pageYOffset + yOffset;
+        window.scrollTo({ top: y, behavior: 'smooth' });
+      }
+    }, 50);
+  };
 
   const toggleSection = (key: SectionKey, next?: boolean) => {
     setExpandedSections((prev) => ({
@@ -214,6 +257,20 @@ export function PortfolioDetailPage() {
 
   return (
     <Box>
+      {/* Sticky Hero Bar */}
+      <StickyHeroBar
+        portfolioName={portfolio.name}
+        currency={portfolio.baseCurrency}
+        totalMarketValue={analytics?.totalCurrentValue}
+        unrealizedReturnPercentage={analytics?.totalUnrealizedReturnPercentage}
+        unrealizedGainLoss={analytics?.totalUnrealizedGainLoss}
+        visible={stickyVisible}
+        activeSectionKey={activeSection}
+        onJumpToSection={handleJumpToSection}
+        onAddAccount={handleOpenCreateAccount}
+        onExportReport={() => setExportModalOpen(true)}
+      />
+
       {/* Breadcrumbs */}
       <Breadcrumbs sx={{ mb: 3 }} aria-label="breadcrumb">
         <Link component={RouterLink} underline="hover" color="inherit" to="/portfolios">
@@ -358,6 +415,7 @@ export function PortfolioDetailPage() {
 
       {/* Valuation & Unrealized P&L */}
       <CollapsibleSection
+        id="section-valuation"
         title="Valuation & Unrealized P&L"
         subtitle="Current live valuations, cost basis, and unrealized returns across portfolio holdings"
         icon={<AccountBalanceWalletOutlinedIcon />}
@@ -369,6 +427,7 @@ export function PortfolioDetailPage() {
 
       {/* Asset Allocation Breakdown */}
       <CollapsibleSection
+        id="section-allocation"
         title="Asset Allocation Breakdown"
         subtitle="Diversification by asset class, geography, sector, and currency"
         icon={<PieChartOutlineOutlinedIcon />}
@@ -380,6 +439,7 @@ export function PortfolioDetailPage() {
 
       {/* Portfolio Performance */}
       <CollapsibleSection
+        id="section-performance"
         title="Portfolio Performance"
         subtitle="Time-Weighted Return (TWR) and Money-Weighted Return (MWR) with income breakdown"
         icon={<TrendingUpOutlinedIcon />}
@@ -391,6 +451,7 @@ export function PortfolioDetailPage() {
 
       {/* Historical Valuation & Wealth Growth Charting */}
       <CollapsibleSection
+        id="section-history"
         title="Historical Valuation & Wealth Growth"
         subtitle="Time series valuation, invested capital comparison, drawdowns, and benchmark tracking"
         icon={<QueryStatsOutlinedIcon />}
@@ -402,6 +463,7 @@ export function PortfolioDetailPage() {
 
       {/* Dividend Analytics & Income Projection */}
       <CollapsibleSection
+        id="section-dividends"
         title="Dividend Analytics & Income Projection"
         subtitle="Yield, monthly income projections, ex-dividend schedule, and dividend safety"
         icon={<PaymentsOutlinedIcon />}
@@ -413,6 +475,7 @@ export function PortfolioDetailPage() {
 
       {/* Target Allocation Strategy & Rebalancing */}
       <CollapsibleSection
+        id="section-rebalancing"
         title="Target Allocation Strategy & Rebalancing"
         subtitle="Strategic target models, drift tracking, and actionable rebalancing trade orders"
         icon={<TuneOutlinedIcon />}
@@ -427,6 +490,7 @@ export function PortfolioDetailPage() {
 
       {/* Accounts Section */}
       <CollapsibleSection
+        id="section-accounts"
         title="Accounts"
         headingVariant="h5"
         subtitle="Brokerage, custody, and cash accounts with tax-lot holdings and transaction ledgers"
