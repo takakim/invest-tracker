@@ -5,6 +5,7 @@ import { PortfolioListPage } from '../features/portfolios/PortfolioListPage';
 import { PortfolioDetailPage } from '../features/portfolios/PortfolioDetailPage';
 import { InstrumentListPage } from '../features/instruments/InstrumentListPage';
 import { MarketRatesPage } from '../features/market/MarketRatesPage';
+import { DividendDetailPage } from '../features/analytics/DividendDetailPage';
 
 export function AppRoutes() {
   return (
@@ -12,6 +13,7 @@ export function AppRoutes() {
       <Route path="/" element={<DashboardPage />} />
       <Route path="/portfolios" element={<PortfolioListPage />} />
       <Route path="/portfolios/:id" element={<PortfolioDetailPage />} />
+      <Route path="/portfolios/:id/dividends" element={<DividendDetailPage />} />
       <Route path="/instruments" element={<InstrumentListPage />} />
       <Route path="/market" element={<MarketRatesPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
