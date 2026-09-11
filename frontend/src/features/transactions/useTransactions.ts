@@ -4,6 +4,7 @@ import type {
   Transaction,
   TransactionCreateInput,
   TransactionCorrectInput,
+  TransactionUpdateInput,
   TransactionType,
 } from '../../types';
 import { POSITION_QUERY_KEYS } from '../positions/usePositions';
@@ -48,6 +49,31 @@ export function useCreateTransaction(portfolioId: string, accountId: string) {
       queryClient.invalidateQueries({
         queryKey: ['positions'],
       });
+    },
+  });
+}
+
+export function useUpdateTransaction(portfolioId: string, accountId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      transactionId,
+      input,
+    }: {
+      transactionId: string;
+      input: TransactionUpdateInput;
+    }) => transactionApi.update(portfolioId, accountId, transactionId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['positions'] });
+      queryClient.invalidateQueries({ queryKey: ['portfolios'] });
+      queryClient.invalidateQueries({ queryKey: ['portfolio'] });
+      queryClient.invalidateQueries({ queryKey: ['accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
+      queryClient.invalidateQueries({ queryKey: ['history'] });
+      queryClient.invalidateQueries({ queryKey: ['performance'] });
+      queryClient.invalidateQueries({ queryKey: ['dividends'] });
+      queryClient.invalidateQueries({ queryKey: ['rebalancing'] });
     },
   });
 }

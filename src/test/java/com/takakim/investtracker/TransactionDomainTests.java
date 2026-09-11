@@ -186,4 +186,74 @@ class TransactionDomainTests {
         deposit.markCorrected();
         assertEquals(TransactionStatus.CORRECTED, deposit.getStatus());
     }
+
+    @Test
+    @DisplayName("Transaction update modifies fields and enforces validation rules")
+    void transactionUpdateLifecycleAndValidation() {
+        Currency gbp = new Currency("GBP");
+        Portfolio portfolio = new Portfolio("Main", gbp, CostBasisMethod.FIFO, ReturnMethod.XIRR);
+        Account account = new Account(portfolio, "ISA Account", "Broker", gbp);
+        Instrument instrument1 = new Instrument("Apple Inc", AssetClass.STOCK, "AAPL", "US0378331005", "NASDAQ", new Currency("USD"));
+        Instrument instrument2 = new Instrument("Microsoft Corp", AssetClass.STOCK, "MSFT", "US5949181045", "NASDAQ", new Currency("USD"));
+
+        Instant now = Instant.now();
+        Transaction tx = new Transaction(
+                account, instrument1, TransactionType.BUY, now, null,
+                new BigDecimal("10.00"), new BigDecimal("150.00"), null,
+                new BigDecimal("5.00"), null, "USD", null, null, "Old notes", null
+        );
+
+        Instant newTradeDate = now.plusSeconds(3600);
+        Instant newSettlementDate = now.plusSeconds(7200);
+
+        // Valid update of BUY with new instrument, quantity, price, fees, notes
+        tx.update(
+                instrument2, TransactionType.BUY, newTradeDate, newSettlementDate,
+                new BigDecimal("15.00"), new BigDecimal("200.00"), null,
+                new BigDecimal("10.00"), new BigDecimal("2.00"), "USD",
+                new BigDecimal("1.25"), "GBP", "Updated trade notes"
+        );
+
+        assertEquals(instrument2, tx.getInstrument());
+        assertEquals(new BigDecimal("15.00"), tx.getQuantity());
+        assertEquals(new BigDecimal("200.00"), tx.getPrice());
+        assertEquals(0, new BigDecimal("3000.00").compareTo(tx.getGrossAmount()));
+        assertEquals(0, new BigDecimal("10.00").compareTo(tx.getFeeAmount()));
+        assertEquals(0, new BigDecimal("2.00").compareTo(tx.getTaxAmount()));
+        assertEquals(0, new BigDecimal("3010.00").compareTo(tx.getNetAmount()));
+        assertEquals("USD", tx.getCurrency());
+        assertEquals("GBP", tx.getCounterCurrency());
+        assertEquals(new BigDecimal("1.25"), tx.getFxRate());
+        assertEquals("Updated trade notes", tx.getNotes());
+        assertEquals(newTradeDate, tx.getTradeDate());
+        assertEquals(newSettlementDate, tx.getSettlementDate());
+
+        // Update to non-trade DEPOSIT
+        tx.update(
+                null, TransactionType.DEPOSIT, now, null,
+                null, null, new BigDecimal("500.00"),
+                null, null, "USD", null, null, "Deposit update"
+        );
+        assertNull(tx.getInstrument());
+        assertEquals(TransactionType.DEPOSIT, tx.getType());
+        assertEquals(0, new BigDecimal("500.00").compareTo(tx.getGrossAmount()));
+        assertEquals(0, new BigDecimal("500.00").compareTo(tx.getNetAmount()));
+
+        // Invalid update validation checks
+        assertThrows(NullPointerException.class, () -> tx.update(null, null, now, null, null, null, new BigDecimal("100.00"), null, null, "USD", null, null, null));
+        assertThrows(NullPointerException.class, () -> tx.update(null, TransactionType.DEPOSIT, null, null, null, null, new BigDecimal("100.00"), null, null, "USD", null, null, null));
+        assertThrows(IllegalArgumentException.class, () -> tx.update(null, TransactionType.DEPOSIT, now, null, null, null, new BigDecimal("100.00"), null, null, "INVALID", null, null, null));
+        assertThrows(IllegalArgumentException.class, () -> tx.update(null, TransactionType.DEPOSIT, now, null, null, null, new BigDecimal("100.00"), null, null, null, null, null, null));
+        assertThrows(IllegalArgumentException.class, () -> tx.update(null, TransactionType.DEPOSIT, now, null, null, null, new BigDecimal("100.00"), new BigDecimal("-5.00"), null, "USD", null, null, null));
+        assertThrows(IllegalArgumentException.class, () -> tx.update(null, TransactionType.DEPOSIT, now, null, null, null, new BigDecimal("100.00"), null, new BigDecimal("-5.00"), "USD", null, null, null));
+        assertThrows(IllegalArgumentException.class, () -> tx.update(null, TransactionType.BUY, now, null, new BigDecimal("10.00"), new BigDecimal("100.00"), null, null, null, "USD", null, null, null));
+
+        // Updating a CORRECTED transaction throws IllegalStateException
+        tx.markCorrected();
+        assertThrows(IllegalStateException.class, () -> tx.update(
+                null, TransactionType.DEPOSIT, now, null,
+                null, null, new BigDecimal("100.00"),
+                null, null, "USD", null, null, null
+        ));
+    }
 }
