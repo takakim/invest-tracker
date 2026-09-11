@@ -198,6 +198,50 @@ public class Transaction {
         this.updatedAt = Instant.now();
     }
 
+    public void update(
+            Instrument instrument,
+            TransactionType type,
+            Instant tradeDate,
+            Instant settlementDate,
+            BigDecimal quantity,
+            BigDecimal price,
+            BigDecimal grossAmount,
+            BigDecimal feeAmount,
+            BigDecimal taxAmount,
+            String currency,
+            BigDecimal fxRate,
+            String counterCurrency,
+            String notes) {
+
+        if (this.status == TransactionStatus.CORRECTED) {
+            throw new IllegalStateException("Cannot update a transaction that has already been corrected");
+        }
+
+        this.type = Objects.requireNonNull(type, "Transaction type must not be null");
+        this.tradeDate = Objects.requireNonNull(tradeDate, "Trade date must not be null");
+        this.settlementDate = settlementDate;
+        this.notes = notes;
+
+        if (currency == null || !currency.matches("^[A-Za-z]{3}$")) {
+            throw new IllegalArgumentException("Valid 3-letter currency code required");
+        }
+        this.currency = currency.toUpperCase();
+        this.counterCurrency = counterCurrency != null ? counterCurrency.toUpperCase() : null;
+        this.fxRate = fxRate;
+
+        BigDecimal fee = feeAmount != null ? feeAmount : BigDecimal.ZERO;
+        BigDecimal tax = taxAmount != null ? taxAmount : BigDecimal.ZERO;
+        if (fee.compareTo(BigDecimal.ZERO) < 0 || tax.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("Fee and tax amounts must be non-negative");
+        }
+        this.feeAmount = fee;
+        this.taxAmount = tax;
+
+        validateTypeSpecificRules(type, instrument, quantity, price, grossAmount, fee, tax);
+
+        this.updatedAt = Instant.now();
+    }
+
     public UUID getId() {
         return id;
     }

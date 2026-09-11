@@ -115,6 +115,21 @@ public final class ApiDtos {
         @Pattern(regexp = "[A-Za-z]{3}") String replacementCounterCurrency,
         @Size(max = 255) String replacementNotes) { }
 
+    public record TransactionUpdateRequest(
+        UUID instrumentId,
+        @NotNull com.takakim.investtracker.domain.TransactionType type,
+        @NotNull Instant tradeDate,
+        Instant settlementDate,
+        java.math.BigDecimal quantity,
+        java.math.BigDecimal price,
+        @NotNull java.math.BigDecimal grossAmount,
+        java.math.BigDecimal feeAmount,
+        java.math.BigDecimal taxAmount,
+        @NotBlank @Pattern(regexp = "[A-Za-z]{3}") String currency,
+        java.math.BigDecimal fxRate,
+        @Pattern(regexp = "[A-Za-z]{3}") String counterCurrency,
+        @Size(max = 255) String notes) { }
+
     public record TransactionResponse(
         UUID id, UUID accountId, UUID instrumentId, String instrumentName,
         String instrumentTicker, com.takakim.investtracker.domain.TransactionType type,

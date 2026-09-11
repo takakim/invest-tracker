@@ -252,6 +252,22 @@ export interface TransactionCorrectInput {
   replacementNotes?: string | null;
 }
 
+export interface TransactionUpdateInput {
+  instrumentId?: string | null;
+  type: TransactionType;
+  tradeDate: string;
+  settlementDate?: string | null;
+  quantity?: number | null;
+  price?: number | null;
+  grossAmount: number;
+  feeAmount?: number | null;
+  taxAmount?: number | null;
+  currency: string;
+  fxRate?: number | null;
+  counterCurrency?: string | null;
+  notes?: string | null;
+}
+
 export interface PreviewRow {
   rowNumber: number;
   rawType?: string | null;

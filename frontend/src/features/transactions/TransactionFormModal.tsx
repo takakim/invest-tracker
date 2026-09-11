@@ -21,11 +21,12 @@ import {
 import { transactionSchema, type TransactionFormData } from '../../forms/schemas';
 import { useInstrumentsList } from '../instruments/useInstruments';
 import { ErrorAlert } from '../../components';
-import type { TransactionType } from '../../types';
+import type { Transaction, TransactionType } from '../../types';
 
 interface TransactionFormModalProps {
   open: boolean;
   defaultCurrency?: string;
+  initialData?: Transaction | null;
   isPending: boolean;
   error?: unknown;
   onClose: () => void;
@@ -46,11 +47,13 @@ const TRANSACTION_TYPES: { value: TransactionType; label: string }[] = [
 export function TransactionFormModal({
   open,
   defaultCurrency = 'GBP',
+  initialData = null,
   isPending,
   error,
   onClose,
   onSubmit,
 }: TransactionFormModalProps) {
+  const isEdit = Boolean(initialData);
   const { data: instruments = [] } = useInstrumentsList({ enabled: open });
 
   const {
@@ -103,22 +106,41 @@ export function TransactionFormModal({
     }
   }, [isTrade, isSplit, watchedQuantity, watchedPrice, setValue]);
 
+  const watchedCurrency = useWatch({ control, name: 'currency' });
+
   useEffect(() => {
     if (open) {
-      reset({
-        type: 'BUY',
-        tradeDate: new Date().toISOString().slice(0, 16),
-        instrumentId: '',
-        quantity: undefined,
-        price: undefined,
-        grossAmount: 0,
-        feeAmount: undefined,
-        taxAmount: undefined,
-        currency: defaultCurrency,
-        notes: '',
-      });
+      if (initialData) {
+        reset({
+          type: initialData.type,
+          tradeDate: initialData.tradeDate
+            ? new Date(initialData.tradeDate).toISOString().slice(0, 16)
+            : new Date().toISOString().slice(0, 16),
+          instrumentId: initialData.instrumentId || '',
+          quantity: initialData.quantity != null ? initialData.quantity : undefined,
+          price: initialData.price != null ? initialData.price : undefined,
+          grossAmount: initialData.grossAmount != null ? initialData.grossAmount : 0,
+          feeAmount: initialData.feeAmount != null ? initialData.feeAmount : undefined,
+          taxAmount: initialData.taxAmount != null ? initialData.taxAmount : undefined,
+          currency: initialData.currency || defaultCurrency,
+          notes: initialData.notes || '',
+        });
+      } else {
+        reset({
+          type: 'BUY',
+          tradeDate: new Date().toISOString().slice(0, 16),
+          instrumentId: '',
+          quantity: undefined,
+          price: undefined,
+          grossAmount: 0,
+          feeAmount: undefined,
+          taxAmount: undefined,
+          currency: defaultCurrency,
+          notes: '',
+        });
+      }
     }
-  }, [open, defaultCurrency, reset]);
+  }, [open, initialData, defaultCurrency, reset]);
 
   // Compute live net amount preview
   const gross = Number(watchedGross || 0);
@@ -129,7 +151,9 @@ export function TransactionFormModal({
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle sx={{ fontWeight: 600 }}>Record Transaction</DialogTitle>
+      <DialogTitle sx={{ fontWeight: 600 }}>
+        {isEdit ? 'Edit Transaction' : 'Record Transaction'}
+      </DialogTitle>
       <form onSubmit={handleSubmit(onSubmit)} noValidate>
         <DialogContent dividers>
           <Stack spacing={3} sx={{ mt: 1 }}>
@@ -187,6 +211,11 @@ export function TransactionFormModal({
                           {inst.name} {inst.isin ? `(${inst.isin})` : ''}
                         </MenuItem>
                       ))}
+                      {field.value && !instruments.some((inst) => inst.id === field.value) && (
+                        <MenuItem key={field.value} value={field.value} sx={{ display: 'none' }}>
+                          {initialData?.instrumentName || field.value}
+                        </MenuItem>
+                      )}
                     </Select>
                   )}
                 />
@@ -300,7 +329,7 @@ export function TransactionFormModal({
                 Net Cash Flow Preview
               </Typography>
               <Typography variant="h6" sx={{ fontWeight: 700, color: selectedType === 'BUY' || selectedType === 'WITHDRAWAL' || selectedType === 'FEE' ? 'error.main' : 'success.main' }}>
-                {selectedType === 'BUY' || selectedType === 'WITHDRAWAL' || selectedType === 'FEE' ? '-' : '+'} {defaultCurrency} {netAmountPreview.toFixed(2)}
+                {selectedType === 'BUY' || selectedType === 'WITHDRAWAL' || selectedType === 'FEE' ? '-' : '+'} {watchedCurrency || defaultCurrency} {netAmountPreview.toFixed(2)}
               </Typography>
             </Box>
           </Stack>
@@ -310,7 +339,7 @@ export function TransactionFormModal({
             Cancel
           </Button>
           <Button type="submit" variant="contained" disabled={isPending}>
-            {isPending ? 'Recording...' : 'Record Transaction'}
+            {isPending ? (isEdit ? 'Saving...' : 'Recording...') : (isEdit ? 'Save Changes' : 'Record Transaction')}
           </Button>
         </DialogActions>
       </form>
