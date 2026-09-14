@@ -27,7 +27,7 @@ public class AccountService {
     public ApiDtos.AccountResponse create(UUID portfolioId, ApiDtos.AccountRequest request) {
         Portfolio portfolio = portfolios.findById(portfolioId).orElseThrow(() -> new ResourceNotFoundException("Portfolio not found: " + portfolioId));
         if (portfolio.getStatus() != PortfolioStatus.ACTIVE) throw new IllegalStateException("Archived portfolio cannot contain new accounts");
-        return toResponse(accounts.save(new Account(portfolio, request.name(), request.brokerName(), new Currency(request.accountCurrency()))));
+        return toResponse(accounts.save(new Account(portfolio, request.name(), request.brokerName(), new Currency(request.accountCurrency()), request.taxTreatment())));
     }
 
     @Transactional(readOnly = true)
@@ -41,7 +41,7 @@ public class AccountService {
 
     public ApiDtos.AccountResponse update(UUID portfolioId, UUID id, ApiDtos.AccountRequest request) {
         Account account = findOwned(portfolioId, id);
-        account.update(request.name(), request.brokerName(), new Currency(request.accountCurrency()));
+        account.update(request.name(), request.brokerName(), new Currency(request.accountCurrency()), request.taxTreatment());
         return toResponse(accounts.save(account));
     }
 
@@ -58,6 +58,6 @@ public class AccountService {
     }
 
     private ApiDtos.AccountResponse toResponse(Account a) {
-        return new ApiDtos.AccountResponse(a.getId(), a.getPortfolio().getId(), a.getName(), a.getBrokerName(), a.getAccountCurrency().code(), a.getStatus().name(), a.getCreatedAt(), a.getUpdatedAt());
+        return new ApiDtos.AccountResponse(a.getId(), a.getPortfolio().getId(), a.getName(), a.getBrokerName(), a.getAccountCurrency().code(), a.getTaxTreatment(), a.getStatus().name(), a.getCreatedAt(), a.getUpdatedAt());
     }
 }
