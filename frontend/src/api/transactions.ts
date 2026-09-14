@@ -3,6 +3,7 @@ import type {
   Transaction,
   TransactionCreateInput,
   TransactionCorrectInput,
+  TransactionUpdateInput,
   TransactionType,
 } from '../types';
 
@@ -29,6 +30,20 @@ export const transactionApi = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
+
+  update: (
+    portfolioId: string,
+    accountId: string,
+    transactionId: string,
+    input: TransactionUpdateInput,
+  ): Promise<Transaction> =>
+    request<Transaction>(
+      `/api/v1/portfolios/${portfolioId}/accounts/${accountId}/transactions/${transactionId}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(input),
+      },
+    ),
 
   correct: (
     portfolioId: string,

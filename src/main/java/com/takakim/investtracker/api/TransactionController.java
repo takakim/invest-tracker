@@ -3,6 +3,7 @@ package com.takakim.investtracker.api;
 import com.takakim.investtracker.api.ApiDtos.TransactionCorrectionRequest;
 import com.takakim.investtracker.api.ApiDtos.TransactionRequest;
 import com.takakim.investtracker.api.ApiDtos.TransactionResponse;
+import com.takakim.investtracker.api.ApiDtos.TransactionUpdateRequest;
 import com.takakim.investtracker.domain.Transaction;
 import com.takakim.investtracker.domain.TransactionType;
 import com.takakim.investtracker.service.TransactionService;
@@ -15,6 +16,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -114,6 +116,36 @@ public class TransactionController {
 
         TransactionResponse response = toResponse(replacement);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @PutMapping("/api/v1/portfolios/{portfolioId}/accounts/{accountId}/transactions/{transactionId}")
+    public ResponseEntity<TransactionResponse> updateTransaction(
+            @PathVariable UUID portfolioId,
+            @PathVariable UUID accountId,
+            @PathVariable UUID transactionId,
+            @Valid @RequestBody TransactionUpdateRequest request) {
+
+        Transaction updated = transactionService.updateTransaction(
+                portfolioId,
+                accountId,
+                transactionId,
+                request.instrumentId(),
+                request.type(),
+                request.tradeDate(),
+                request.settlementDate(),
+                request.quantity(),
+                request.price(),
+                request.grossAmount(),
+                request.feeAmount(),
+                request.taxAmount(),
+                request.currency(),
+                request.fxRate(),
+                request.counterCurrency(),
+                request.notes()
+        );
+
+        TransactionResponse response = toResponse(updated);
+        return ResponseEntity.ok(response);
     }
 
     private TransactionResponse toResponse(Transaction t) {

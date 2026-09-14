@@ -18,6 +18,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -241,5 +242,137 @@ class TransactionIntegrationTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(invalidReq))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("Transaction in-place update (PUT) updates fields and synchronizes positions across instruments")
+    void transactionInPlaceUpdateLifecycleAndPositionSync() throws Exception {
+        // 1. Create Portfolio & Account
+        String pResp = mockMvc.perform(post("/api/v1/portfolios")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {"name":"InPlace Portfolio","baseCurrency":"GBP","costBasisMethod":"FIFO","returnMethod":"XIRR"}
+                            """))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String portfolioId = JsonPath.read(pResp, "$.id");
+
+        String aResp = mockMvc.perform(post("/api/v1/portfolios/" + portfolioId + "/accounts")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {"name":"Dealing Account","brokerName":"Vanguard","accountCurrency":"GBP"}
+                            """))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String accountId = JsonPath.read(aResp, "$.id");
+
+        // 2. Create Two Instruments
+        String i1Resp = mockMvc.perform(post("/api/v1/instruments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {"name":"Alphabet Inc","assetClass":"STOCK","ticker":"GOOGL","isin":"US02079K3059","exchange":"NASDAQ","currency":"USD"}
+                            """))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String instrument1Id = JsonPath.read(i1Resp, "$.id");
+
+        String i2Resp = mockMvc.perform(post("/api/v1/instruments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {"name":"Amazon.com Inc","assetClass":"STOCK","ticker":"AMZN","isin":"US0231351067","exchange":"NASDAQ","currency":"USD"}
+                            """))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String instrument2Id = JsonPath.read(i2Resp, "$.id");
+
+        // 3. Record initial BUY of Alphabet (quantity: 10, price: 100, gross: 1000, fee: 10)
+        String buyJson = String.format("""
+            {"instrumentId":"%s","type":"BUY","tradeDate":"%s","quantity":10.0,"price":100.0,"grossAmount":1000.0,"feeAmount":10.0,"currency":"USD","notes":"Initial GOOGL purchase"}
+            """, instrument1Id, Instant.now().toString());
+
+        String buyResp = mockMvc.perform(post("/api/v1/portfolios/" + portfolioId + "/accounts/" + accountId + "/transactions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(buyJson))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String txId = JsonPath.read(buyResp, "$.id");
+
+        // Verify initial position for GOOGL
+        mockMvc.perform(get("/api/v1/portfolios/" + portfolioId + "/accounts/" + accountId + "/positions"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].instrumentTicker").value("GOOGL"))
+                .andExpect(jsonPath("$[0].quantity").value(10.0))
+                .andExpect(jsonPath("$[0].costBasisAmount").value(1010.0));
+
+        // 4. Update BUY in-place: increase quantity to 15, price to 120, fee to 15
+        String updateJson = String.format("""
+            {"instrumentId":"%s","type":"BUY","tradeDate":"%s","quantity":15.0,"price":120.0,"grossAmount":1800.0,"feeAmount":15.0,"currency":"USD","notes":"Corrected GOOGL purchase"}
+            """, instrument1Id, Instant.now().toString());
+
+        mockMvc.perform(put("/api/v1/portfolios/" + portfolioId + "/accounts/" + accountId + "/transactions/" + txId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateJson))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(txId))
+                .andExpect(jsonPath("$.quantity").value(15.0))
+                .andExpect(jsonPath("$.price").value(120.0))
+                .andExpect(jsonPath("$.grossAmount").value(1800.0))
+                .andExpect(jsonPath("$.feeAmount").value(15.0))
+                .andExpect(jsonPath("$.netAmount").value(1815.0))
+                .andExpect(jsonPath("$.notes").value("Corrected GOOGL purchase"))
+                .andExpect(jsonPath("$.status").value("COMPLETED"));
+
+        // Verify position for GOOGL has been updated in-place
+        mockMvc.perform(get("/api/v1/portfolios/" + portfolioId + "/accounts/" + accountId + "/positions"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].instrumentTicker").value("GOOGL"))
+                .andExpect(jsonPath("$[0].quantity").value(15.0))
+                .andExpect(jsonPath("$[0].costBasisAmount").value(1815.0));
+
+        // 5. Update transaction to switch instrument from GOOGL to AMZN
+        String updateInstJson = String.format("""
+            {"instrumentId":"%s","type":"BUY","tradeDate":"%s","quantity":8.0,"price":150.0,"grossAmount":1200.0,"feeAmount":5.0,"currency":"USD","notes":"Actually bought AMZN"}
+            """, instrument2Id, Instant.now().toString());
+
+        mockMvc.perform(put("/api/v1/portfolios/" + portfolioId + "/accounts/" + accountId + "/transactions/" + txId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateInstJson))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(txId))
+                .andExpect(jsonPath("$.instrumentTicker").value("AMZN"))
+                .andExpect(jsonPath("$.quantity").value(8.0))
+                .andExpect(jsonPath("$.netAmount").value(1205.0));
+
+        // Verify active positions: GOOGL is archived (0 active), AMZN is active (qty 8)
+        mockMvc.perform(get("/api/v1/portfolios/" + portfolioId + "/accounts/" + accountId + "/positions"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].instrumentTicker").value("AMZN"))
+                .andExpect(jsonPath("$[0].quantity").value(8.0))
+                .andExpect(jsonPath("$[0].costBasisAmount").value(1205.0));
+
+        // 6. Correct the transaction (mark original as CORRECTED)
+        String correctionJson = String.format("""
+            {"replacementInstrumentId":"%s","replacementType":"BUY","replacementTradeDate":"%s","replacementQuantity":8.0,"replacementPrice":150.0,"replacementGrossAmount":1200.0,"replacementFeeAmount":5.0,"replacementCurrency":"USD"}
+            """, instrument2Id, Instant.now().toString());
+
+        mockMvc.perform(post("/api/v1/portfolios/" + portfolioId + "/accounts/" + accountId + "/transactions/" + txId + "/correct")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(correctionJson))
+                .andExpect(status().isCreated());
+
+        // 7. Updating an already CORRECTED transaction should fail with 400 Bad Request
+        mockMvc.perform(put("/api/v1/portfolios/" + portfolioId + "/accounts/" + accountId + "/transactions/" + txId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateInstJson))
+                .andExpect(status().isBadRequest());
+
+        // 8. Updating a non-existent transaction should return 404
+        mockMvc.perform(put("/api/v1/portfolios/" + portfolioId + "/accounts/" + accountId + "/transactions/" + UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateInstJson))
+                .andExpect(status().isNotFound());
     }
 }
