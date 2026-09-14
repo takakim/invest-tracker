@@ -48,6 +48,8 @@ class PortfolioExportServiceTests {
     private TransactionRepository transactionRepository;
     @Mock
     private AnalyticsEngine analyticsEngine;
+    @Mock
+    private com.takakim.investtracker.service.analytics.CashFlowAnalyticsService cashFlowAnalyticsService;
 
     private PortfolioExportService exportService;
 
@@ -60,7 +62,7 @@ class PortfolioExportServiceTests {
     @BeforeEach
     void setUp() {
         exportService = new PortfolioExportService(
-                portfolioRepository, positionRepository, transactionRepository, analyticsEngine
+                portfolioRepository, positionRepository, transactionRepository, analyticsEngine, cashFlowAnalyticsService
         );
 
         portfolioId = UUID.randomUUID();
@@ -192,5 +194,34 @@ class PortfolioExportServiceTests {
         String csv = exportService.exportPositionsCsv(portfolioId);
         assertNotNull(csv);
         assertTrue(csv.contains("0.0000"));
+    }
+
+    @Test
+    void exportCashFlowsCsv_success() {
+        var summary = new com.takakim.investtracker.api.ApiDtos.CashFlowSummary(
+                BigDecimal.valueOf(1000), BigDecimal.ZERO, BigDecimal.valueOf(1000),
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.valueOf(1000),
+                BigDecimal.valueOf(1000), 1, BigDecimal.valueOf(1000),
+                BigDecimal.valueOf(1000), BigDecimal.valueOf(100), BigDecimal.ZERO, "GBP"
+        );
+        var period = new com.takakim.investtracker.api.ApiDtos.CashFlowPeriodPoint(
+                "2026-01", Instant.now().minusSeconds(86400 * 30), Instant.now(),
+                BigDecimal.valueOf(1000), BigDecimal.ZERO, BigDecimal.valueOf(1000),
+                BigDecimal.ZERO, BigDecimal.valueOf(1000)
+        );
+        var response = new com.takakim.investtracker.api.ApiDtos.CashFlowAnalyticsResponse(
+                portfolioId, "Tech Portfolio", "GBP", "ALL", "MONTH",
+                Instant.now().minusSeconds(86400 * 30), Instant.now(),
+                summary, List.of(period), List.of(), List.of()
+        );
+
+        when(cashFlowAnalyticsService.calculateCashFlows(eq(portfolioId), any(), any())).thenReturn(response);
+
+        String csv = exportService.exportCashFlowsCsv(portfolioId, "ALL", "MONTH");
+        assertNotNull(csv);
+        assertTrue(csv.contains("Period,Start Date,End Date,Deposits,Withdrawals,Net Contributions,Internal Income,Cumulative Contributions,Currency"));
+        assertTrue(csv.contains("2026-01"));
+        assertTrue(csv.contains("1000"));
+        assertTrue(csv.contains("GBP"));
     }
 }

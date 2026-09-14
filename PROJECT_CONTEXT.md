@@ -610,3 +610,11 @@ Before changing the repository:
   - Auto-detection endpoint `POST /api/v1/csv-imports/detect-broker` and supported brokers catalog `GET /api/v1/csv-imports/supported-brokers`.
   - Frontend `CsvImportModal` auto-detect preview, broker badge selector, and dynamic sample format hints.
   - 455 backend tests and 54 frontend tests passing with >=90% line and branch coverage and 0 vulnerabilities.
+- Option 3 Cash Flow, Deposit/Withdrawal Ledger & Net Savings Rate Analytics implemented on branch `feat/cash-flow-analytics-savings-rate`:
+  - `CashFlowAnalyticsService`: periodic breakdowns (Monthly, Quarterly, Yearly), external cash flows (`DEPOSIT`, `WITHDRAWAL`), multi-currency conversion, running cumulative contributions, average monthly savings rate, wealth attribution (Capital vs. Organic Growth), and account cash distribution.
+  - `PortfolioExportService.exportCashFlowsCsv`: downloadable statement for audit and accounting.
+  - REST endpoints: `GET /api/v1/portfolios/{id}/cash-flows` (`CashFlowController`) and `GET /api/v1/portfolios/{id}/export/cash-flows.csv` (`ExportController`).
+  - OpenAPI 3.1.1 contract synchronized (`docs/api/openapi.yaml`).
+  - Frontend: `CashFlowSummaryCard.tsx` on `PortfolioDetailPage`, dedicated sub-page `CashFlowDetailPage.tsx` (`/portfolios/:id/cash-flows`) with interactive SVG bar chart, wealth origin split progress bar, periodic ledger table, account distribution, and CSV export.
+  - Verification: 578 backend tests and 97 frontend tests passing with >=90% line and branch coverage and 0 vulnerabilities.
+

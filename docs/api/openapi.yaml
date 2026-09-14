@@ -362,6 +362,50 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/PortfolioHistory' }
         '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/cash-flows:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+    get:
+      operationId: getCashFlowAnalytics
+      summary: Get portfolio cash flow history, savings rate metrics, and wealth attribution
+      parameters:
+        - name: period
+          in: query
+          required: false
+          schema: { type: string, enum: ['1M', '3M', '6M', 'YTD', '1Y', 'ALL'], default: 'ALL' }
+        - name: groupBy
+          in: query
+          required: false
+          schema: { type: string, enum: [MONTH, QUARTER, YEAR], default: 'MONTH' }
+      responses:
+        '200':
+          description: Portfolio cash flow analytics breakdown and summary
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CashFlowAnalytics' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/export/cash-flows.csv:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+    get:
+      operationId: exportCashFlowsCsv
+      summary: Export portfolio cash flows statement as CSV
+      parameters:
+        - name: period
+          in: query
+          required: false
+          schema: { type: string, enum: ['1M', '3M', '6M', 'YTD', '1Y', 'ALL'], default: 'ALL' }
+        - name: groupBy
+          in: query
+          required: false
+          schema: { type: string, enum: [MONTH, QUARTER, YEAR], default: 'MONTH' }
+      responses:
+        '200':
+          description: CSV file of portfolio cash flows
+          content:
+            text/csv:
+              schema: { type: string }
+        '404': { $ref: '#/components/responses/Problem' }
   /portfolios/{portfolioId}/target-allocation:
     parameters:
       - { $ref: '#/components/parameters/PortfolioId' }
@@ -1713,6 +1757,71 @@ components:
         dataPoints:
           type: array
           items: { $ref: '#/components/schemas/HistoricalValuationPoint' }
+    CashFlowSummary:
+      type: object
+      required: [totalDeposits, totalWithdrawals, netContributions, totalDividends, totalInterest, totalFees, netCashFlow, avgMonthlyContribution, activeContributionMonths, cumulativeContributions, currentPortfolioValue, capitalContributionsPercentage, marketGrowthPercentage, baseCurrency]
+      properties:
+        totalDeposits: { type: number }
+        totalWithdrawals: { type: number }
+        netContributions: { type: number }
+        totalDividends: { type: number }
+        totalInterest: { type: number }
+        totalFees: { type: number }
+        netCashFlow: { type: number }
+        avgMonthlyContribution: { type: number }
+        activeContributionMonths: { type: integer }
+        cumulativeContributions: { type: number }
+        currentPortfolioValue: { type: number }
+        capitalContributionsPercentage: { type: number }
+        marketGrowthPercentage: { type: number }
+        baseCurrency: { type: string, pattern: '^[A-Z]{3}$' }
+    CashFlowPeriodPoint:
+      type: object
+      required: [periodLabel, startDate, endDate, deposits, withdrawals, netContributions, internalIncome, cumulativeNetContributions]
+      properties:
+        periodLabel: { type: string }
+        startDate: { type: string, format: date-time }
+        endDate: { type: string, format: date-time }
+        deposits: { type: number }
+        withdrawals: { type: number }
+        netContributions: { type: number }
+        internalIncome: { type: number }
+        cumulativeNetContributions: { type: number }
+    AccountCashFlowSummary:
+      type: object
+      required: [accountId, accountName, brokerName, accountCurrency, currentCashBalance, currentCashBalanceInBase, totalDeposits, totalWithdrawals, netContributions]
+      properties:
+        accountId: { type: string, format: uuid }
+        accountName: { type: string }
+        brokerName: { type: string }
+        accountCurrency: { type: string, pattern: '^[A-Z]{3}$' }
+        currentCashBalance: { type: number }
+        currentCashBalanceInBase: { type: number }
+        totalDeposits: { type: number }
+        totalWithdrawals: { type: number }
+        netContributions: { type: number }
+    CashFlowAnalytics:
+      type: object
+      required: [portfolioId, portfolioName, baseCurrency, period, groupBy, periodStart, periodEnd, summary, periods, accountBreakdown, warnings]
+      properties:
+        portfolioId: { type: string, format: uuid }
+        portfolioName: { type: string }
+        baseCurrency: { type: string, pattern: '^[A-Z]{3}$' }
+        period: { type: string }
+        groupBy: { type: string }
+        periodStart: { type: string, format: date-time }
+        periodEnd: { type: string, format: date-time }
+        summary: { $ref: '#/components/schemas/CashFlowSummary' }
+        periods:
+          type: array
+          items: { $ref: '#/components/schemas/CashFlowPeriodPoint' }
+        accountBreakdown:
+          type: array
+          items: { $ref: '#/components/schemas/AccountCashFlowSummary' }
+        warnings:
+          type: array
+          items: { type: string }
+
 
 
 
