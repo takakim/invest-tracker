@@ -108,6 +108,50 @@ Vite development server runs at `http://localhost:5173` and proxies `/api` reque
 
 ---
 
+## AI Portfolio & Holding Intelligence Engine
+
+Invest Tracker features an AI intelligence engine designed to connect to a local LLM running on **LM Studio** (optimized for **Gemma 4 12B**) or any OpenAI-compatible API.
+
+### Key Capabilities
+- **Portfolio-Level Intelligence**:
+  - **Risk Meter (1–10 Gauge)**: Consolidated portfolio risk score and risk categorization (`LOW`, `MODERATE`, `HIGH`, `VERY_HIGH`).
+  - **Diversification & Concentration Assessment**: Scans for single-asset concentration, regional exposure, and sector imbalances.
+  - **UK Tax Wrapper Placement Optimization**: Evaluates asset placement across ISAs, SIPPs, and GIAs to minimize tax drag.
+  - **Macro Stress Testing**: Evaluates resilience under interest rate shocks, stagflation, and market drawdowns.
+  - **Prioritized Recommendations**: Concrete, actionable rebalancing steps to improve risk-adjusted returns.
+- **Holding-Level Deep Evaluation**:
+  - **Decisive Stance**: `STRONG_BUY`, `ACCUMULATE`, `HOLD`, `TRIM`, `SELL`.
+  - **Executive Thesis**: Narrative catalyst and valuation overview.
+  - **Hold vs. Sell Trade-Off Analysis**: Evaluates valuation multiple compression risks vs. dividend/buyback compounding.
+  - **Fundamental Ratios**: P/E, Forward P/E, PEG, Debt-to-Equity, ROE, enriched with live 52-week price ranges from Yahoo Finance.
+  - Accessible directly on each row of the positions table via the sparkle action icon.
+
+### LM Studio Configuration
+
+1. **Start the Local Server in LM Studio**:
+   - Open LM Studio and go to the **Local Server** tab.
+   - Load **Gemma 4 12B** (`google/gemma-4-12b`) or your chosen model.
+   - Start the server on port `1234`.
+
+2. **Docker Compose Networking**:
+   When running via `./start.sh` or Docker Compose, the backend container communicates with your host machine via `http://host.docker.internal:1234`.
+
+   Configurable via `.env` or environment variables:
+   ```env
+   AI_ENABLED=true
+   AI_BASE_URL=http://host.docker.internal:1234
+   AI_MODEL=google/gemma-4-12b
+   AI_TIMEOUT_SECONDS=1200
+   ```
+
+3. **Inference Timeouts**:
+   Local LLMs generating structured financial reports can take several minutes. The stack is preconfigured with a 20-minute timeout (`1200s`) across:
+   - Backend `RestClient` socket read timeout (`AI_TIMEOUT_SECONDS=1200`)
+   - Nginx reverse proxy `proxy_read_timeout 1200s`
+   - Frontend HTTP client
+
+---
+
 ## Running Verification & Tests
 
 ### Full Repository Verification

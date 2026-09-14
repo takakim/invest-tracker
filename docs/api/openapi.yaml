@@ -653,6 +653,43 @@ paths:
             application/pdf:
               schema: { type: string, format: binary }
         '404': { $ref: '#/components/responses/Problem' }
+  /ai/status:
+    get:
+      operationId: getAiStatus
+      summary: Check local LM Studio connection status and model availability
+      responses:
+        '200':
+          description: AI system status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AiStatus' }
+  /portfolios/{portfolioId}/ai/evaluate:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+    post:
+      operationId: evaluatePortfolioAi
+      summary: Run comprehensive AI evaluation on the portfolio
+      responses:
+        '200':
+          description: Portfolio AI evaluation
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PortfolioAiEvaluation' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/holdings/{instrumentId}/ai/evaluate:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+      - { $ref: '#/components/parameters/InstrumentId' }
+    post:
+      operationId: evaluateHoldingAi
+      summary: Run deep-dive AI evaluation on an individual holding
+      responses:
+        '200':
+          description: Holding AI evaluation
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HoldingAiEvaluation' }
+        '404': { $ref: '#/components/responses/Problem' }
   /portfolios/{portfolioId}/accounts/{accountId}/transactions:
     parameters:
       - { $ref: '#/components/parameters/PortfolioId' }
@@ -2201,6 +2238,97 @@ components:
           items: { type: string }
         currentUkTaxYear: { type: string }
         currentCalendarYear: { type: string }
+    AiStance:
+      type: string
+      enum: [STRONG_BUY, ACCUMULATE, HOLD, TRIM, SELL]
+    AiRiskLevel:
+      type: string
+      enum: [LOW, MODERATE, HIGH, VERY_HIGH]
+    AiStatus:
+      type: object
+      required: [enabled, connected, provider, baseUrl, configuredModel, availableModels]
+      properties:
+        enabled: { type: boolean }
+        connected: { type: boolean }
+        provider: { type: string }
+        baseUrl: { type: string }
+        configuredModel: { type: string }
+        availableModels:
+          type: array
+          items: { type: string }
+        errorMessage: { type: string, nullable: true }
+    HoldingFinancialMetrics:
+      type: object
+      properties:
+        peRatio: { type: number, nullable: true }
+        forwardPe: { type: number, nullable: true }
+        pegRatio: { type: number, nullable: true }
+        priceToBook: { type: number, nullable: true }
+        dividendYield: { type: number, nullable: true }
+        debtToEquity: { type: number, nullable: true }
+        returnOnEquity: { type: number, nullable: true }
+        fiftyTwoWeekHigh: { type: number, nullable: true }
+        fiftyTwoWeekLow: { type: number, nullable: true }
+        marketCap: { type: number, nullable: true }
+        expenseRatio: { type: number, nullable: true }
+        assetClass: { type: string }
+        currency: { type: string }
+    HoldingAiEvaluation:
+      type: object
+      required: [instrumentId, symbol, name, assetClass, quantity, currentPrice, averageCostBasis, unrealizedGainLoss, unrealizedGainLossPercentage, portfolioWeightPercentage, stance, riskScore, riskLevel, executiveSummary, strengths, risks, holdingVsSellingTradeoff, fundamentalMetrics, modelUsed, evaluatedAt]
+      properties:
+        instrumentId: { type: string, format: uuid }
+        symbol: { type: string }
+        name: { type: string }
+        assetClass: { type: string }
+        quantity: { type: number }
+        currentPrice: { type: number }
+        averageCostBasis: { type: number }
+        unrealizedGainLoss: { type: number }
+        unrealizedGainLossPercentage: { type: number }
+        portfolioWeightPercentage: { type: number }
+        stance: { $ref: '#/components/schemas/AiStance' }
+        riskScore: { type: integer, minimum: 1, maximum: 10 }
+        riskLevel: { $ref: '#/components/schemas/AiRiskLevel' }
+        executiveSummary: { type: string }
+        strengths:
+          type: array
+          items: { type: string }
+        risks:
+          type: array
+          items: { type: string }
+        holdingVsSellingTradeoff: { type: string }
+        fundamentalMetrics: { $ref: '#/components/schemas/HoldingFinancialMetrics' }
+        modelUsed: { type: string }
+        evaluatedAt: { type: string, format: date-time }
+    PortfolioAiEvaluation:
+      type: object
+      required: [portfolioId, portfolioName, baseCurrency, overallRiskScore, overallRiskLevel, executiveSummary, diversificationAssessment, concentrationRisks, taxAndLocationOptimization, topRecommendations, macroStressScenarios, topHoldingEvaluations, modelUsed, evaluatedAt]
+      properties:
+        portfolioId: { type: string, format: uuid }
+        portfolioName: { type: string }
+        baseCurrency: { type: string }
+        overallRiskScore: { type: integer, minimum: 1, maximum: 10 }
+        overallRiskLevel: { $ref: '#/components/schemas/AiRiskLevel' }
+        executiveSummary: { type: string }
+        diversificationAssessment: { type: string }
+        concentrationRisks:
+          type: array
+          items: { type: string }
+        taxAndLocationOptimization:
+          type: array
+          items: { type: string }
+        topRecommendations:
+          type: array
+          items: { type: string }
+        macroStressScenarios:
+          type: array
+          items: { type: string }
+        topHoldingEvaluations:
+          type: array
+          items: { $ref: '#/components/schemas/HoldingAiEvaluation' }
+        modelUsed: { type: string }
+        evaluatedAt: { type: string, format: date-time }
 
 
 

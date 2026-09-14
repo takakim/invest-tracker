@@ -26,6 +26,7 @@ import ShowChartOutlinedIcon from '@mui/icons-material/ShowChartOutlined';
 import LayersOutlinedIcon from '@mui/icons-material/LayersOutlined';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SearchIcon from '@mui/icons-material/Search';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 
 import {
   usePositionsList,
@@ -38,6 +39,7 @@ import {
 import { PositionFormModal } from './PositionFormModal';
 import { PositionLotsModal } from './PositionLotsModal';
 import { PositionPerformanceModal } from './PositionPerformanceModal';
+import { HoldingAiEvaluationModal } from '../ai';
 import { ConfirmDialog, EmptyState, ErrorAlert, LoadingState, SortableTableHead } from '../../components';
 import type { Position, PositionCreateInput, PositionPerformance, PositionUpdateInput } from '../../types';
 import type { PositionFormData } from '../../forms/schemas';
@@ -75,6 +77,7 @@ export function PositionTable({
   const [archiveTarget, setArchiveTarget] = useState<PositionPerformance | null>(null);
   const [selectedLotsPosition, setSelectedLotsPosition] = useState<Position | null>(null);
   const [selectedPerfPosition, setSelectedPerfPosition] = useState<Position | null>(null);
+  const [aiTarget, setAiTarget] = useState<PositionPerformance | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [order, setOrder] = useState<Order>('asc');
   const [orderBy, setOrderBy] = useState<string>('instrumentName');
@@ -415,6 +418,17 @@ export function PositionTable({
                     </TableCell>
                     <TableCell align="right">
                       <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end', alignItems: 'center' }}>
+                        <Tooltip title="AI fundamental & risk evaluation (Gemma 4 12B)">
+                          <IconButton
+                            size="small"
+                            color="primary"
+                            onClick={() => setAiTarget(item)}
+                            aria-label={`ai evaluate ${item.instrumentName}`}
+                          >
+                            <AutoAwesomeIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+
                         <Tooltip title="View performance, dividends, and full ledger">
                           <Button
                             size="small"
@@ -515,6 +529,18 @@ export function PositionTable({
         onConfirm={handleConfirmArchive}
         onCancel={() => setArchiveTarget(null)}
       />
+
+      {/* AI Holding Evaluation Modal */}
+      {aiTarget && (
+        <HoldingAiEvaluationModal
+          open={Boolean(aiTarget)}
+          onClose={() => setAiTarget(null)}
+          portfolioId={portfolioId}
+          instrumentId={aiTarget.instrumentId}
+          symbol={aiTarget.ticker || aiTarget.instrumentName}
+          instrumentName={aiTarget.instrumentName}
+        />
+      )}
     </Box>
   );
 }
