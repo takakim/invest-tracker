@@ -29,6 +29,7 @@ export interface StickyHeroBarProps {
 
 const SECTIONS = [
   { key: 'valuation', label: 'Valuation' },
+  { key: 'aiIntelligence', label: 'AI Intelligence' },
   { key: 'allocation', label: 'Allocation' },
   { key: 'performance', label: 'Performance' },
   { key: 'history', label: 'History' },
