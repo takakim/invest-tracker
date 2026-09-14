@@ -912,3 +912,73 @@ export interface AvailableTaxYearsResponse {
   currentCalendarYear: string;
 }
 
+export type AiStance = 'STRONG_BUY' | 'ACCUMULATE' | 'HOLD' | 'TRIM' | 'SELL';
+export type AiRiskLevel = 'LOW' | 'MODERATE' | 'HIGH' | 'VERY_HIGH';
+
+export interface AiStatus {
+  enabled: boolean;
+  connected: boolean;
+  provider: string;
+  baseUrl: string;
+  configuredModel: string;
+  availableModels: string[];
+  errorMessage?: string | null;
+}
+
+export interface HoldingFinancialMetrics {
+  peRatio?: number | null;
+  forwardPe?: number | null;
+  pegRatio?: number | null;
+  priceToBook?: number | null;
+  dividendYield?: number | null;
+  debtToEquity?: number | null;
+  returnOnEquity?: number | null;
+  fiftyTwoWeekHigh?: number | null;
+  fiftyTwoWeekLow?: number | null;
+  marketCap?: number | null;
+  expenseRatio?: number | null;
+  assetClass: string;
+  currency: string;
+}
+
+export interface HoldingAiEvaluation {
+  instrumentId: string;
+  symbol: string;
+  name: string;
+  assetClass: string;
+  quantity: number;
+  currentPrice: number;
+  averageCostBasis: number;
+  unrealizedGainLoss: number;
+  unrealizedGainLossPercentage: number;
+  portfolioWeightPercentage: number;
+  stance: AiStance;
+  riskScore: number;
+  riskLevel: AiRiskLevel;
+  executiveSummary: string;
+  strengths: string[];
+  risks: string[];
+  holdingVsSellingTradeoff: string;
+  fundamentalMetrics: HoldingFinancialMetrics;
+  modelUsed: string;
+  evaluatedAt: string;
+}
+
+export interface PortfolioAiEvaluation {
+  portfolioId: string;
+  portfolioName: string;
+  baseCurrency: string;
+  overallRiskScore: number;
+  overallRiskLevel: AiRiskLevel;
+  executiveSummary: string;
+  diversificationAssessment: string;
+  concentrationRisks: string[];
+  taxAndLocationOptimization: string[];
+  topRecommendations: string[];
+  macroStressScenarios: string[];
+  topHoldingEvaluations: HoldingAiEvaluation[];
+  modelUsed: string;
+  evaluatedAt: string;
+}
+
+
