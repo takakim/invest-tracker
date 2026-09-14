@@ -480,6 +480,60 @@ paths:
               schema: { $ref: '#/components/schemas/CorporateAction' }
         '400': { $ref: '#/components/responses/Problem' }
         '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/tax-allowances:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+    get:
+      operationId: getPortfolioTaxReport
+      summary: Calculate Capital Gains Tax (CGT), dividend allowances, and tax-loss harvesting for a portfolio
+      parameters:
+        - name: taxYear
+          in: query
+          required: false
+          schema: { type: string, example: "2024/25" }
+        - name: regime
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/TaxRegime' }
+      responses:
+        '200':
+          description: Comprehensive tax report for the portfolio and tax year
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaxReportResponse' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/tax-allowances/available-years:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+    get:
+      operationId: getAvailableTaxYears
+      summary: Retrieve all tax years with transaction activity in the portfolio
+      responses:
+        '200':
+          description: Available UK and Calendar tax years
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AvailableTaxYearsResponse' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/tax-allowances/settings:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+    put:
+      operationId: updatePortfolioTaxSettings
+      summary: Override statutory tax allowances or record carried-forward capital losses
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaxSettingsRequest' }
+      responses:
+        '200':
+          description: Updated portfolio tax settings
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaxSettingsResponse' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
   /portfolios/{portfolioId}/target-allocation:
     parameters:
       - { $ref: '#/components/parameters/PortfolioId' }
@@ -1108,6 +1162,9 @@ components:
     ReturnMethod:
       type: string
       enum: [XIRR, TWR, MWR]
+    AccountTaxTreatment:
+      type: string
+      enum: [TAXABLE, TAX_EXEMPT, TAX_DEFERRED]
     Account:
       type: object
       required: [id, portfolioId, name, brokerName, accountCurrency, status, createdAt, updatedAt]
@@ -1117,6 +1174,7 @@ components:
         name: { type: string, minLength: 1, maxLength: 120 }
         brokerName: { type: string, minLength: 1, maxLength: 120 }
         accountCurrency: { type: string, pattern: '^[A-Z]{3}$' }
+        taxTreatment: { $ref: '#/components/schemas/AccountTaxTreatment' }
         status: { type: string, enum: [ACTIVE, ARCHIVED] }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
@@ -1127,6 +1185,7 @@ components:
         name: { type: string, minLength: 1, maxLength: 120 }
         brokerName: { type: string, minLength: 1, maxLength: 120 }
         accountCurrency: { type: string, pattern: '^[A-Za-z]{3}$' }
+        taxTreatment: { $ref: '#/components/schemas/AccountTaxTreatment' }
     Instrument:
       type: object
       required: [id, name, assetClass, currency, createdAt, updatedAt]
@@ -1944,6 +2003,169 @@ components:
         messages:
           type: array
           items: { type: string }
+    TaxRegime:
+      type: string
+      enum: [UK_HMRC, CALENDAR_YEAR]
+    TaxSettingsRequest:
+      type: object
+      properties:
+        taxYear: { type: string }
+        taxRegime: { $ref: '#/components/schemas/TaxRegime' }
+        cgtAllowance: { type: number, nullable: true }
+        dividendAllowance: { type: number, nullable: true }
+        lossCarryforward: { type: number, nullable: true }
+        notes: { type: string, nullable: true }
+    TaxSettingsResponse:
+      type: object
+      required: [id, portfolioId, taxYear, taxRegime, cgtAllowance, dividendAllowance, lossCarryforward, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        portfolioId: { type: string, format: uuid }
+        taxYear: { type: string }
+        taxRegime: { $ref: '#/components/schemas/TaxRegime' }
+        cgtAllowance: { type: number }
+        dividendAllowance: { type: number }
+        lossCarryforward: { type: number }
+        notes: { type: string, nullable: true }
+        updatedAt: { type: string, format: date-time }
+    ItemizedDisposal:
+      type: object
+      required: [disposalTransactionId, accountId, accountName, taxTreatment, instrumentId, instrumentName, disposalDate, quantity, proceedsNative, costBasisNative, nativeCurrency, proceedsBase, costBasisBase, realizedGainLossBase]
+      properties:
+        disposalTransactionId: { type: string, format: uuid }
+        accountId: { type: string, format: uuid }
+        accountName: { type: string }
+        taxTreatment: { $ref: '#/components/schemas/AccountTaxTreatment' }
+        instrumentId: { type: string, format: uuid }
+        instrumentName: { type: string }
+        ticker: { type: string, nullable: true }
+        disposalDate: { type: string, format: date-time }
+        quantity: { type: number }
+        proceedsNative: { type: number }
+        costBasisNative: { type: number }
+        nativeCurrency: { type: string }
+        proceedsBase: { type: number }
+        costBasisBase: { type: number }
+        realizedGainLossBase: { type: number }
+    ItemizedDividend:
+      type: object
+      required: [transactionId, accountId, accountName, taxTreatment, instrumentId, instrumentName, paymentDate, grossAmountNative, withholdingTaxNative, nativeCurrency, grossAmountBase, withholdingTaxBase, netAmountBase]
+      properties:
+        transactionId: { type: string, format: uuid }
+        accountId: { type: string, format: uuid }
+        accountName: { type: string }
+        taxTreatment: { $ref: '#/components/schemas/AccountTaxTreatment' }
+        instrumentId: { type: string, format: uuid }
+        instrumentName: { type: string }
+        ticker: { type: string, nullable: true }
+        paymentDate: { type: string, format: date-time }
+        grossAmountNative: { type: number }
+        withholdingTaxNative: { type: number }
+        nativeCurrency: { type: string }
+        grossAmountBase: { type: number }
+        withholdingTaxBase: { type: number }
+        netAmountBase: { type: number }
+    TaxLossHarvestOpportunity:
+      type: object
+      required: [accountId, accountName, instrumentId, instrumentName, quantity, currentPrice, priceCurrency, currentMarketValueBase, totalCostBasisBase, unrealizedLossBase]
+      properties:
+        accountId: { type: string, format: uuid }
+        accountName: { type: string }
+        instrumentId: { type: string, format: uuid }
+        instrumentName: { type: string }
+        ticker: { type: string, nullable: true }
+        quantity: { type: number }
+        currentPrice: { type: number }
+        priceCurrency: { type: string }
+        currentMarketValueBase: { type: number }
+        totalCostBasisBase: { type: number }
+        unrealizedLossBase: { type: number }
+    CapitalGainsTaxSummary:
+      type: object
+      required: [totalDisposalProceeds, totalDisposalCostBasis, grossRealizedGains, grossRealizedLosses, netRealizedGainLoss, lossCarryforwardApplied, netTaxableGainBeforeAllowance, annualExemptAmount, allowanceUsed, allowanceRemaining, taxableCapitalGain, estimatedTaxBasicRate, estimatedTaxHigherRate, basicTaxRatePercentage, higherTaxRatePercentage, totalDisposalsCount]
+      properties:
+        totalDisposalProceeds: { type: number }
+        totalDisposalCostBasis: { type: number }
+        grossRealizedGains: { type: number }
+        grossRealizedLosses: { type: number }
+        netRealizedGainLoss: { type: number }
+        lossCarryforwardApplied: { type: number }
+        netTaxableGainBeforeAllowance: { type: number }
+        annualExemptAmount: { type: number }
+        allowanceUsed: { type: number }
+        allowanceRemaining: { type: number }
+        taxableCapitalGain: { type: number }
+        estimatedTaxBasicRate: { type: number }
+        estimatedTaxHigherRate: { type: number }
+        basicTaxRatePercentage: { type: number }
+        higherTaxRatePercentage: { type: number }
+        totalDisposalsCount: { type: integer }
+    DividendTaxSummary:
+      type: object
+      required: [totalGrossDividends, totalWithholdingTax, netDividendsReceived, annualDividendAllowance, allowanceUsed, allowanceRemaining, taxableDividendIncome, estimatedTaxBasicRate, estimatedTaxHigherRate, estimatedTaxAdditionalRate, basicTaxRatePercentage, higherTaxRatePercentage, additionalTaxRatePercentage, totalDividendsCount]
+      properties:
+        totalGrossDividends: { type: number }
+        totalWithholdingTax: { type: number }
+        netDividendsReceived: { type: number }
+        annualDividendAllowance: { type: number }
+        allowanceUsed: { type: number }
+        allowanceRemaining: { type: number }
+        taxableDividendIncome: { type: number }
+        estimatedTaxBasicRate: { type: number }
+        estimatedTaxHigherRate: { type: number }
+        estimatedTaxAdditionalRate: { type: number }
+        basicTaxRatePercentage: { type: number }
+        higherTaxRatePercentage: { type: number }
+        additionalTaxRatePercentage: { type: number }
+        totalDividendsCount: { type: integer }
+    TaxShelteredSummary:
+      type: object
+      required: [shelteredRealizedGains, shelteredRealizedLosses, shelteredGrossDividends, estimatedCapitalGainsTaxSaved, estimatedDividendTaxSaved, totalEstimatedTaxSaved]
+      properties:
+        shelteredRealizedGains: { type: number }
+        shelteredRealizedLosses: { type: number }
+        shelteredGrossDividends: { type: number }
+        estimatedCapitalGainsTaxSaved: { type: number }
+        estimatedDividendTaxSaved: { type: number }
+        totalEstimatedTaxSaved: { type: number }
+    TaxReportResponse:
+      type: object
+      required: [portfolioId, portfolioName, baseCurrency, taxYear, taxRegime, periodStart, periodEnd, capitalGains, dividendIncome, shelteredSummary, lossHarvestOpportunities, disposals, dividends, warnings]
+      properties:
+        portfolioId: { type: string, format: uuid }
+        portfolioName: { type: string }
+        baseCurrency: { type: string }
+        taxYear: { type: string }
+        taxRegime: { $ref: '#/components/schemas/TaxRegime' }
+        periodStart: { type: string, format: date-time }
+        periodEnd: { type: string, format: date-time }
+        capitalGains: { $ref: '#/components/schemas/CapitalGainsTaxSummary' }
+        dividendIncome: { $ref: '#/components/schemas/DividendTaxSummary' }
+        shelteredSummary: { $ref: '#/components/schemas/TaxShelteredSummary' }
+        lossHarvestOpportunities:
+          type: array
+          items: { $ref: '#/components/schemas/TaxLossHarvestOpportunity' }
+        disposals:
+          type: array
+          items: { $ref: '#/components/schemas/ItemizedDisposal' }
+        dividends:
+          type: array
+          items: { $ref: '#/components/schemas/ItemizedDividend' }
+        warnings:
+          type: array
+          items: { type: string }
+    AvailableTaxYearsResponse:
+      type: object
+      required: [availableUkTaxYears, availableCalendarYears, currentUkTaxYear, currentCalendarYear]
+      properties:
+        availableUkTaxYears:
+          type: array
+          items: { type: string }
+        availableCalendarYears:
+          type: array
+          items: { type: string }
+        currentUkTaxYear: { type: string }
+        currentCalendarYear: { type: string }
 
 
 

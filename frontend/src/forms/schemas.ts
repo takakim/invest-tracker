@@ -35,6 +35,7 @@ export const accountSchema = z.object({
     .min(1, 'Broker / custodian name is required')
     .max(120, 'Broker name must be at most 120 characters'),
   accountCurrency: currencyCodeSchema,
+  taxTreatment: z.enum(['TAXABLE', 'TAX_EXEMPT', 'TAX_DEFERRED'] as const).default('TAXABLE'),
 });
 
 export type AccountFormData = z.input<typeof accountSchema>;

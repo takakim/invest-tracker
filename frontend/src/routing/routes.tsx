@@ -13,6 +13,7 @@ import { AllocationDetailPage } from '../features/analytics/AllocationDetailPage
 import { RebalancingDetailPage } from '../features/rebalancing/RebalancingDetailPage';
 import { CashFlowDetailPage } from '../features/analytics/CashFlowDetailPage';
 import { CorporateActionsDetailPage } from '../features/corporate-actions/CorporateActionsDetailPage';
+import { TaxAllowanceDetailPage } from '../features/tax/TaxAllowanceDetailPage';
 
 export function AppRoutes() {
   return (
@@ -27,6 +28,8 @@ export function AppRoutes() {
       <Route path="/portfolios/:id/dividends" element={<DividendDetailPage />} />
       <Route path="/portfolios/:id/cash-flows" element={<CashFlowDetailPage />} />
       <Route path="/portfolios/:id/corporate-actions" element={<CorporateActionsDetailPage />} />
+      <Route path="/portfolios/:portfolioId/tax" element={<TaxAllowanceDetailPage />} />
+      <Route path="/portfolios/:id/tax" element={<TaxAllowanceDetailPage />} />
       <Route path="/portfolios/:id/accounts/:accountId" element={<AccountDetailPage />} />
       <Route path="/instruments" element={<InstrumentListPage />} />
       <Route path="/market" element={<MarketRatesPage />} />

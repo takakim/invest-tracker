@@ -316,6 +316,15 @@ export function PortfolioDetailPage() {
             <Button
               variant="outlined"
               component={RouterLink}
+              to={`/portfolios/${portfolioId}/tax`}
+              startIcon={<AccountBalanceWalletOutlinedIcon />}
+              size="small"
+            >
+              Tax Allowances
+            </Button>
+            <Button
+              variant="outlined"
+              component={RouterLink}
               to={`/portfolios/${portfolioId}/corporate-actions`}
               startIcon={<AutoFixHighIcon />}
               size="small"
