@@ -40,4 +40,18 @@ public class ExportController {
                 .contentType(MediaType.parseMediaType("text/csv; charset=UTF-8"))
                 .body(bytes);
     }
+
+    @GetMapping(value = "/api/v1/portfolios/{portfolioId}/export/cash-flows.csv", produces = "text/csv")
+    public ResponseEntity<byte[]> exportCashFlowsCsv(
+            @PathVariable UUID portfolioId,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) String period,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) String groupBy) {
+        String csv = exportService.exportCashFlowsCsv(portfolioId, period, groupBy);
+        byte[] bytes = csv.getBytes(StandardCharsets.UTF_8);
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"cash-flows-" + portfolioId + ".csv\"")
+                .contentType(MediaType.parseMediaType("text/csv; charset=UTF-8"))
+                .body(bytes);
+    }
 }

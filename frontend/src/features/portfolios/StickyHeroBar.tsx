@@ -32,6 +32,7 @@ const SECTIONS = [
   { key: 'allocation', label: 'Allocation' },
   { key: 'performance', label: 'Performance' },
   { key: 'history', label: 'History' },
+  { key: 'cashFlows', label: 'Cash Flows' },
   { key: 'dividends', label: 'Dividends' },
   { key: 'rebalancing', label: 'Rebalancing' },
   { key: 'accounts', label: 'Accounts' },
