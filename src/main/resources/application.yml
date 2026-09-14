@@ -51,7 +51,7 @@ app:
     api-key: ${AI_API_KEY:}
     temperature: ${AI_TEMPERATURE:0.2}
     max-tokens: ${AI_MAX_TOKENS:2048}
-    timeout-seconds: ${AI_TIMEOUT_SECONDS:60}
+    timeout-seconds: ${AI_TIMEOUT_SECONDS:1200}
 
 management:
   endpoints:
