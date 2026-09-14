@@ -636,4 +636,10 @@ Before changing the repository:
   - Frontend upgraded to `"vitest": "^5.0.0"` with `@testing-library/jest-dom/vitest`.
   - Frontend UI: `TaxAllowanceDetailPage.tsx` (`/portfolios/:id/tax`) with KPI allowance meters, tax-sheltered shield banner, loss-harvesting candidate matrix, taxable disposal and dividend ledger tabs, and tax settings modal; account tax treatment selector in `AccountFormModal.tsx`.
   - Verification: 659 backend tests and 107 frontend tests passing with >=90% line and branch coverage (90.08% branch coverage), 0 security vulnerabilities, and CycloneDX SBOM generated.
-
+- Option 5 PDF / Executive Summary Report & Tax Year Audit Export implemented on branch `feat/pdf-executive-summary-export`:
+  - Apache PDFBox 3.0.8 dependency integration (`pom.xml`) with zero security vulnerabilities (verified via OWASP Dependency-Check).
+  - `ExecutiveSummaryPdfService`: Professional multi-page A4 PDF report generator with financial KPI cards (Consolidated Value, Net Invested, Cumulative Return, Unrealized/Realized Gains, Forward Income), dual-column asset class & currency exposure tables, holdings matrix, custodian cash accounts, and Tax Year Audit Statements (CGT/dividend statutory allowances, tax-sheltered shield breakdown, itemized taxable disposals, and loss-harvesting candidates).
+  - REST API: `GET /api/v1/portfolios/{id}/export/executive-summary.pdf` and `GET /api/v1/portfolios/{id}/export/tax-report.pdf` (`ExportController`).
+  - OpenAPI 3.1.1 contract synchronized in `docs/api/openapi.yaml`.
+  - Frontend: `ExecutiveSummaryReportPage.tsx` (`/portfolios/:id/reports/summary`) with responsive web report layout, `@media print` stylesheets, direct PDF download, and browser print triggers; PDF actions in `ExportReportModal.tsx` and `TaxAllowanceDetailPage.tsx`.
+  - Verification: 679 backend tests and 111 frontend tests passing with 90.35% JaCoCo branch coverage (mandatory >=90% gate met), 0 OWASP CVEs, and 0 npm vulnerabilities.
