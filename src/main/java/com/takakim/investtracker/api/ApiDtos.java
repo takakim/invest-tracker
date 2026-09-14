@@ -630,5 +630,47 @@ public final class ApiDtos {
         List<CashFlowPeriodPoint> periods,
         List<AccountCashFlowSummary> accountBreakdown,
         List<String> warnings) { }
+
+    public record CorporateActionResponse(
+        UUID id,
+        UUID instrumentId,
+        String instrumentName,
+        String ticker,
+        String isin,
+        String assetClass,
+        String actionType,
+        String status,
+        Instant exDate,
+        Instant recordDate,
+        Instant paymentDate,
+        java.math.BigDecimal ratioFrom,
+        java.math.BigDecimal ratioTo,
+        java.math.BigDecimal amountPerShare,
+        String currency,
+        String description,
+        String source,
+        java.math.BigDecimal heldQuantityAtExDate,
+        java.math.BigDecimal proposedImpactQuantity,
+        java.math.BigDecimal proposedImpactAmount,
+        UUID suggestedAccountId,
+        String suggestedAccountName,
+        UUID appliedTransactionId,
+        Instant createdAt,
+        Instant updatedAt) { }
+
+    public record ApplyCorporateActionRequest(
+        @jakarta.validation.constraints.NotNull(message = "accountId is required")
+        UUID accountId,
+        java.math.BigDecimal quantity,
+        java.math.BigDecimal grossAmount,
+        java.math.BigDecimal taxAmount,
+        String notes) { }
+
+    public record ScanCorporateActionsResponse(
+        UUID portfolioId,
+        int scannedInstrumentsCount,
+        int discoveredActionsCount,
+        int newPendingActionsCount,
+        List<String> messages) { }
 }
 

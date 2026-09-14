@@ -406,6 +406,80 @@ paths:
             text/csv:
               schema: { type: string }
         '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/corporate-actions:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+    get:
+      operationId: getPortfolioCorporateActions
+      summary: List corporate actions detected or applied to portfolio holdings
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [PENDING, APPLIED, DISMISSED] }
+      responses:
+        '200':
+          description: List of corporate actions
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/CorporateAction' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/corporate-actions/scan:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+    post:
+      operationId: scanPortfolioCorporateActions
+      summary: Scan market data providers for new corporate actions on held instruments
+      responses:
+        '200':
+          description: Corporate action scan results
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScanCorporateActionsResponse' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/corporate-actions/{actionId}/apply:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+      - name: actionId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: applyCorporateAction
+      summary: Apply a pending corporate action to the ledger and recalculate positions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ApplyCorporateActionRequest' }
+      responses:
+        '200':
+          description: Corporate action successfully applied
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CorporateAction' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/corporate-actions/{actionId}/dismiss:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+      - name: actionId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: dismissCorporateAction
+      summary: Dismiss a pending corporate action
+      responses:
+        '200':
+          description: Corporate action dismissed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CorporateAction' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
   /portfolios/{portfolioId}/target-allocation:
     parameters:
       - { $ref: '#/components/parameters/PortfolioId' }
@@ -1821,6 +1895,56 @@ components:
         warnings:
           type: array
           items: { type: string }
+    CorporateAction:
+      type: object
+      required: [id, instrumentId, instrumentName, actionType, status, exDate, source, heldQuantityAtExDate, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        instrumentId: { type: string, format: uuid }
+        instrumentName: { type: string }
+        ticker: { type: string, nullable: true }
+        isin: { type: string, nullable: true }
+        assetClass: { type: string }
+        actionType: { type: string, enum: [STOCK_SPLIT, REVERSE_STOCK_SPLIT, DIVIDEND] }
+        status: { type: string, enum: [PENDING, APPLIED, DISMISSED] }
+        exDate: { type: string, format: date-time }
+        recordDate: { type: string, format: date-time, nullable: true }
+        paymentDate: { type: string, format: date-time, nullable: true }
+        ratioFrom: { type: number, nullable: true }
+        ratioTo: { type: number, nullable: true }
+        amountPerShare: { type: number, nullable: true }
+        currency: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        source: { type: string }
+        heldQuantityAtExDate: { type: number }
+        proposedImpactQuantity: { type: number, nullable: true }
+        proposedImpactAmount: { type: number, nullable: true }
+        suggestedAccountId: { type: string, format: uuid, nullable: true }
+        suggestedAccountName: { type: string, nullable: true }
+        appliedTransactionId: { type: string, format: uuid, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ApplyCorporateActionRequest:
+      type: object
+      required: [accountId]
+      properties:
+        accountId: { type: string, format: uuid }
+        quantity: { type: number, nullable: true }
+        grossAmount: { type: number, nullable: true }
+        taxAmount: { type: number, nullable: true }
+        notes: { type: string, nullable: true }
+    ScanCorporateActionsResponse:
+      type: object
+      required: [portfolioId, scannedInstrumentsCount, discoveredActionsCount, newPendingActionsCount, messages]
+      properties:
+        portfolioId: { type: string, format: uuid }
+        scannedInstrumentsCount: { type: integer }
+        discoveredActionsCount: { type: integer }
+        newPendingActionsCount: { type: integer }
+        messages:
+          type: array
+          items: { type: string }
+
 
 
 
