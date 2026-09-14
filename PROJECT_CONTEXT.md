@@ -610,11 +610,22 @@ Before changing the repository:
   - Auto-detection endpoint `POST /api/v1/csv-imports/detect-broker` and supported brokers catalog `GET /api/v1/csv-imports/supported-brokers`.
   - Frontend `CsvImportModal` auto-detect preview, broker badge selector, and dynamic sample format hints.
   - 455 backend tests and 54 frontend tests passing with >=90% line and branch coverage and 0 vulnerabilities.
-- Option 3 Cash Flow, Deposit/Withdrawal Ledger & Net Savings Rate Analytics implemented on branch `feat/cash-flow-analytics-savings-rate`:
+- Option 3 Cash Flow, Deposit/Withdrawal Ledger & Net Savings Rate Analytics implemented and merged to main (PR #62):
   - `CashFlowAnalyticsService`: periodic breakdowns (Monthly, Quarterly, Yearly), external cash flows (`DEPOSIT`, `WITHDRAWAL`), multi-currency conversion, running cumulative contributions, average monthly savings rate, wealth attribution (Capital vs. Organic Growth), and account cash distribution.
   - `PortfolioExportService.exportCashFlowsCsv`: downloadable statement for audit and accounting.
   - REST endpoints: `GET /api/v1/portfolios/{id}/cash-flows` (`CashFlowController`) and `GET /api/v1/portfolios/{id}/export/cash-flows.csv` (`ExportController`).
   - OpenAPI 3.1.1 contract synchronized (`docs/api/openapi.yaml`).
   - Frontend: `CashFlowSummaryCard.tsx` on `PortfolioDetailPage`, dedicated sub-page `CashFlowDetailPage.tsx` (`/portfolios/:id/cash-flows`) with interactive SVG bar chart, wealth origin split progress bar, periodic ledger table, account distribution, and CSV export.
   - Verification: 578 backend tests and 97 frontend tests passing with >=90% line and branch coverage and 0 vulnerabilities.
+- Option 4 Corporate Actions Feed & Automated Split/Dividend Ingestion implemented on branch `feat/corporate-actions-feed`:
+  - `V11__corporate_actions.sql`: table `corporate_actions` with unique constraints, indexes, and FKs to `instruments`, `transactions`, and `accounts`.
+  - Domain entities & enums: `CorporateAction`, `CorporateActionType` (`STOCK_SPLIT`, `REVERSE_STOCK_SPLIT`, `DIVIDEND`), `CorporateActionStatus` (`PENDING`, `APPLIED`, `DISMISSED`).
+  - Market feed integration: `YahooFinanceGateway` (`/v8/finance/chart?events=div,split`) parses split ratios (`numerator:denominator`) and cash dividend per-share amounts with deduplication.
+  - `CorporateActionService`: automated portfolio scanning across active holdings, ledger auto-linking for matching transactions within a ±7 day trade date window, pre-calculated net split adjustments and dividend gross amounts, transaction ledger generation, and position recalculation.
+  - REST API: `GET /api/v1/portfolios/{id}/corporate-actions`, `POST .../scan`, `POST .../{actionId}/apply`, `POST .../{actionId}/dismiss` (`CorporateActionController`).
+  - OpenAPI 3.1.1 contract synchronized (`docs/api/openapi.yaml`).
+  - Frontend: `CorporateActionsBanner.tsx` notification alert on `PortfolioDetailPage`, sub-page `CorporateActionsDetailPage.tsx` (`/portfolios/:id/corporate-actions`) with status tabs, type filters, quick metrics, and ingest/dismiss dialogs.
+  - Verification: 621 backend tests and 103 frontend tests passing with >=90% line and branch coverage and 0 vulnerabilities.
+- Next Roadmap Phase:
+  - Option 2: UK / Regional Capital Gains Tax (CGT) & Dividend Allowance Tracker.
 

@@ -720,3 +720,50 @@ export interface CashFlowAnalytics {
   warnings: string[];
 }
 
+export type CorporateActionType = 'STOCK_SPLIT' | 'REVERSE_STOCK_SPLIT' | 'DIVIDEND';
+export type CorporateActionStatus = 'PENDING' | 'APPLIED' | 'DISMISSED';
+
+export interface CorporateAction {
+  id: string;
+  instrumentId: string;
+  instrumentName: string;
+  ticker?: string | null;
+  isin?: string | null;
+  assetClass: AssetClass | string;
+  actionType: CorporateActionType;
+  status: CorporateActionStatus;
+  exDate: string;
+  recordDate?: string | null;
+  paymentDate?: string | null;
+  ratioFrom?: number | null;
+  ratioTo?: number | null;
+  amountPerShare?: number | null;
+  currency: string;
+  description?: string | null;
+  source: string;
+  heldQuantityAtExDate?: number | null;
+  proposedImpactQuantity?: number | null;
+  proposedImpactAmount?: number | null;
+  suggestedAccountId?: string | null;
+  suggestedAccountName?: string | null;
+  appliedTransactionId?: string | null;
+  createdAt: string;
+  updatedAt?: string | null;
+}
+
+export interface ApplyCorporateActionInput {
+  accountId: string;
+  quantity?: number | null;
+  grossAmount?: number | null;
+  taxAmount?: number | null;
+  notes?: string | null;
+}
+
+export interface ScanCorporateActionsResponse {
+  portfolioId: string;
+  scannedInstrumentsCount: number;
+  discoveredActionsCount: number;
+  newPendingActionsCount: number;
+  messages: string[];
+}
+
