@@ -23,7 +23,28 @@ public final class YahooFinanceDtos {
     public record ChartEntry(
             ChartMeta meta,
             List<Long> timestamp,
-            ChartIndicators indicators
+            ChartIndicators indicators,
+            ChartEvents events
+    ) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record ChartEvents(
+            java.util.Map<String, DividendEvent> dividends,
+            java.util.Map<String, SplitEvent> splits
+    ) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record DividendEvent(
+            BigDecimal amount,
+            Long date
+    ) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record SplitEvent(
+            Long date,
+            BigDecimal numerator,
+            BigDecimal denominator,
+            String splitRatio
     ) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)

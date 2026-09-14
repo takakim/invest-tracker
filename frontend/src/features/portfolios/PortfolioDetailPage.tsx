@@ -45,6 +45,7 @@ import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined';
 import TuneOutlinedIcon from '@mui/icons-material/TuneOutlined';
 import BalanceOutlinedIcon from '@mui/icons-material/BalanceOutlined';
 import LayersOutlinedIcon from '@mui/icons-material/LayersOutlined';
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 
 import { usePortfolio, useUpdatePortfolio, useArchivePortfolio } from './usePortfolios';
 import {
@@ -69,6 +70,7 @@ import { ExportReportModal } from '../analytics/ExportReportModal';
 import { usePortfolioAnalytics } from '../analytics/useAnalytics';
 import { TargetAllocationCard, RebalancingCalculatorCard } from '../rebalancing';
 import { StickyHeroBar } from './StickyHeroBar';
+import { CorporateActionsBanner } from '../corporate-actions/CorporateActionsBanner';
 import { CollapsibleSection, ConfirmDialog, EmptyState, ErrorAlert, LoadingState } from '../../components';
 import type { Account, AccountCreateInput, PortfolioCreateInput } from '../../types';
 
@@ -284,6 +286,9 @@ export function PortfolioDetailPage() {
         </Typography>
       </Breadcrumbs>
 
+      {/* Corporate Actions Notification Banner */}
+      <CorporateActionsBanner portfolioId={portfolioId} />
+
       {/* Header Info */}
       <Paper sx={{ p: 3, mb: 4, borderRadius: 3 }}>
         <Stack
@@ -308,6 +313,15 @@ export function PortfolioDetailPage() {
           </Box>
 
           <Stack direction="row" spacing={1}>
+            <Button
+              variant="outlined"
+              component={RouterLink}
+              to={`/portfolios/${portfolioId}/corporate-actions`}
+              startIcon={<AutoFixHighIcon />}
+              size="small"
+            >
+              Corporate Actions
+            </Button>
             <Button
               variant="outlined"
               startIcon={<FileDownloadOutlinedIcon />}
