@@ -48,6 +48,8 @@ class PortfolioExportServiceTests {
     private TransactionRepository transactionRepository;
     @Mock
     private AnalyticsEngine analyticsEngine;
+    @Mock
+    private com.takakim.investtracker.service.analytics.CashFlowAnalyticsService cashFlowAnalyticsService;
 
     private PortfolioExportService exportService;
 
@@ -60,7 +62,7 @@ class PortfolioExportServiceTests {
     @BeforeEach
     void setUp() {
         exportService = new PortfolioExportService(
-                portfolioRepository, positionRepository, transactionRepository, analyticsEngine
+                portfolioRepository, positionRepository, transactionRepository, analyticsEngine, cashFlowAnalyticsService
         );
 
         portfolioId = UUID.randomUUID();
@@ -192,5 +194,85 @@ class PortfolioExportServiceTests {
         String csv = exportService.exportPositionsCsv(portfolioId);
         assertNotNull(csv);
         assertTrue(csv.contains("0.0000"));
+    }
+
+    @Test
+    void exportCashFlowsCsv_success() {
+        var summary = new com.takakim.investtracker.api.ApiDtos.CashFlowSummary(
+                BigDecimal.valueOf(1000), BigDecimal.ZERO, BigDecimal.valueOf(1000),
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.valueOf(1000),
+                BigDecimal.valueOf(1000), 1, BigDecimal.valueOf(1000),
+                BigDecimal.valueOf(1000), BigDecimal.valueOf(100), BigDecimal.ZERO, "GBP"
+        );
+        var period = new com.takakim.investtracker.api.ApiDtos.CashFlowPeriodPoint(
+                "2026-01", Instant.now().minusSeconds(86400 * 30), Instant.now(),
+                BigDecimal.valueOf(1000), BigDecimal.ZERO, BigDecimal.valueOf(1000),
+                BigDecimal.ZERO, BigDecimal.valueOf(1000)
+        );
+        var response = new com.takakim.investtracker.api.ApiDtos.CashFlowAnalyticsResponse(
+                portfolioId, "Tech Portfolio", "GBP", "ALL", "MONTH",
+                Instant.now().minusSeconds(86400 * 30), Instant.now(),
+                summary, List.of(period), List.of(), List.of()
+        );
+
+        when(cashFlowAnalyticsService.calculateCashFlows(eq(portfolioId), any(), any())).thenReturn(response);
+
+        String csv = exportService.exportCashFlowsCsv(portfolioId, "ALL", "MONTH");
+        assertNotNull(csv);
+        assertTrue(csv.contains("Period,Start Date,End Date,Deposits,Withdrawals,Net Contributions,Internal Income,Cumulative Contributions,Currency"));
+        assertTrue(csv.contains("2026-01"));
+        assertTrue(csv.contains("1000"));
+        assertTrue(csv.contains("GBP"));
+    }
+
+    @Test
+    void exportTransactionsCsv_escapeCsvVariants() {
+        when(portfolioRepository.existsById(portfolioId)).thenReturn(true);
+
+        Transaction txQuote = new Transaction(
+                account, apple, TransactionType.BUY,
+                Instant.parse("2026-08-20T10:15:30Z"), null,
+                new BigDecimal("10.00"), new BigDecimal("150.00"),
+                new BigDecimal("1500.00"), BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null,
+                "Quote\"Only", null
+        );
+        Transaction txComma = new Transaction(
+                account, apple, TransactionType.BUY,
+                Instant.parse("2026-08-20T10:15:30Z"), null,
+                new BigDecimal("10.00"), new BigDecimal("150.00"),
+                new BigDecimal("1500.00"), BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null,
+                "Comma,Only", null
+        );
+        Transaction txNewline = new Transaction(
+                account, apple, TransactionType.BUY,
+                Instant.parse("2026-08-20T10:15:30Z"), null,
+                new BigDecimal("10.00"), new BigDecimal("150.00"),
+                new BigDecimal("1500.00"), BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null,
+                "Newline\nOnly", null
+        );
+        Transaction txPlain = new Transaction(
+                account, apple, TransactionType.BUY,
+                Instant.parse("2026-08-20T10:15:30Z"), null,
+                new BigDecimal("10.00"), new BigDecimal("150.00"),
+                new BigDecimal("1500.00"), BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null,
+                "Plain", null
+        );
+        Transaction txNullNote = new Transaction(
+                account, apple, TransactionType.BUY,
+                Instant.parse("2026-08-20T10:15:30Z"), null,
+                new BigDecimal("10.00"), new BigDecimal("150.00"),
+                new BigDecimal("1500.00"), BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null,
+                null, null
+        );
+
+        when(transactionRepository.findByAccountPortfolioIdOrderByTradeDateDesc(portfolioId))
+                .thenReturn(List.of(txQuote, txComma, txNewline, txPlain, txNullNote));
+
+        String csv = exportService.exportTransactionsCsv(portfolioId);
+        assertNotNull(csv);
+        assertTrue(csv.contains("\"Quote\"\"Only\""));
+        assertTrue(csv.contains("\"Comma,Only\""));
+        assertTrue(csv.contains("\"Newline\nOnly\""));
+        assertTrue(csv.contains("Plain"));
     }
 }

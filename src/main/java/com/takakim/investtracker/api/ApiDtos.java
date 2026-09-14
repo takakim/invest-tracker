@@ -580,4 +580,55 @@ public final class ApiDtos {
         String benchmarkName,
         HistoricalPerformanceSummary summary,
         List<HistoricalValuationPoint> dataPoints) { }
+
+    public record CashFlowSummary(
+        java.math.BigDecimal totalDeposits,
+        java.math.BigDecimal totalWithdrawals,
+        java.math.BigDecimal netContributions,
+        java.math.BigDecimal totalDividends,
+        java.math.BigDecimal totalInterest,
+        java.math.BigDecimal totalFees,
+        java.math.BigDecimal netCashFlow,
+        java.math.BigDecimal avgMonthlyContribution,
+        int activeContributionMonths,
+        java.math.BigDecimal cumulativeContributions,
+        java.math.BigDecimal currentPortfolioValue,
+        java.math.BigDecimal capitalContributionsPercentage,
+        java.math.BigDecimal marketGrowthPercentage,
+        String baseCurrency) { }
+
+    public record CashFlowPeriodPoint(
+        String periodLabel,
+        Instant startDate,
+        Instant endDate,
+        java.math.BigDecimal deposits,
+        java.math.BigDecimal withdrawals,
+        java.math.BigDecimal netContributions,
+        java.math.BigDecimal internalIncome,
+        java.math.BigDecimal cumulativeNetContributions) { }
+
+    public record AccountCashFlowSummary(
+        UUID accountId,
+        String accountName,
+        String brokerName,
+        String accountCurrency,
+        java.math.BigDecimal currentCashBalance,
+        java.math.BigDecimal currentCashBalanceInBase,
+        java.math.BigDecimal totalDeposits,
+        java.math.BigDecimal totalWithdrawals,
+        java.math.BigDecimal netContributions) { }
+
+    public record CashFlowAnalyticsResponse(
+        UUID portfolioId,
+        String portfolioName,
+        String baseCurrency,
+        String period,
+        String groupBy,
+        Instant periodStart,
+        Instant periodEnd,
+        CashFlowSummary summary,
+        List<CashFlowPeriodPoint> periods,
+        List<AccountCashFlowSummary> accountBreakdown,
+        List<String> warnings) { }
 }
+

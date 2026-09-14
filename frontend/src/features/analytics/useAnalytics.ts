@@ -31,3 +31,16 @@ export function usePortfolioHistory(
   });
 }
 
+export function useCashFlowAnalytics(
+  portfolioId?: string,
+  params?: { period?: string; groupBy?: string }
+) {
+  return useQuery({
+    queryKey: ['portfolio', portfolioId, 'cash-flows', params?.period, params?.groupBy],
+    queryFn: () => analyticsApi.getCashFlowAnalytics(portfolioId!, params),
+    enabled: !!portfolioId,
+    staleTime: 60 * 1000,
+  });
+}
+
+
