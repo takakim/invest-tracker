@@ -58,4 +58,49 @@ export const exportApi = {
     window.URL.revokeObjectURL(url);
     document.body.removeChild(a);
   },
+
+  getExecutiveSummaryPdfUrl: (portfolioId: string): string =>
+    `/api/v1/portfolios/${portfolioId}/export/executive-summary.pdf`,
+
+  downloadExecutiveSummaryPdf: async (portfolioId: string): Promise<void> => {
+    const response = await fetch(`/api/v1/portfolios/${portfolioId}/export/executive-summary.pdf`);
+    if (!response.ok) throw new Error('Failed to download Executive Summary PDF');
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `executive-summary-${portfolioId}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  },
+
+  getTaxReportPdfUrl: (portfolioId: string, params?: { taxYear?: string; regime?: string }): string => {
+    const query = new URLSearchParams();
+    if (params?.taxYear) query.append('taxYear', params.taxYear);
+    if (params?.regime) query.append('regime', params.regime);
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    return `/api/v1/portfolios/${portfolioId}/export/tax-report.pdf${qs}`;
+  },
+
+  downloadTaxReportPdf: async (portfolioId: string, params?: { taxYear?: string; regime?: string }): Promise<void> => {
+    const query = new URLSearchParams();
+    if (params?.taxYear) query.append('taxYear', params.taxYear);
+    if (params?.regime) query.append('regime', params.regime);
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    const response = await fetch(`/api/v1/portfolios/${portfolioId}/export/tax-report.pdf${qs}`);
+    if (!response.ok) throw new Error('Failed to download Tax Report PDF');
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const safeYear = params?.taxYear ? params.taxYear.replace('/', '-') : 'current';
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `tax-report-${safeYear}-${portfolioId}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  },
 };
+
