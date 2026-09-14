@@ -14,6 +14,7 @@ export * from './benchmark';
 export * from './rebalancing';
 export * from './system';
 export * from './corporateActions';
+export * from './taxAllowances';
 
 
 

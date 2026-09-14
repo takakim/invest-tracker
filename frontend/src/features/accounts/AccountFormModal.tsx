@@ -7,6 +7,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  MenuItem,
   Stack,
   TextField,
 } from '@mui/material';
@@ -46,6 +47,7 @@ export function AccountFormModal({
       name: '',
       brokerName: '',
       accountCurrency: defaultCurrency,
+      taxTreatment: 'TAXABLE',
     },
   });
 
@@ -55,12 +57,14 @@ export function AccountFormModal({
         name: account.name,
         brokerName: account.brokerName,
         accountCurrency: account.accountCurrency,
+        taxTreatment: account.taxTreatment || 'TAXABLE',
       });
     } else {
       reset({
         name: '',
         brokerName: '',
         accountCurrency: defaultCurrency,
+        taxTreatment: 'TAXABLE',
       });
     }
   }, [account, defaultCurrency, reset, open]);
@@ -110,6 +114,20 @@ export function AccountFormModal({
               slotProps={{ htmlInput: { maxLength: 3, style: { textTransform: 'uppercase' } } }}
               {...register('accountCurrency')}
             />
+
+            <TextField
+              label="Tax Treatment"
+              select
+              fullWidth
+              defaultValue="TAXABLE"
+              helperText="Determines whether realized capital gains and dividends are subject to tax allowances"
+              error={Boolean(errors.taxTreatment)}
+              {...register('taxTreatment')}
+            >
+              <MenuItem value="TAXABLE">Taxable (General Investment Account / GIA)</MenuItem>
+              <MenuItem value="TAX_EXEMPT">Tax-Exempt (Stocks & Shares ISA, Roth IRA)</MenuItem>
+              <MenuItem value="TAX_DEFERRED">Tax-Deferred (SIPP, 401k, Pension)</MenuItem>
+            </TextField>
           </Stack>
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>

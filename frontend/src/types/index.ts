@@ -30,12 +30,15 @@ export interface PortfolioCreateInput {
   returnMethod: ReturnMethod;
 }
 
+export type AccountTaxTreatment = 'TAXABLE' | 'TAX_EXEMPT' | 'TAX_DEFERRED';
+
 export interface Account {
   id: string;
   portfolioId: string;
   name: string;
   brokerName: string;
   accountCurrency: string;
+  taxTreatment?: AccountTaxTreatment;
   status: EntityStatus;
   createdAt: string;
   updatedAt: string;
@@ -45,6 +48,7 @@ export interface AccountCreateInput {
   name: string;
   brokerName: string;
   accountCurrency: string;
+  taxTreatment?: AccountTaxTreatment;
 }
 
 export interface Instrument {
@@ -765,5 +769,146 @@ export interface ScanCorporateActionsResponse {
   discoveredActionsCount: number;
   newPendingActionsCount: number;
   messages: string[];
+}
+
+export type TaxRegime = 'UK_HMRC' | 'CALENDAR_YEAR';
+
+export interface TaxSettingsRequest {
+  taxYear?: string | null;
+  taxRegime?: TaxRegime | null;
+  cgtAllowance?: number | null;
+  dividendAllowance?: number | null;
+  lossCarryforward?: number | null;
+  notes?: string | null;
+}
+
+export interface TaxSettingsResponse {
+  id: string;
+  portfolioId: string;
+  taxYear: string;
+  taxRegime: TaxRegime;
+  cgtAllowance: number;
+  dividendAllowance: number;
+  lossCarryforward: number;
+  notes?: string | null;
+  updatedAt: string;
+}
+
+export interface ItemizedDisposal {
+  disposalTransactionId: string;
+  accountId: string;
+  accountName: string;
+  taxTreatment: AccountTaxTreatment;
+  instrumentId: string;
+  instrumentName: string;
+  ticker?: string | null;
+  disposalDate: string;
+  quantity: number;
+  proceedsNative: number;
+  costBasisNative: number;
+  nativeCurrency: string;
+  proceedsBase: number;
+  costBasisBase: number;
+  realizedGainLossBase: number;
+}
+
+export interface ItemizedDividend {
+  transactionId: string;
+  accountId: string;
+  accountName: string;
+  taxTreatment: AccountTaxTreatment;
+  instrumentId?: string | null;
+  instrumentName: string;
+  ticker?: string | null;
+  paymentDate: string;
+  grossAmountNative: number;
+  withholdingTaxNative: number;
+  nativeCurrency: string;
+  grossAmountBase: number;
+  withholdingTaxBase: number;
+  netAmountBase: number;
+}
+
+export interface TaxLossHarvestOpportunity {
+  accountId: string;
+  accountName: string;
+  instrumentId: string;
+  instrumentName: string;
+  ticker?: string | null;
+  quantity: number;
+  currentPrice: number;
+  priceCurrency: string;
+  currentMarketValueBase: number;
+  totalCostBasisBase: number;
+  unrealizedLossBase: number;
+}
+
+export interface CapitalGainsTaxSummary {
+  totalDisposalProceeds: number;
+  totalDisposalCostBasis: number;
+  grossRealizedGains: number;
+  grossRealizedLosses: number;
+  netRealizedGainLoss: number;
+  lossCarryforwardApplied: number;
+  netTaxableGainBeforeAllowance: number;
+  annualExemptAmount: number;
+  allowanceUsed: number;
+  allowanceRemaining: number;
+  taxableCapitalGain: number;
+  estimatedTaxBasicRate: number;
+  estimatedTaxHigherRate: number;
+  basicTaxRatePercentage: number;
+  higherTaxRatePercentage: number;
+  totalDisposalsCount: number;
+}
+
+export interface DividendTaxSummary {
+  totalGrossDividends: number;
+  totalWithholdingTax: number;
+  netDividendsReceived: number;
+  annualDividendAllowance: number;
+  allowanceUsed: number;
+  allowanceRemaining: number;
+  taxableDividendIncome: number;
+  estimatedTaxBasicRate: number;
+  estimatedTaxHigherRate: number;
+  estimatedTaxAdditionalRate: number;
+  basicTaxRatePercentage: number;
+  higherTaxRatePercentage: number;
+  additionalTaxRatePercentage: number;
+  totalDividendsCount: number;
+}
+
+export interface TaxShelteredSummary {
+  shelteredRealizedGains: number;
+  shelteredRealizedLosses: number;
+  shelteredGrossDividends: number;
+  estimatedCapitalGainsTaxSaved: number;
+  estimatedDividendTaxSaved: number;
+  totalEstimatedTaxSaved: number;
+}
+
+export interface TaxReportResponse {
+  portfolioId: string;
+  portfolioName: string;
+  baseCurrency: string;
+  taxYear: string;
+  taxRegime: TaxRegime;
+  periodStart: string;
+  periodEnd: string;
+  capitalGains: CapitalGainsTaxSummary;
+  dividendIncome: DividendTaxSummary;
+  shelteredSummary: TaxShelteredSummary;
+  lossHarvestOpportunities: TaxLossHarvestOpportunity[];
+  disposals: ItemizedDisposal[];
+  dividends: ItemizedDividend[];
+  warnings: string[];
+}
+
+export interface AvailableTaxYearsResponse {
+  availableUkTaxYears: string[];
+  availableCalendarYears: string[];
+  currentUkTaxYear: string;
+  currentCalendarYear: string;
 }
 
