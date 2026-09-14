@@ -618,6 +618,41 @@ paths:
             text/csv:
               schema: { type: string }
         '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/export/executive-summary.pdf:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+    get:
+      operationId: exportExecutiveSummaryPdf
+      summary: Export comprehensive executive summary audit report as printable PDF
+      responses:
+        '200':
+          description: Printable PDF document of portfolio valuation and performance audit
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/export/tax-report.pdf:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+    get:
+      operationId: exportTaxReportPdf
+      summary: Export tax-year audit statement with CGT and dividend breakdown as printable PDF
+      parameters:
+        - name: taxYear
+          in: query
+          required: false
+          schema: { type: string, example: '2024/2025' }
+        - name: regime
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/TaxRegime' }
+      responses:
+        '200':
+          description: Printable PDF document of tax-year audit statement
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        '404': { $ref: '#/components/responses/Problem' }
   /portfolios/{portfolioId}/accounts/{accountId}/transactions:
     parameters:
       - { $ref: '#/components/parameters/PortfolioId' }
