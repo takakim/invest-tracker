@@ -46,6 +46,7 @@ import TuneOutlinedIcon from '@mui/icons-material/TuneOutlined';
 import BalanceOutlinedIcon from '@mui/icons-material/BalanceOutlined';
 import LayersOutlinedIcon from '@mui/icons-material/LayersOutlined';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 
 import { usePortfolio, useUpdatePortfolio, useArchivePortfolio } from './usePortfolios';
 import {
@@ -71,6 +72,7 @@ import { usePortfolioAnalytics } from '../analytics/useAnalytics';
 import { TargetAllocationCard, RebalancingCalculatorCard } from '../rebalancing';
 import { StickyHeroBar } from './StickyHeroBar';
 import { CorporateActionsBanner } from '../corporate-actions/CorporateActionsBanner';
+import { PortfolioAiEvaluationCard, AiStatusIndicator } from '../ai';
 import { CollapsibleSection, ConfirmDialog, EmptyState, ErrorAlert, LoadingState } from '../../components';
 import type { Account, AccountCreateInput, PortfolioCreateInput } from '../../types';
 
@@ -108,6 +110,7 @@ export function PortfolioDetailPage() {
   // Collapsible section states
   const SECTION_KEYS = [
     'valuation',
+    'aiIntelligence',
     'allocation',
     'performance',
     'history',
@@ -120,6 +123,7 @@ export function PortfolioDetailPage() {
 
   const [expandedSections, setExpandedSections] = useState<Record<SectionKey, boolean>>({
     valuation: true,
+    aiIntelligence: true,
     allocation: true,
     performance: true,
     history: true,
@@ -312,7 +316,8 @@ export function PortfolioDetailPage() {
             </Typography>
           </Box>
 
-          <Stack direction="row" spacing={1}>
+          <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
+            <AiStatusIndicator size="medium" />
             <Button
               variant="outlined"
               component={RouterLink}
@@ -449,6 +454,22 @@ export function PortfolioDetailPage() {
         onToggle={(expanded) => toggleSection('valuation', expanded)}
       >
         <ValuationMetricsCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
+      </CollapsibleSection>
+
+      {/* AI Portfolio Intelligence */}
+      <CollapsibleSection
+        id="section-aiIntelligence"
+        title="AI Portfolio Intelligence"
+        subtitle="Portfolio risk assessment, asset concentration, and macro stress tests powered by Gemma 4 12B"
+        icon={<AutoAwesomeIcon />}
+        expanded={expandedSections.aiIntelligence}
+        onToggle={(expanded) => toggleSection('aiIntelligence', expanded)}
+      >
+        <PortfolioAiEvaluationCard
+          portfolioId={portfolio.id}
+          portfolioName={portfolio.name}
+          baseCurrency={portfolio.baseCurrency}
+        />
       </CollapsibleSection>
 
       {/* Asset Allocation Breakdown */}

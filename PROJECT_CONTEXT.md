@@ -643,3 +643,11 @@ Before changing the repository:
   - OpenAPI 3.1.1 contract synchronized in `docs/api/openapi.yaml`.
   - Frontend: `ExecutiveSummaryReportPage.tsx` (`/portfolios/:id/reports/summary`) with responsive web report layout, `@media print` stylesheets, direct PDF download, and browser print triggers; PDF actions in `ExportReportModal.tsx` and `TaxAllowanceDetailPage.tsx`.
   - Verification: 679 backend tests and 111 frontend tests passing with 90.35% JaCoCo branch coverage (mandatory >=90% gate met), 0 OWASP CVEs, and 0 npm vulnerabilities.
+- AI Portfolio & Holding Intelligence Engine (LM Studio / Gemma 4 12B) implemented on branch `feat/ai-portfolio-evaluator`:
+  - Native LM Studio REST v1 client (`LmStudioGateway`) targeting Gemma 4 12B (`/api/v1/chat`, `/api/v1/models`) with fallback to OpenAI-compatible `/v1/chat/completions` and optional Bearer auth.
+  - `AiEvaluationService`: Deep portfolio intelligence (risk score 1–10, diversification analysis, concentration risks, wrapper placement optimization across ISA/SIPP/GIA, forward macro stress testing, action recommendations) and individual holding evaluations (clear stance `STRONG_BUY`, `ACCUMULATE`, `HOLD`, `TRIM`, `SELL`, risk rating, executive thesis, hold vs. sell trade-off analysis, fundamental metrics like P/E, PEG, debt/equity, ROE, 52-week quote ranges from Yahoo Finance).
+  - REST API: `GET /api/v1/ai/status`, `POST /api/v1/portfolios/{id}/ai/evaluate`, `POST /api/v1/portfolios/{id}/holdings/{instId}/ai/evaluate` (`AiController`).
+  - OpenAPI 3.1.1 contract synchronized in `docs/api/openapi.yaml`.
+  - Frontend UI: `AiStatusIndicator.tsx` connection badge, `PortfolioAiEvaluationCard.tsx` portfolio intelligence card with interactive risk gauge and collapsible analysis sections, `HoldingAiEvaluationModal.tsx` position evaluation dialog, `PositionTable.tsx` row action button, and `PortfolioDetailPage.tsx` integration.
+  - Verification: 738 backend tests and 119 frontend tests passing with 90.08% JaCoCo branch coverage (mandatory >=90% gate met), 0 OWASP CVEs, and 0 npm vulnerabilities.
+
