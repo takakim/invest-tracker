@@ -644,5 +644,44 @@ class LmStudioGatewayTests {
         mockServer.verify();
         assertTrue(status.connected());
     }
+
+    @Test
+    @DisplayName("checkStatus parses key, display_name, and loaded_instances from LM Studio native endpoint")
+    void testCheckStatusWithLmStudioKeyDisplayNameAndLoadedInstances() {
+        String json = """
+                {
+                  "models": [
+                    {
+                      "type": "llm",
+                      "key": "google/gemma-4-12b",
+                      "display_name": "Gemma 4 12B",
+                      "loaded_instances": [
+                        { "id": "google/gemma-4-12b" },
+                        { "id": "secondary-instance-12b" },
+                        { "no_id": true }
+                      ]
+                    },
+                    {
+                      "type": "llm",
+                      "display_name": "Standalone Model",
+                      "loaded_instances": "not-an-array"
+                    }
+                  ]
+                }
+                """;
+
+        mockServer.expect(requestTo("http://localhost:1234/api/v1/models"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(json, MediaType.APPLICATION_JSON));
+
+        AiStatusDto status = gateway.checkStatus();
+        mockServer.verify();
+
+        assertTrue(status.connected());
+        assertTrue(status.availableModels().contains("google/gemma-4-12b"));
+        assertTrue(status.availableModels().contains("secondary-instance-12b"));
+        assertTrue(status.availableModels().contains("Standalone Model"));
+    }
 }
+
 
