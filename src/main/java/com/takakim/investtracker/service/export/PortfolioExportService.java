@@ -56,11 +56,11 @@ public class PortfolioExportService {
             sb.append(escapeCsv(pt.periodLabel())).append(",")
                     .append(DateTimeFormatter.ISO_INSTANT.format(pt.startDate())).append(",")
                     .append(DateTimeFormatter.ISO_INSTANT.format(pt.endDate())).append(",")
-                    .append(pt.deposits() != null ? pt.deposits().toPlainString() : "0.00").append(",")
-                    .append(pt.withdrawals() != null ? pt.withdrawals().toPlainString() : "0.00").append(",")
-                    .append(pt.netContributions() != null ? pt.netContributions().toPlainString() : "0.00").append(",")
-                    .append(pt.internalIncome() != null ? pt.internalIncome().toPlainString() : "0.00").append(",")
-                    .append(pt.cumulativeNetContributions() != null ? pt.cumulativeNetContributions().toPlainString() : "0.00").append(",")
+                    .append(pt.deposits().toPlainString()).append(",")
+                    .append(pt.withdrawals().toPlainString()).append(",")
+                    .append(pt.netContributions().toPlainString()).append(",")
+                    .append(pt.internalIncome().toPlainString()).append(",")
+                    .append(pt.cumulativeNetContributions().toPlainString()).append(",")
                     .append(escapeCsv(response.baseCurrency())).append("\n");
         }
 
@@ -127,8 +127,8 @@ public class PortfolioExportService {
                     .append(tx.getQuantity() != null ? tx.getQuantity().toPlainString() : "").append(",")
                     .append(tx.getPrice() != null ? tx.getPrice().toPlainString() : "").append(",")
                     .append(tx.getGrossAmount().toPlainString()).append(",")
-                    .append(tx.getFeeAmount() != null ? tx.getFeeAmount().toPlainString() : "0.0000").append(",")
-                    .append(tx.getTaxAmount() != null ? tx.getTaxAmount().toPlainString() : "0.0000").append(",")
+                    .append(tx.getFeeAmount().toPlainString()).append(",")
+                    .append(tx.getTaxAmount().toPlainString()).append(",")
                     .append(tx.getNetAmount().toPlainString()).append(",")
                     .append(escapeCsv(tx.getCurrency())).append(",")
                     .append(escapeCsv(tx.getNotes() != null ? tx.getNotes() : "")).append("\n");

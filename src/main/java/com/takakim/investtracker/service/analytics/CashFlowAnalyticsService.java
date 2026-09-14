@@ -170,11 +170,11 @@ public class CashFlowAnalyticsService {
         BigDecimal currentPortfolioValue = BigDecimal.ZERO;
         try {
             PortfolioAnalytics analytics = analyticsEngine.calculate(portfolioId, now);
-            if (analytics != null && analytics.totalCurrentValue() != null) {
+            if (analytics != null) {
                 currentPortfolioValue = analytics.totalCurrentValue();
-            }
-            if (analytics != null && analytics.warnings() != null) {
-                warnings.addAll(analytics.warnings());
+                if (analytics.warnings() != null && !analytics.warnings().isEmpty()) {
+                    warnings.addAll(analytics.warnings());
+                }
             }
         } catch (Exception ex) {
             warnings.add("Portfolio live valuation was approximated: " + ex.getMessage());
@@ -261,8 +261,8 @@ public class CashFlowAnalyticsService {
     }
 
     private BigDecimal convertToPortfolioCurrency(Transaction tx, Currency baseCurrency) {
-        BigDecimal rawAmount = tx.getNetAmount() != null ? tx.getNetAmount().abs() : BigDecimal.ZERO;
-        Currency txCurrency = tx.getCurrency() != null ? new Currency(tx.getCurrency()) : tx.getAccount().getAccountCurrency();
+        BigDecimal rawAmount = tx.getNetAmount().abs();
+        Currency txCurrency = new Currency(tx.getCurrency());
         Money money = new Money(rawAmount, txCurrency);
         return fxRateService.convert(money, baseCurrency, tx.getTradeDate()).amount();
     }
@@ -289,8 +289,8 @@ public class CashFlowAnalyticsService {
                 continue;
             }
             TransactionType type = tx.getType();
-            BigDecimal net = tx.getNetAmount() != null ? tx.getNetAmount().abs() : BigDecimal.ZERO;
-            BigDecimal gross = tx.getGrossAmount() != null ? tx.getGrossAmount().abs() : net;
+            BigDecimal net = tx.getNetAmount().abs();
+            BigDecimal gross = tx.getGrossAmount().abs();
 
             if (type == TransactionType.DEPOSIT || type == TransactionType.DIVIDEND || type == TransactionType.INTEREST || type == TransactionType.SELL) {
                 cash = cash.add(net);
