@@ -6,10 +6,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from '@mui/material';
 
 import { theme } from '../theme';
-import { portfolioApi, accountApi, positionApi, transactionApi, importApi } from '../api';
+import { portfolioApi, accountApi, positionApi, transactionApi, importApi, instrumentApi } from '../api';
 import { AccountDetailPage } from '../features/accounts/AccountDetailPage';
 import { AccountSectionCard } from '../features/accounts/AccountSectionCard';
-import type { Account, ImportBatch, Portfolio, PositionPerformance, Transaction } from '../types';
+import type { Account, ImportBatch, Instrument, Portfolio, PositionPerformance, Transaction } from '../types';
 
 function createTestQueryClient() {
   return new QueryClient({
@@ -204,6 +204,28 @@ describe('Account Feature & Detail Page Suite', () => {
     vi.spyOn(positionApi, 'listAccountPerformance').mockResolvedValue(mockPositions);
     vi.spyOn(transactionApi, 'list').mockResolvedValue(mockTransactions);
     vi.spyOn(importApi, 'list').mockResolvedValue(mockImportBatches);
+    vi.spyOn(instrumentApi, 'list').mockResolvedValue([
+      {
+        id: 'inst-1',
+        name: 'Apple Inc.',
+        assetClass: 'STOCK',
+        ticker: 'AAPL',
+        isin: 'US0378331005',
+        currency: 'USD',
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      },
+      {
+        id: 'inst-2',
+        name: 'Vanguard FTSE All-World',
+        assetClass: 'ETF',
+        ticker: 'VWRL',
+        isin: 'IE00B3RBWM25',
+        currency: 'GBP',
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      },
+    ]);
   });
 
   it('renders AccountDetailPage with hero summary and KPIs', async () => {
@@ -276,6 +298,61 @@ describe('Account Feature & Detail Page Suite', () => {
     // Initial deposit should be filtered out
     expect(screen.queryByText('Initial deposit')).not.toBeInTheDocument();
     expect(screen.getByText(/Showing 1 of 4/i)).toBeInTheDocument();
+  });
+
+  it('allows opening Edit Transaction modal and submitting an in-place update', async () => {
+    const updateSpy = vi.spyOn(transactionApi, 'update').mockResolvedValue({
+      ...mockTransactions[1],
+      notes: 'Updated purchase note',
+      quantity: 12,
+      grossAmount: 1800,
+      netAmount: 1800,
+    });
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/portfolios/:id/accounts/:accountId" element={<AccountDetailPage />} />
+      </Routes>,
+      '/portfolios/port-123/accounts/acc-456',
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: /Transactions/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('tab', { name: /Transactions/i }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Edit transaction tx-2')).toBeInTheDocument();
+    });
+
+    // Click edit button on tx-2 (Apple BUY)
+    fireEvent.click(screen.getByLabelText('Edit transaction tx-2'));
+
+    // Verify modal is in Edit mode
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Edit Transaction' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Save Changes' })).toBeInTheDocument();
+    });
+
+    // Edit notes field
+    const notesInput = screen.getByPlaceholderText('e.g. Order #12345');
+    fireEvent.change(notesInput, { target: { value: 'Updated purchase note' } });
+
+    // Submit form
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+    await waitFor(() => {
+      expect(updateSpy).toHaveBeenCalledWith(
+        'port-123',
+        'acc-456',
+        'tx-2',
+        expect.objectContaining({
+          type: 'BUY',
+          notes: 'Updated purchase note',
+        }),
+      );
+    });
   });
 
   it('switches to Import History tab and displays import batches', async () => {

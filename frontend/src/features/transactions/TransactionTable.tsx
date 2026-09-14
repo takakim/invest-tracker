@@ -24,7 +24,7 @@ import EditNoteOutlinedIcon from '@mui/icons-material/EditNoteOutlined';
 import DownloadIcon from '@mui/icons-material/Download';
 import SearchIcon from '@mui/icons-material/Search';
 
-import { useTransactionsList, useCreateTransaction, useCorrectTransaction } from './useTransactions';
+import { useTransactionsList, useCreateTransaction, useUpdateTransaction, useCorrectTransaction } from './useTransactions';
 import { TransactionFormModal } from './TransactionFormModal';
 import { CsvImportModal } from '../imports/CsvImportModal';
 import { EmptyState, ErrorAlert, LoadingState } from '../../components';
@@ -60,6 +60,7 @@ export function TransactionTable({
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [formOpen, setFormOpen] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [importModalOpen, setImportModalOpen] = useState(false);
 
   const {
@@ -70,6 +71,7 @@ export function TransactionTable({
   } = useTransactionsList(portfolioId, accountId);
 
   const createMutation = useCreateTransaction(portfolioId, accountId);
+  const updateMutation = useUpdateTransaction(portfolioId, accountId);
 
   const filteredTransactions = useMemo(() => {
     return transactions.filter((tx) => {
@@ -152,8 +154,18 @@ export function TransactionTable({
   const hasActiveFilters =
     selectedTypeFilter !== 'ALL' || Boolean(searchQuery.trim()) || Boolean(startDate) || Boolean(endDate);
 
+  const handleOpenEdit = (tx: Transaction) => {
+    setEditingTransaction(tx);
+    setFormOpen(true);
+  };
+
+  const handleCloseForm = () => {
+    setFormOpen(false);
+    setEditingTransaction(null);
+  };
+
   const handleFormSubmit = async (formData: TransactionFormData) => {
-    const payload: TransactionCreateInput = {
+    const payload = {
       type: formData.type as TransactionType,
       tradeDate: new Date(formData.tradeDate).toISOString(),
       instrumentId: formData.instrumentId || undefined,
@@ -166,9 +178,24 @@ export function TransactionTable({
       notes: formData.notes || undefined,
     };
 
-    await createMutation.mutateAsync(payload, {
-      onSuccess: () => setFormOpen(false),
-    });
+    if (editingTransaction) {
+      await updateMutation.mutateAsync(
+        {
+          transactionId: editingTransaction.id,
+          input: payload,
+        },
+        {
+          onSuccess: () => {
+            setFormOpen(false);
+            setEditingTransaction(null);
+          },
+        },
+      );
+    } else {
+      await createMutation.mutateAsync(payload, {
+        onSuccess: () => setFormOpen(false),
+      });
+    }
   };
 
   const getTypeChipColor = (type: TransactionType) => {
@@ -344,6 +371,7 @@ export function TransactionTable({
                 <TableCell align="right">Fee / Tax</TableCell>
                 <TableCell align="right">Net Amount</TableCell>
                 <TableCell>Status</TableCell>
+                {!isReadOnly && <TableCell align="right">Actions</TableCell>}
               </TableRow>
             </TableHead>
             <TableBody>
@@ -398,8 +426,8 @@ export function TransactionTable({
                       fontWeight: 700,
                       color:
                         tx.type === 'BUY' || tx.type === 'WITHDRAWAL' || tx.type === 'FEE'
-                          ? 'error.main'
-                          : 'success.main',
+                           ? 'error.main'
+                           : 'success.main',
                     }}
                   >
                     {tx.currency} {tx.netAmount.toLocaleString()}
@@ -412,6 +440,29 @@ export function TransactionTable({
                       color={tx.status === 'COMPLETED' ? 'success' : 'default'}
                     />
                   </TableCell>
+                  {!isReadOnly && (
+                    <TableCell align="right">
+                      <Tooltip
+                        title={
+                          tx.status === 'CORRECTED'
+                            ? 'Corrected transactions cannot be edited'
+                            : 'Edit Transaction'
+                        }
+                      >
+                        <span>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleOpenEdit(tx)}
+                            disabled={tx.status === 'CORRECTED'}
+                            aria-label={`Edit transaction ${tx.id}`}
+                            color="primary"
+                          >
+                            <EditNoteOutlinedIcon fontSize="small" />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>
@@ -419,14 +470,15 @@ export function TransactionTable({
         </TableContainer>
       )}
 
-      {/* Record Transaction Modal */}
+      {/* Record / Edit Transaction Modal */}
       {formOpen && (
         <TransactionFormModal
           open={formOpen}
           defaultCurrency={defaultCurrency}
-          isPending={createMutation.isPending}
-          error={createMutation.error}
-          onClose={() => setFormOpen(false)}
+          initialData={editingTransaction}
+          isPending={createMutation.isPending || updateMutation.isPending}
+          error={editingTransaction ? updateMutation.error : createMutation.error}
+          onClose={handleCloseForm}
           onSubmit={handleFormSubmit}
         />
       )}

@@ -328,6 +328,9 @@ public class AnalyticsEngine {
         List<Transaction> txs = transactionRepository.findByAccountIdOrderByTradeDateDesc(accountId);
         BigDecimal cash = BigDecimal.ZERO;
         for (Transaction tx : txs) {
+            if (tx.getStatus() != com.takakim.investtracker.domain.TransactionStatus.COMPLETED) {
+                continue;
+            }
             if (asOf != null && tx.getTradeDate().isAfter(asOf)) {
                 continue;
             }

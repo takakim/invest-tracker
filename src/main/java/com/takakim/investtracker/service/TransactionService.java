@@ -195,7 +195,67 @@ public class TransactionService {
                 original.getId()
         );
 
+        if (original.getInstrument() != null && (replacementInstrumentId == null || !original.getInstrument().getId().equals(replacementInstrumentId))) {
+            recalculatePositionIfTrade(original.getAccount(), original.getInstrument());
+        }
+
         return replacement;
+    }
+
+    public Transaction updateTransaction(
+            UUID portfolioId,
+            UUID accountId,
+            UUID transactionId,
+            UUID instrumentId,
+            TransactionType type,
+            Instant tradeDate,
+            Instant settlementDate,
+            BigDecimal quantity,
+            BigDecimal price,
+            BigDecimal grossAmount,
+            BigDecimal feeAmount,
+            BigDecimal taxAmount,
+            String currency,
+            BigDecimal fxRate,
+            String counterCurrency,
+            String notes) {
+
+        Account account = getValidatedAccount(portfolioId, accountId);
+        Transaction tx = getTransaction(portfolioId, accountId, transactionId);
+
+        Instrument oldInstrument = tx.getInstrument();
+        Instrument newInstrument = null;
+        if (instrumentId != null) {
+            newInstrument = instrumentRepository.findById(instrumentId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Instrument not found: " + instrumentId));
+        }
+
+        tx.update(
+                newInstrument,
+                type,
+                tradeDate,
+                settlementDate,
+                quantity,
+                price,
+                grossAmount,
+                feeAmount,
+                taxAmount,
+                currency,
+                fxRate,
+                counterCurrency,
+                notes
+        );
+
+        Transaction saved = transactionRepository.save(tx);
+
+        if (oldInstrument != null && (newInstrument == null || !oldInstrument.getId().equals(newInstrument.getId()))) {
+            recalculatePositionIfTrade(account, oldInstrument);
+        }
+        if (newInstrument != null) {
+            recalculatePositionIfTrade(account, newInstrument);
+        }
+
+        return saved;
     }
 
     private void recalculatePositionIfTrade(Account account, Instrument instrument) {
