@@ -39,9 +39,11 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import SettingsIcon from '@mui/icons-material/Settings';
 import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined';
 import TrendingDownIcon from '@mui/icons-material/TrendingDown';
+import DownloadIcon from '@mui/icons-material/Download';
 
 import { useTaxReport, useAvailableTaxYears, useUpdateTaxSettings } from './useTaxAllowances';
 import { usePortfolio } from '../portfolios/usePortfolios';
+import { exportApi } from '../../api/export';
 import { LoadingState, ErrorAlert, EmptyState } from '../../components';
 import type { TaxRegime, TaxSettingsRequest } from '../../types';
 
@@ -53,6 +55,7 @@ export function TaxAllowanceDetailPage() {
   const [selectedRegime, setSelectedRegime] = useState<TaxRegime>('UK_HMRC');
   const [selectedYear, setSelectedYear] = useState<string>('');
   const [activeTab, setActiveTab] = useState<number>(0);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   // Settings Modal State
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -185,6 +188,20 @@ export function TaxAllowanceDetailPage() {
     ? Math.min(100, (div.allowanceUsed / div.annualDividendAllowance) * 100)
     : 0;
 
+  const handleDownloadPdf = async () => {
+    setDownloadingPdf(true);
+    try {
+      await exportApi.downloadTaxReportPdf(portfolioId, {
+        taxYear: effectiveTaxYear,
+        regime: selectedRegime,
+      });
+    } catch (err: unknown) {
+      console.error('Failed to download tax PDF', err);
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
   const yearOptions =
     selectedRegime === 'UK_HMRC'
       ? availableYears?.availableUkTaxYears || ['2024/25', '2023/24']
@@ -296,6 +313,18 @@ export function TaxAllowanceDetailPage() {
               sx={{ borderRadius: 2 }}
             >
               Tax Settings
+            </Button>
+
+            {/* Download PDF Button */}
+            <Button
+              variant="contained"
+              color="primary"
+              startIcon={<DownloadIcon />}
+              onClick={handleDownloadPdf}
+              loading={downloadingPdf}
+              sx={{ borderRadius: 2 }}
+            >
+              Download PDF Audit
             </Button>
           </Stack>
         </Stack>

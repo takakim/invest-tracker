@@ -14,6 +14,7 @@ import { RebalancingDetailPage } from '../features/rebalancing/RebalancingDetail
 import { CashFlowDetailPage } from '../features/analytics/CashFlowDetailPage';
 import { CorporateActionsDetailPage } from '../features/corporate-actions/CorporateActionsDetailPage';
 import { TaxAllowanceDetailPage } from '../features/tax/TaxAllowanceDetailPage';
+import { ExecutiveSummaryReportPage } from '../features/reports/ExecutiveSummaryReportPage';
 
 export function AppRoutes() {
   return (
@@ -30,6 +31,8 @@ export function AppRoutes() {
       <Route path="/portfolios/:id/corporate-actions" element={<CorporateActionsDetailPage />} />
       <Route path="/portfolios/:portfolioId/tax" element={<TaxAllowanceDetailPage />} />
       <Route path="/portfolios/:id/tax" element={<TaxAllowanceDetailPage />} />
+      <Route path="/portfolios/:id/reports/summary" element={<ExecutiveSummaryReportPage />} />
+      <Route path="/portfolios/:portfolioId/reports/summary" element={<ExecutiveSummaryReportPage />} />
       <Route path="/portfolios/:id/accounts/:accountId" element={<AccountDetailPage />} />
       <Route path="/instruments" element={<InstrumentListPage />} />
       <Route path="/market" element={<MarketRatesPage />} />
