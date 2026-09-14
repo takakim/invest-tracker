@@ -617,7 +617,7 @@ Before changing the repository:
   - OpenAPI 3.1.1 contract synchronized (`docs/api/openapi.yaml`).
   - Frontend: `CashFlowSummaryCard.tsx` on `PortfolioDetailPage`, dedicated sub-page `CashFlowDetailPage.tsx` (`/portfolios/:id/cash-flows`) with interactive SVG bar chart, wealth origin split progress bar, periodic ledger table, account distribution, and CSV export.
   - Verification: 578 backend tests and 97 frontend tests passing with >=90% line and branch coverage and 0 vulnerabilities.
-- Option 4 Corporate Actions Feed & Automated Split/Dividend Ingestion implemented on branch `feat/corporate-actions-feed`:
+- Option 4 Corporate Actions Feed & Automated Split/Dividend Ingestion implemented and merged to main (PR #63):
   - `V11__corporate_actions.sql`: table `corporate_actions` with unique constraints, indexes, and FKs to `instruments`, `transactions`, and `accounts`.
   - Domain entities & enums: `CorporateAction`, `CorporateActionType` (`STOCK_SPLIT`, `REVERSE_STOCK_SPLIT`, `DIVIDEND`), `CorporateActionStatus` (`PENDING`, `APPLIED`, `DISMISSED`).
   - Market feed integration: `YahooFinanceGateway` (`/v8/finance/chart?events=div,split`) parses split ratios (`numerator:denominator`) and cash dividend per-share amounts with deduplication.
@@ -626,6 +626,14 @@ Before changing the repository:
   - OpenAPI 3.1.1 contract synchronized (`docs/api/openapi.yaml`).
   - Frontend: `CorporateActionsBanner.tsx` notification alert on `PortfolioDetailPage`, sub-page `CorporateActionsDetailPage.tsx` (`/portfolios/:id/corporate-actions`) with status tabs, type filters, quick metrics, and ingest/dismiss dialogs.
   - Verification: 621 backend tests and 103 frontend tests passing with >=90% line and branch coverage and 0 vulnerabilities.
-- Next Roadmap Phase:
-  - Option 2: UK / Regional Capital Gains Tax (CGT) & Dividend Allowance Tracker.
+- Option 2 UK / Regional Capital Gains Tax (CGT) & Dividend Allowance Tracker implemented on branch `feat/tax-allowance-tracker`:
+  - `V12__tax_tracking_and_allowances.sql`: added `tax_treatment` (`TAXABLE`, `TAX_EXEMPT`, `TAX_DEFERRED`) column to `accounts` table and created `portfolio_tax_settings` table.
+  - Domain entities & enums: `AccountTaxTreatment`, `TaxRegime` (`UK_HMRC`, `CALENDAR_YEAR`), `PortfolioTaxSettings`, updated `Account`.
+  - `TaxYearPeriod`: HMRC tax years (6 April to 5 April) and calendar years calculation, statutory exemptions (£3,000 CGT, £500 Dividend for 2024/25+; £6,000/£1,000 for 2023/24; £12,300/£2,000 pre-2023), basic & higher rate tax liability estimation.
+  - `TaxAllowanceService`: integration with `PositionEngine`, `MarketDataService`, and `FxRateService` for lot disposal segregation, loss carryforwards, dividend allowance tracking, tax-sheltered wealth growth estimation, tax-loss harvesting candidate detection, and custom settings overrides.
+  - REST API: `GET /api/v1/portfolios/{id}/tax-allowances`, `GET .../available-years`, `PUT .../settings` (`TaxAllowanceController`).
+  - OpenAPI 3.1.1 contract synchronized in `docs/api/openapi.yaml`.
+  - Frontend upgraded to `"vitest": "^5.0.0"` with `@testing-library/jest-dom/vitest`.
+  - Frontend UI: `TaxAllowanceDetailPage.tsx` (`/portfolios/:id/tax`) with KPI allowance meters, tax-sheltered shield banner, loss-harvesting candidate matrix, taxable disposal and dividend ledger tabs, and tax settings modal; account tax treatment selector in `AccountFormModal.tsx`.
+  - Verification: 659 backend tests and 107 frontend tests passing with >=90% line and branch coverage (90.08% branch coverage), 0 security vulnerabilities, and CycloneDX SBOM generated.
 

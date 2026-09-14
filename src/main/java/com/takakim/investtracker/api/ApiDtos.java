@@ -1,11 +1,13 @@
 package com.takakim.investtracker.api;
 
+import com.takakim.investtracker.domain.AccountTaxTreatment;
 import com.takakim.investtracker.domain.AllocationType;
 import com.takakim.investtracker.domain.AssetClass;
 import com.takakim.investtracker.domain.CostBasisMethod;
 import com.takakim.investtracker.domain.DriftStatus;
 import com.takakim.investtracker.domain.RebalanceAction;
 import com.takakim.investtracker.domain.ReturnMethod;
+import com.takakim.investtracker.domain.TaxRegime;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -31,11 +33,20 @@ public final class ApiDtos {
     public record AccountRequest(
         @NotBlank @Size(max = 120) String name,
         @NotBlank @Size(max = 120) String brokerName,
-        @NotBlank @Pattern(regexp = "[A-Za-z]{3}") String accountCurrency) { }
+        @NotBlank @Pattern(regexp = "[A-Za-z]{3}") String accountCurrency,
+        AccountTaxTreatment taxTreatment) {
+        public AccountRequest(String name, String brokerName, String accountCurrency) {
+            this(name, brokerName, accountCurrency, AccountTaxTreatment.TAXABLE);
+        }
+    }
 
     public record AccountResponse(
         UUID id, UUID portfolioId, String name, String brokerName,
-        String accountCurrency, String status, Instant createdAt, Instant updatedAt) { }
+        String accountCurrency, AccountTaxTreatment taxTreatment, String status, Instant createdAt, Instant updatedAt) {
+        public AccountResponse(UUID id, UUID portfolioId, String name, String brokerName, String accountCurrency, String status, Instant createdAt, Instant updatedAt) {
+            this(id, portfolioId, name, brokerName, accountCurrency, AccountTaxTreatment.TAXABLE, status, createdAt, updatedAt);
+        }
+    }
 
     public record InstrumentRequest(
         @NotBlank @Size(max = 160) String name,
@@ -672,5 +683,134 @@ public final class ApiDtos {
         int discoveredActionsCount,
         int newPendingActionsCount,
         List<String> messages) { }
+
+    public record TaxSettingsRequest(
+        String taxYear,
+        TaxRegime taxRegime,
+        java.math.BigDecimal cgtAllowance,
+        java.math.BigDecimal dividendAllowance,
+        java.math.BigDecimal lossCarryforward,
+        String notes) { }
+
+    public record TaxSettingsResponse(
+        UUID id,
+        UUID portfolioId,
+        String taxYear,
+        TaxRegime taxRegime,
+        java.math.BigDecimal cgtAllowance,
+        java.math.BigDecimal dividendAllowance,
+        java.math.BigDecimal lossCarryforward,
+        String notes,
+        Instant updatedAt) { }
+
+    public record ItemizedDisposalDto(
+        UUID disposalTransactionId,
+        UUID accountId,
+        String accountName,
+        AccountTaxTreatment taxTreatment,
+        UUID instrumentId,
+        String instrumentName,
+        String ticker,
+        Instant disposalDate,
+        java.math.BigDecimal quantity,
+        java.math.BigDecimal proceedsNative,
+        java.math.BigDecimal costBasisNative,
+        String nativeCurrency,
+        java.math.BigDecimal proceedsBase,
+        java.math.BigDecimal costBasisBase,
+        java.math.BigDecimal realizedGainLossBase) { }
+
+    public record ItemizedDividendDto(
+        UUID transactionId,
+        UUID accountId,
+        String accountName,
+        AccountTaxTreatment taxTreatment,
+        UUID instrumentId,
+        String instrumentName,
+        String ticker,
+        Instant paymentDate,
+        java.math.BigDecimal grossAmountNative,
+        java.math.BigDecimal withholdingTaxNative,
+        String nativeCurrency,
+        java.math.BigDecimal grossAmountBase,
+        java.math.BigDecimal withholdingTaxBase,
+        java.math.BigDecimal netAmountBase) { }
+
+    public record TaxLossHarvestOpportunityDto(
+        UUID accountId,
+        String accountName,
+        UUID instrumentId,
+        String instrumentName,
+        String ticker,
+        java.math.BigDecimal quantity,
+        java.math.BigDecimal currentPrice,
+        String priceCurrency,
+        java.math.BigDecimal currentMarketValueBase,
+        java.math.BigDecimal totalCostBasisBase,
+        java.math.BigDecimal unrealizedLossBase) { }
+
+    public record CapitalGainsTaxSummaryDto(
+        java.math.BigDecimal totalDisposalProceeds,
+        java.math.BigDecimal totalDisposalCostBasis,
+        java.math.BigDecimal grossRealizedGains,
+        java.math.BigDecimal grossRealizedLosses,
+        java.math.BigDecimal netRealizedGainLoss,
+        java.math.BigDecimal lossCarryforwardApplied,
+        java.math.BigDecimal netTaxableGainBeforeAllowance,
+        java.math.BigDecimal annualExemptAmount,
+        java.math.BigDecimal allowanceUsed,
+        java.math.BigDecimal allowanceRemaining,
+        java.math.BigDecimal taxableCapitalGain,
+        java.math.BigDecimal estimatedTaxBasicRate,
+        java.math.BigDecimal estimatedTaxHigherRate,
+        java.math.BigDecimal basicTaxRatePercentage,
+        java.math.BigDecimal higherTaxRatePercentage,
+        int totalDisposalsCount) { }
+
+    public record DividendTaxSummaryDto(
+        java.math.BigDecimal totalGrossDividends,
+        java.math.BigDecimal totalWithholdingTax,
+        java.math.BigDecimal netDividendsReceived,
+        java.math.BigDecimal annualDividendAllowance,
+        java.math.BigDecimal allowanceUsed,
+        java.math.BigDecimal allowanceRemaining,
+        java.math.BigDecimal taxableDividendIncome,
+        java.math.BigDecimal estimatedTaxBasicRate,
+        java.math.BigDecimal estimatedTaxHigherRate,
+        java.math.BigDecimal estimatedTaxAdditionalRate,
+        java.math.BigDecimal basicTaxRatePercentage,
+        java.math.BigDecimal higherTaxRatePercentage,
+        java.math.BigDecimal additionalTaxRatePercentage,
+        int totalDividendsCount) { }
+
+    public record TaxShelteredSummaryDto(
+        java.math.BigDecimal shelteredRealizedGains,
+        java.math.BigDecimal shelteredRealizedLosses,
+        java.math.BigDecimal shelteredGrossDividends,
+        java.math.BigDecimal estimatedCapitalGainsTaxSaved,
+        java.math.BigDecimal estimatedDividendTaxSaved,
+        java.math.BigDecimal totalEstimatedTaxSaved) { }
+
+    public record TaxReportResponse(
+        UUID portfolioId,
+        String portfolioName,
+        String baseCurrency,
+        String taxYear,
+        TaxRegime taxRegime,
+        Instant periodStart,
+        Instant periodEnd,
+        CapitalGainsTaxSummaryDto capitalGains,
+        DividendTaxSummaryDto dividendIncome,
+        TaxShelteredSummaryDto shelteredSummary,
+        List<TaxLossHarvestOpportunityDto> lossHarvestOpportunities,
+        List<ItemizedDisposalDto> disposals,
+        List<ItemizedDividendDto> dividends,
+        List<String> warnings) { }
+
+    public record AvailableTaxYearsResponse(
+        List<String> availableUkTaxYears,
+        List<String> availableCalendarYears,
+        String currentUkTaxYear,
+        String currentCalendarYear) { }
 }
 
