@@ -63,6 +63,7 @@ import { ValuationMetricsCard } from '../analytics/ValuationMetricsCard';
 import { AssetAllocationCard } from '../analytics/AssetAllocationCard';
 import { DividendAnalyticsCard } from '../analytics/DividendAnalyticsCard';
 import { DividendSummaryCard } from '../analytics/DividendSummaryCard';
+import { CashFlowSummaryCard } from '../analytics/CashFlowSummaryCard';
 import { PortfolioHistoryCard } from '../analytics/PortfolioHistoryCard';
 import { ExportReportModal } from '../analytics/ExportReportModal';
 import { usePortfolioAnalytics } from '../analytics/useAnalytics';
@@ -108,6 +109,7 @@ export function PortfolioDetailPage() {
     'allocation',
     'performance',
     'history',
+    'cashFlows',
     'dividends',
     'rebalancing',
     'accounts',
@@ -119,6 +121,7 @@ export function PortfolioDetailPage() {
     allocation: true,
     performance: true,
     history: true,
+    cashFlows: true,
     dividends: true,
     rebalancing: true,
     accounts: true,
@@ -459,6 +462,18 @@ export function PortfolioDetailPage() {
         onToggle={(expanded) => toggleSection('history', expanded)}
       >
         <PortfolioHistoryCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
+      </CollapsibleSection>
+
+      {/* Cash Flow & Savings Rate */}
+      <CollapsibleSection
+        id="section-cashFlows"
+        title="Cash Flow & Savings Rate"
+        subtitle="External capital contributions, withdrawals, savings consistency, and wealth origin"
+        icon={<AccountBalanceWalletOutlinedIcon />}
+        expanded={expandedSections.cashFlows}
+        onToggle={(expanded) => toggleSection('cashFlows', expanded)}
+      >
+        <CashFlowSummaryCard portfolioId={portfolio.id} currency={portfolio.baseCurrency} />
       </CollapsibleSection>
 
       {/* Dividend Analytics & Income Projection */}

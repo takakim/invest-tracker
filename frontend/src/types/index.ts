@@ -665,3 +665,58 @@ export interface PortfolioHistory {
   summary: HistoricalPerformanceSummary;
   dataPoints: HistoricalValuationPoint[];
 }
+
+export interface CashFlowSummary {
+  totalDeposits: number;
+  totalWithdrawals: number;
+  netContributions: number;
+  totalDividends: number;
+  totalInterest: number;
+  totalFees: number;
+  netCashFlow: number;
+  avgMonthlyContribution: number;
+  activeContributionMonths: number;
+  cumulativeContributions: number;
+  currentPortfolioValue: number;
+  capitalContributionsPercentage: number;
+  marketGrowthPercentage: number;
+  baseCurrency: string;
+}
+
+export interface CashFlowPeriodPoint {
+  periodLabel: string;
+  startDate: string;
+  endDate: string;
+  deposits: number;
+  withdrawals: number;
+  netContributions: number;
+  internalIncome: number;
+  cumulativeNetContributions: number;
+}
+
+export interface AccountCashFlowSummary {
+  accountId: string;
+  accountName: string;
+  brokerName: string;
+  accountCurrency: string;
+  currentCashBalance: number;
+  currentCashBalanceInBase: number;
+  totalDeposits: number;
+  totalWithdrawals: number;
+  netContributions: number;
+}
+
+export interface CashFlowAnalytics {
+  portfolioId: string;
+  portfolioName: string;
+  baseCurrency: string;
+  period: string;
+  groupBy: 'MONTH' | 'QUARTER' | 'YEAR';
+  periodStart: string;
+  periodEnd: string;
+  summary: CashFlowSummary;
+  periods: CashFlowPeriodPoint[];
+  accountBreakdown: AccountCashFlowSummary[];
+  warnings: string[];
+}
+

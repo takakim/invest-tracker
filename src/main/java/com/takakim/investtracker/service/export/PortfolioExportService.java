@@ -17,6 +17,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import com.takakim.investtracker.api.ApiDtos.CashFlowAnalyticsResponse;
+import com.takakim.investtracker.api.ApiDtos.CashFlowPeriodPoint;
+import com.takakim.investtracker.service.analytics.CashFlowAnalyticsService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,16 +31,40 @@ public class PortfolioExportService {
     private final PositionRepository positionRepository;
     private final TransactionRepository transactionRepository;
     private final AnalyticsEngine analyticsEngine;
+    private final CashFlowAnalyticsService cashFlowAnalyticsService;
 
     public PortfolioExportService(
             PortfolioRepository portfolioRepository,
             PositionRepository positionRepository,
             TransactionRepository transactionRepository,
-            AnalyticsEngine analyticsEngine) {
+            AnalyticsEngine analyticsEngine,
+            CashFlowAnalyticsService cashFlowAnalyticsService) {
         this.portfolioRepository = portfolioRepository;
         this.positionRepository = positionRepository;
         this.transactionRepository = transactionRepository;
         this.analyticsEngine = analyticsEngine;
+        this.cashFlowAnalyticsService = cashFlowAnalyticsService;
+    }
+
+    public String exportCashFlowsCsv(UUID portfolioId, String period, String groupBy) {
+        CashFlowAnalyticsResponse response = cashFlowAnalyticsService.calculateCashFlows(portfolioId, period, groupBy);
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("Period,Start Date,End Date,Deposits,Withdrawals,Net Contributions,Internal Income,Cumulative Contributions,Currency\n");
+
+        for (CashFlowPeriodPoint pt : response.periods()) {
+            sb.append(escapeCsv(pt.periodLabel())).append(",")
+                    .append(DateTimeFormatter.ISO_INSTANT.format(pt.startDate())).append(",")
+                    .append(DateTimeFormatter.ISO_INSTANT.format(pt.endDate())).append(",")
+                    .append(pt.deposits().toPlainString()).append(",")
+                    .append(pt.withdrawals().toPlainString()).append(",")
+                    .append(pt.netContributions().toPlainString()).append(",")
+                    .append(pt.internalIncome().toPlainString()).append(",")
+                    .append(pt.cumulativeNetContributions().toPlainString()).append(",")
+                    .append(escapeCsv(response.baseCurrency())).append("\n");
+        }
+
+        return sb.toString();
     }
 
     public String exportPositionsCsv(UUID portfolioId) {
@@ -100,8 +127,8 @@ public class PortfolioExportService {
                     .append(tx.getQuantity() != null ? tx.getQuantity().toPlainString() : "").append(",")
                     .append(tx.getPrice() != null ? tx.getPrice().toPlainString() : "").append(",")
                     .append(tx.getGrossAmount().toPlainString()).append(",")
-                    .append(tx.getFeeAmount() != null ? tx.getFeeAmount().toPlainString() : "0.0000").append(",")
-                    .append(tx.getTaxAmount() != null ? tx.getTaxAmount().toPlainString() : "0.0000").append(",")
+                    .append(tx.getFeeAmount().toPlainString()).append(",")
+                    .append(tx.getTaxAmount().toPlainString()).append(",")
                     .append(tx.getNetAmount().toPlainString()).append(",")
                     .append(escapeCsv(tx.getCurrency())).append(",")
                     .append(escapeCsv(tx.getNotes() != null ? tx.getNotes() : "")).append("\n");
