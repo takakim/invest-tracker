@@ -80,8 +80,22 @@ public class LmStudioGateway {
                     for (JsonNode m : modelsNode) {
                         if (m.has("id")) {
                             discoveredModels.add(m.get("id").asText());
+                        } else if (m.has("key")) {
+                            discoveredModels.add(m.get("key").asText());
                         } else if (m.has("name")) {
                             discoveredModels.add(m.get("name").asText());
+                        } else if (m.has("display_name")) {
+                            discoveredModels.add(m.get("display_name").asText());
+                        }
+                        if (m.has("loaded_instances") && m.get("loaded_instances").isArray()) {
+                            for (JsonNode inst : m.get("loaded_instances")) {
+                                if (inst.has("id")) {
+                                    String instId = inst.get("id").asText();
+                                    if (!discoveredModels.contains(instId)) {
+                                        discoveredModels.add(instId);
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -124,9 +138,9 @@ public class LmStudioGateway {
 
         String targetModel = (properties.getModel() != null && !properties.getModel().isBlank())
                 ? properties.getModel()
-                : "gemma4-12b";
+                : "google/gemma-4-12b";
 
-        // Try native LM Studio /api/v1/chat endpoint
+        // Try native LM Studio /api/v1/chat endpoint first
         try {
             Map<String, Object> payload = Map.of(
                     "model", targetModel,
@@ -154,7 +168,7 @@ public class LmStudioGateway {
             log.debug("Native LM Studio /api/v1/chat request failed, attempting OpenAI /v1/chat/completions fallback: {}", e.getMessage());
         }
 
-        // Fallback to OpenAI-compatible /v1/chat/completions
+        // Fallback to OpenAI-compatible /v1/chat/completions (universally supported by LM Studio)
         try {
             Map<String, Object> payload = Map.of(
                     "model", targetModel,

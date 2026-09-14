@@ -47,7 +47,7 @@ app:
   ai:
     enabled: ${AI_ENABLED:true}
     base-url: ${AI_BASE_URL:http://localhost:1234}
-    model: ${AI_MODEL:gemma4-12b}
+    model: ${AI_MODEL:google/gemma-4-12b}
     api-key: ${AI_API_KEY:}
     temperature: ${AI_TEMPERATURE:0.2}
     max-tokens: ${AI_MAX_TOKENS:2048}
