@@ -306,4 +306,227 @@ class CashFlowAnalyticsServiceTests {
         assertEquals(new BigDecimal("100.00"), response.summary().capitalContributionsPercentage());
         assertEquals(new BigDecimal("0.00"), response.summary().marketGrowthPercentage());
     }
+
+    @Test
+    void calculateCashFlows_filtersOutNonCompletedTransactions() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(portfolio));
+
+        Instant t1 = ZonedDateTime.of(2026, 1, 10, 10, 0, 0, 0, ZoneOffset.UTC).toInstant();
+        Transaction txCompleted = createTx(accountGbp, TransactionType.DEPOSIT, t1, new BigDecimal("1000.00"), "GBP");
+        Transaction txCorrected = createTx(accountGbp, TransactionType.DEPOSIT, t1, new BigDecimal("500.00"), "GBP");
+        txCorrected.markCorrected();
+
+        when(transactionRepository.findByAccountPortfolioIdOrderByTradeDateDesc(portfolioId))
+                .thenReturn(List.of(txCompleted, txCorrected));
+        when(accountRepository.findAllByPortfolioIdAndStatusOrderByNameAsc(portfolioId, AccountStatus.ACTIVE))
+                .thenReturn(List.of(accountGbp));
+        when(fxRateService.convert(any(Money.class), eq(new Currency("GBP")), any(Instant.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        PortfolioAnalytics analytics = new PortfolioAnalytics(
+                portfolioId, Instant.now(), "GBP", new BigDecimal("1000.00"), new BigDecimal("1000.00"),
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("1000.00"),
+                List.of(), List.of(), List.of(), List.of(), List.of()
+        );
+        when(analyticsEngine.calculate(eq(portfolioId), any())).thenReturn(analytics);
+
+        CashFlowAnalyticsResponse response = service.calculateCashFlows(portfolioId, "ALL", "MONTH");
+        assertEquals(new BigDecimal("1000.00"), response.summary().totalDeposits());
+    }
+
+    @Test
+    void calculateCashFlows_handlesInterestFeeBuySellAndNonCashTransactions() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(portfolio));
+
+        Instant now = Instant.now();
+        Instant t0 = now.minusSeconds(86400 * 45); // outside 1M
+        Instant t1 = now.minusSeconds(86400 * 25); // inside 1M
+        Instant t2 = now.minusSeconds(86400 * 20);
+        Instant t3 = now.minusSeconds(86400 * 15);
+        Instant t4 = now.minusSeconds(86400 * 10);
+        Instant t5 = now.minusSeconds(86400 * 5);
+        Instant t6 = now.minusSeconds(86400 * 2);
+
+        // Transaction before period start to test boundary
+        Transaction txOldDeposit = createTx(accountGbp, TransactionType.DEPOSIT, t0, new BigDecimal("2000.00"), "GBP");
+
+        // Transactions in period: DEPOSIT, WITHDRAWAL, INTEREST, FEE, BUY, SELL, SPLIT
+        Transaction txDeposit = createTx(accountGbp, TransactionType.DEPOSIT, t1, new BigDecimal("1000.00"), "GBP");
+        Transaction txWithdrawal = createTx(accountGbp, TransactionType.WITHDRAWAL, t2, new BigDecimal("200.00"), "GBP");
+        Transaction txInterest = createTx(accountGbp, TransactionType.INTEREST, t3, new BigDecimal("50.00"), "GBP");
+        Transaction txFee = createTx(accountGbp, TransactionType.FEE, t4, new BigDecimal("15.00"), "GBP");
+        Transaction txBuy = new Transaction(
+                accountGbp, instrument, TransactionType.BUY, t5, null,
+                new BigDecimal("5.00"), new BigDecimal("100.00"), new BigDecimal("500.00"),
+                BigDecimal.ZERO, BigDecimal.ZERO, "GBP", null, null, null, null
+        );
+        Transaction txSell = new Transaction(
+                accountGbp, instrument, TransactionType.SELL, t6, null,
+                new BigDecimal("2.00"), new BigDecimal("110.00"), new BigDecimal("220.00"),
+                BigDecimal.ZERO, BigDecimal.ZERO, "GBP", null, null, null, null
+        );
+        Transaction txSplit = new Transaction(
+                accountGbp, instrument, TransactionType.STOCK_SPLIT, t6, null,
+                new BigDecimal("10.00"), BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, "GBP", null, null, null, null
+        );
+
+        when(transactionRepository.findByAccountPortfolioIdOrderByTradeDateDesc(portfolioId))
+                .thenReturn(List.of(txSplit, txSell, txBuy, txFee, txInterest, txWithdrawal, txDeposit, txOldDeposit));
+        when(accountRepository.findAllByPortfolioIdAndStatusOrderByNameAsc(portfolioId, AccountStatus.ACTIVE))
+                .thenReturn(List.of(accountGbp));
+        when(fxRateService.convert(any(Money.class), eq(new Currency("GBP")), any(Instant.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        PortfolioAnalytics analytics = new PortfolioAnalytics(
+                portfolioId, Instant.now(), "GBP", new BigDecimal("3000.00"), new BigDecimal("2800.00"),
+                new BigDecimal("200.00"), new BigDecimal("7.14"), BigDecimal.ZERO, new BigDecimal("3000.00"),
+                List.of(), List.of(), List.of(), List.of(), List.of()
+        );
+        when(analyticsEngine.calculate(eq(portfolioId), any())).thenReturn(analytics);
+
+        // Period 1M so txOldDeposit is before periodStart
+        CashFlowAnalyticsResponse response = service.calculateCashFlows(portfolioId, "1M", "MONTH");
+        assertNotNull(response);
+
+        var summary = response.summary();
+        assertEquals(new BigDecimal("1000.00"), summary.totalDeposits());
+        assertEquals(new BigDecimal("200.00"), summary.totalWithdrawals());
+        assertEquals(new BigDecimal("800.00"), summary.netContributions());
+        assertEquals(new BigDecimal("50.00"), summary.totalInterest());
+        assertEquals(new BigDecimal("15.00"), summary.totalFees());
+        // netCashFlow = 800 + 50 - 15 = 835.00
+        assertEquals(new BigDecimal("835.00"), summary.netCashFlow());
+
+        // Account cash balance: 2000 (old) + 1000 (dep) - 200 (with) + 50 (int) - 15 (fee) - 500 (buy) + 220 (sell) = 2555.00
+        assertEquals(new BigDecimal("2555.00"), response.accountBreakdown().get(0).currentCashBalance());
+        assertEquals(new BigDecimal("800.00"), response.accountBreakdown().get(0).netContributions());
+    }
+
+    @Test
+    void calculateCashFlows_analyticsEngineFailure_approximatesValuationAndSetsWarning() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(portfolio));
+        when(transactionRepository.findByAccountPortfolioIdOrderByTradeDateDesc(portfolioId)).thenReturn(List.of());
+        when(accountRepository.findAllByPortfolioIdAndStatusOrderByNameAsc(portfolioId, AccountStatus.ACTIVE)).thenReturn(List.of());
+        when(analyticsEngine.calculate(eq(portfolioId), any())).thenThrow(new RuntimeException("Valuation timeout"));
+
+        CashFlowAnalyticsResponse response = service.calculateCashFlows(portfolioId, "ALL", "MONTH");
+        assertNotNull(response);
+        assertEquals(new BigDecimal("0.00"), response.summary().currentPortfolioValue());
+        assertTrue(response.warnings().contains("Portfolio live valuation was approximated: Valuation timeout"));
+    }
+
+    @Test
+    void calculateCashFlows_analyticsEngineReturnsWarnings_propagatesWarnings() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(portfolio));
+        when(transactionRepository.findByAccountPortfolioIdOrderByTradeDateDesc(portfolioId)).thenReturn(List.of());
+        when(accountRepository.findAllByPortfolioIdAndStatusOrderByNameAsc(portfolioId, AccountStatus.ACTIVE)).thenReturn(List.of());
+
+        PortfolioAnalytics analytics = new PortfolioAnalytics(
+                portfolioId, Instant.now(), "GBP", BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                List.of(), List.of(), List.of(), List.of(), List.of("Market FX quote delayed")
+        );
+        when(analyticsEngine.calculate(eq(portfolioId), any())).thenReturn(analytics);
+
+        CashFlowAnalyticsResponse response = service.calculateCashFlows(portfolioId, "ALL", "MONTH");
+        assertNotNull(response);
+        assertEquals(new BigDecimal("0.00"), response.summary().currentPortfolioValue());
+        assertTrue(response.warnings().contains("Market FX quote delayed"));
+    }
+
+    @Test
+    void calculateCashFlows_capitalAndGrowthEdgeCases() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(portfolio));
+
+        Instant t1 = ZonedDateTime.of(2026, 1, 10, 10, 0, 0, 0, ZoneOffset.UTC).toInstant();
+        // Negative net contributions (withdrawal > deposit)
+        Transaction txWithdrawal = createTx(accountGbp, TransactionType.WITHDRAWAL, t1, new BigDecimal("1000.00"), "GBP");
+
+        when(transactionRepository.findByAccountPortfolioIdOrderByTradeDateDesc(portfolioId))
+                .thenReturn(List.of(txWithdrawal));
+        when(accountRepository.findAllByPortfolioIdAndStatusOrderByNameAsc(portfolioId, AccountStatus.ACTIVE))
+                .thenReturn(List.of(accountGbp));
+        when(fxRateService.convert(any(Money.class), eq(new Currency("GBP")), any(Instant.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        // Case 1: Portfolio value positive, contributions negative -> capital = 0%, growth = 100%
+        PortfolioAnalytics analyticsPos = new PortfolioAnalytics(
+                portfolioId, Instant.now(), "GBP", new BigDecimal("500.00"), BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                List.of(), List.of(), List.of(), List.of(), List.of()
+        );
+        when(analyticsEngine.calculate(eq(portfolioId), any())).thenReturn(analyticsPos);
+
+        CashFlowAnalyticsResponse res1 = service.calculateCashFlows(portfolioId, "ALL", "MONTH");
+        assertEquals(new BigDecimal("0.00"), res1.summary().capitalContributionsPercentage());
+        assertEquals(new BigDecimal("100.00"), res1.summary().marketGrowthPercentage());
+
+        // Case 2: Portfolio value <= 0, contributions negative -> capital = 0%, growth = 0%
+        PortfolioAnalytics analyticsZero = new PortfolioAnalytics(
+                portfolioId, Instant.now(), "GBP", BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                List.of(), List.of(), List.of(), List.of(), List.of()
+        );
+        when(analyticsEngine.calculate(eq(portfolioId), any())).thenReturn(analyticsZero);
+
+        CashFlowAnalyticsResponse res2 = service.calculateCashFlows(portfolioId, "ALL", "MONTH");
+        assertEquals(new BigDecimal("0.00"), res2.summary().capitalContributionsPercentage());
+        assertEquals(new BigDecimal("0.00"), res2.summary().marketGrowthPercentage());
+    }
+
+    @Test
+    void calculateCashFlows_normalizesBlankAndInvalidPeriodAndGroupBy() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(portfolio));
+        when(transactionRepository.findByAccountPortfolioIdOrderByTradeDateDesc(portfolioId)).thenReturn(List.of());
+        when(accountRepository.findAllByPortfolioIdAndStatusOrderByNameAsc(portfolioId, AccountStatus.ACTIVE)).thenReturn(List.of());
+
+        PortfolioAnalytics analytics = new PortfolioAnalytics(
+                portfolioId, Instant.now(), "GBP", BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                List.of(), List.of(), List.of(), List.of(), List.of()
+        );
+        when(analyticsEngine.calculate(eq(portfolioId), any())).thenReturn(analytics);
+
+        // Null and blank strings
+        CashFlowAnalyticsResponse resNull = service.calculateCashFlows(portfolioId, null, null);
+        assertEquals("ALL", resNull.period());
+        assertEquals("MONTH", resNull.groupBy());
+
+        CashFlowAnalyticsResponse resBlank = service.calculateCashFlows(portfolioId, "   ", "   ");
+        assertEquals("ALL", resBlank.period());
+        assertEquals("MONTH", resBlank.groupBy());
+
+        // Invalid fallback
+        CashFlowAnalyticsResponse resInvalid = service.calculateCashFlows(portfolioId, "INVALID_PERIOD", "INVALID_GROUPBY");
+        assertEquals("ALL", resInvalid.period());
+        assertEquals("MONTH", resInvalid.groupBy());
+    }
+
+    @Test
+    void calculateCashFlows_futureTransactionGeneratesCurrentBucketFallback() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(portfolio));
+
+        // Transaction 30 days in the future so periodStart for "ALL" is after now
+        Instant futureDate = Instant.now().plusSeconds(86400 * 30);
+        Transaction txFuture = createTx(accountGbp, TransactionType.DEPOSIT, futureDate, new BigDecimal("100.00"), "GBP");
+
+        when(transactionRepository.findByAccountPortfolioIdOrderByTradeDateDesc(portfolioId))
+                .thenReturn(List.of(txFuture));
+        when(accountRepository.findAllByPortfolioIdAndStatusOrderByNameAsc(portfolioId, AccountStatus.ACTIVE))
+                .thenReturn(List.of(accountGbp));
+        when(fxRateService.convert(any(Money.class), eq(new Currency("GBP")), any(Instant.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        PortfolioAnalytics analytics = new PortfolioAnalytics(
+                portfolioId, Instant.now(), "GBP", new BigDecimal("100.00"), new BigDecimal("100.00"),
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("100.00"),
+                List.of(), List.of(), List.of(), List.of(), List.of()
+        );
+        when(analyticsEngine.calculate(eq(portfolioId), any())).thenReturn(analytics);
+
+        CashFlowAnalyticsResponse response = service.calculateCashFlows(portfolioId, "ALL", "MONTH");
+        assertNotNull(response);
+        assertTrue(response.periods().stream().anyMatch(p -> "Current".equals(p.periodLabel())));
+    }
 }

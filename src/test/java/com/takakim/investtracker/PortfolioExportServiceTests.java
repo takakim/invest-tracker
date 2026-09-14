@@ -224,4 +224,55 @@ class PortfolioExportServiceTests {
         assertTrue(csv.contains("1000"));
         assertTrue(csv.contains("GBP"));
     }
+
+    @Test
+    void exportTransactionsCsv_escapeCsvVariants() {
+        when(portfolioRepository.existsById(portfolioId)).thenReturn(true);
+
+        Transaction txQuote = new Transaction(
+                account, apple, TransactionType.BUY,
+                Instant.parse("2026-08-20T10:15:30Z"), null,
+                new BigDecimal("10.00"), new BigDecimal("150.00"),
+                new BigDecimal("1500.00"), BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null,
+                "Quote\"Only", null
+        );
+        Transaction txComma = new Transaction(
+                account, apple, TransactionType.BUY,
+                Instant.parse("2026-08-20T10:15:30Z"), null,
+                new BigDecimal("10.00"), new BigDecimal("150.00"),
+                new BigDecimal("1500.00"), BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null,
+                "Comma,Only", null
+        );
+        Transaction txNewline = new Transaction(
+                account, apple, TransactionType.BUY,
+                Instant.parse("2026-08-20T10:15:30Z"), null,
+                new BigDecimal("10.00"), new BigDecimal("150.00"),
+                new BigDecimal("1500.00"), BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null,
+                "Newline\nOnly", null
+        );
+        Transaction txPlain = new Transaction(
+                account, apple, TransactionType.BUY,
+                Instant.parse("2026-08-20T10:15:30Z"), null,
+                new BigDecimal("10.00"), new BigDecimal("150.00"),
+                new BigDecimal("1500.00"), BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null,
+                "Plain", null
+        );
+        Transaction txNullNote = new Transaction(
+                account, apple, TransactionType.BUY,
+                Instant.parse("2026-08-20T10:15:30Z"), null,
+                new BigDecimal("10.00"), new BigDecimal("150.00"),
+                new BigDecimal("1500.00"), BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null,
+                null, null
+        );
+
+        when(transactionRepository.findByAccountPortfolioIdOrderByTradeDateDesc(portfolioId))
+                .thenReturn(List.of(txQuote, txComma, txNewline, txPlain, txNullNote));
+
+        String csv = exportService.exportTransactionsCsv(portfolioId);
+        assertNotNull(csv);
+        assertTrue(csv.contains("\"Quote\"\"Only\""));
+        assertTrue(csv.contains("\"Comma,Only\""));
+        assertTrue(csv.contains("\"Newline\nOnly\""));
+        assertTrue(csv.contains("Plain"));
+    }
 }
