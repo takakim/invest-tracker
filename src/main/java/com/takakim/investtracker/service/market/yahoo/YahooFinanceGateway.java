@@ -163,6 +163,109 @@ public class YahooFinanceGateway {
         }
     }
 
+    public Optional<YahooFinanceDtos.ChartEntry> fetchChartWithEvents(String symbol, String interval, String range) {
+        if (!isConfigured() || symbol == null || symbol.isBlank()) {
+            return Optional.empty();
+        }
+        if (!acquirePermit()) {
+            return Optional.empty();
+        }
+
+        String safeInterval = (interval != null && !interval.isBlank()) ? interval : "1d";
+        String safeRange = (range != null && !range.isBlank()) ? range : "1y";
+
+        try {
+            YahooFinanceDtos.ChartResponse response = restClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/v8/finance/chart/{symbol}")
+                            .queryParam("interval", safeInterval)
+                            .queryParam("range", safeRange)
+                            .queryParam("events", "div,split")
+                            .build(symbol))
+                    .retrieve()
+                    .body(YahooFinanceDtos.ChartResponse.class);
+
+            if (response != null && response.chart() != null) {
+                if (response.chart().error() != null) {
+                    log.warn("Yahoo Finance returned error for symbol '{}': {} - {}",
+                            symbol, response.chart().error().code(), response.chart().error().description());
+                    return Optional.empty();
+                }
+                if (response.chart().result() != null && !response.chart().result().isEmpty()) {
+                    YahooFinanceDtos.ChartEntry entry = response.chart().result().get(0);
+                    if (entry != null && entry.meta() != null) {
+                        return Optional.of(entry);
+                    }
+                }
+            }
+            return Optional.empty();
+        } catch (RestClientResponseException ex) {
+            handleException(ex, "chartWithEvents", symbol);
+            return Optional.empty();
+        } catch (Exception ex) {
+            log.warn("Unexpected error requesting Yahoo Finance chart with events for symbol '{}': {}", symbol, ex.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    public record DiscoveredCorporateAction(
+            com.takakim.investtracker.domain.CorporateActionType actionType,
+            Instant exDate,
+            BigDecimal ratioFrom,
+            BigDecimal ratioTo,
+            BigDecimal amountPerShare,
+            String currency,
+            String description,
+            String externalId
+    ) {}
+
+    public List<DiscoveredCorporateAction> fetchCorporateActions(String symbol, String range) {
+        Optional<YahooFinanceDtos.ChartEntry> chartOpt = fetchChartWithEvents(symbol, "1d", range);
+        if (chartOpt.isEmpty() || chartOpt.get().events() == null) {
+            return List.of();
+        }
+
+        YahooFinanceDtos.ChartEntry entry = chartOpt.get();
+        YahooFinanceDtos.ChartEvents events = entry.events();
+        String currency = entry.meta().currency() != null ? entry.meta().currency() : "USD";
+        List<DiscoveredCorporateAction> list = new ArrayList<>();
+
+        if (events.splits() != null) {
+            for (var split : events.splits().values()) {
+                if (split.date() == null || split.numerator() == null || split.denominator() == null) {
+                    continue;
+                }
+                Instant exDate = Instant.ofEpochSecond(split.date());
+                BigDecimal num = split.numerator();
+                BigDecimal den = split.denominator();
+                com.takakim.investtracker.domain.CorporateActionType actionType = num.compareTo(den) >= 0
+                        ? com.takakim.investtracker.domain.CorporateActionType.STOCK_SPLIT
+                        : com.takakim.investtracker.domain.CorporateActionType.REVERSE_STOCK_SPLIT;
+                String desc = (actionType == com.takakim.investtracker.domain.CorporateActionType.STOCK_SPLIT ? "Stock split" : "Reverse stock split")
+                        + " " + num.stripTrailingZeros().toPlainString() + ":" + den.stripTrailingZeros().toPlainString();
+                String extId = "YF-" + symbol + "-SPLIT-" + split.date();
+                list.add(new DiscoveredCorporateAction(actionType, exDate, den, num, null, null, desc, extId));
+            }
+        }
+
+        if (events.dividends() != null) {
+            for (var div : events.dividends().values()) {
+                if (div.date() == null || div.amount() == null || div.amount().compareTo(BigDecimal.ZERO) <= 0) {
+                    continue;
+                }
+                Instant exDate = Instant.ofEpochSecond(div.date());
+                String desc = "Dividend " + div.amount().toPlainString() + " " + currency + "/share";
+                String extId = "YF-" + symbol + "-DIV-" + div.date();
+                list.add(new DiscoveredCorporateAction(
+                        com.takakim.investtracker.domain.CorporateActionType.DIVIDEND,
+                        exDate, null, null, div.amount(), currency, desc, extId));
+            }
+        }
+
+        list.sort(java.util.Comparator.comparing(DiscoveredCorporateAction::exDate).reversed());
+        return list;
+    }
+
     public record HistoricalPriceBar(Instant timestamp, BigDecimal closePrice, String currency) {}
 
     public List<HistoricalPriceBar> fetchHistoricalDailyPrices(String symbol, String range) {
