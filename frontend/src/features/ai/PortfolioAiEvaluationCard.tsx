@@ -23,6 +23,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Tooltip,
 } from '@mui/material';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined';
@@ -33,8 +34,9 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import PsychologyIcon from '@mui/icons-material/Psychology';
 import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined';
 import LaunchIcon from '@mui/icons-material/Launch';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
 
-import { useEvaluatePortfolio } from './useAi';
+import { useEvaluatePortfolio, useLatestPortfolioEvaluation } from './useAi';
 import { HoldingAiEvaluationModal, getStanceChipProps, getRiskLevelColor } from './HoldingAiEvaluationModal';
 import { AiStatusIndicator } from './AiStatusIndicator';
 import type { PortfolioAiEvaluation, HoldingAiEvaluation } from '../../types';
@@ -49,16 +51,19 @@ export const PortfolioAiEvaluationCard: React.FC<PortfolioAiEvaluationCardProps>
   portfolioId,
   portfolioName = 'Portfolio',
 }) => {
-  const [evaluation, setEvaluation] = useState<PortfolioAiEvaluation | null>(null);
   const [selectedHolding, setSelectedHolding] = useState<HoldingAiEvaluation | null>(null);
   const [holdingModalOpen, setHoldingModalOpen] = useState(false);
 
+  // Load cached evaluation from DB on mount
+  const cachedQuery = useLatestPortfolioEvaluation(portfolioId);
   const evaluateMutation = useEvaluatePortfolio(portfolioId);
 
+  // Prefer fresh mutation result, fall back to DB cache
+  const evaluation: PortfolioAiEvaluation | null =
+    evaluateMutation.data ?? cachedQuery.data ?? null;
+
   const handleRunAnalysis = () => {
-    evaluateMutation.mutate(undefined, {
-      onSuccess: (data) => setEvaluation(data),
-    });
+    evaluateMutation.mutate(undefined);
   };
 
   const handleOpenHoldingModal = (holding: HoldingAiEvaluation) => {
@@ -67,6 +72,7 @@ export const PortfolioAiEvaluationCard: React.FC<PortfolioAiEvaluationCardProps>
   };
 
   const isLoading = evaluateMutation.isPending;
+  const isInitialLoading = cachedQuery.isLoading;
   const isError = evaluateMutation.isError;
   const error = evaluateMutation.error;
 
@@ -74,12 +80,47 @@ export const PortfolioAiEvaluationCard: React.FC<PortfolioAiEvaluationCardProps>
     ? getRiskLevelColor(evaluation.overallRiskLevel, evaluation.overallRiskScore)
     : '#16a34a';
 
+  const providerLabel = evaluation?.modelUsed
+    ? evaluation.modelUsed.toUpperCase().replace('_', ' ')
+    : null;
+
+  const lastEvaluatedLabel = evaluation?.evaluatedAt
+    ? (() => {
+        const diff = Date.now() - new Date(evaluation.evaluatedAt).getTime();
+        const mins = Math.floor(diff / 60000);
+        const hrs = Math.floor(mins / 60);
+        const days = Math.floor(hrs / 24);
+        if (days > 0) return `${days}d ago`;
+        if (hrs > 0) return `${hrs}h ago`;
+        if (mins > 0) return `${mins}m ago`;
+        return 'just now';
+      })()
+    : null;
+
   return (
     <Card variant="outlined" sx={{ borderRadius: 2 }}>
       <CardHeader
         avatar={<AutoAwesomeIcon sx={{ color: 'primary.main', fontSize: 26 }} />}
         action={
           <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
+            {providerLabel && (
+              <Chip
+                label={providerLabel}
+                size="small"
+                variant="outlined"
+                sx={{ fontWeight: 600, fontSize: '0.7rem', letterSpacing: 0.5 }}
+              />
+            )}
+            {lastEvaluatedLabel && (
+              <Tooltip title={`Last evaluated: ${new Date(evaluation!.evaluatedAt).toLocaleString()}`}>
+                <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+                  <AccessTimeIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
+                  <Typography variant="caption" color="text.secondary">
+                    {lastEvaluatedLabel}
+                  </Typography>
+                </Stack>
+              </Tooltip>
+            )}
             <AiStatusIndicator />
             {evaluation && (
               <Button
@@ -99,13 +140,23 @@ export const PortfolioAiEvaluationCard: React.FC<PortfolioAiEvaluationCardProps>
             AI Portfolio Intelligence
           </Typography>
         }
-        subheader="Deep portfolio synthesis, asset concentration, and macro stress tests powered by Gemma 4 12B"
+        subheader="Deep portfolio synthesis, asset concentration, and macro stress tests powered by AI"
       />
       <Divider />
 
       <CardContent sx={{ p: 3 }}>
+        {/* Initial prompt state: loading from DB */}
+        {isInitialLoading && (
+          <Box sx={{ py: 4, textAlign: 'center' }}>
+            <LinearProgress sx={{ mb: 2, borderRadius: 2, height: 4 }} />
+            <Typography variant="body2" color="text.secondary">
+              Loading previous evaluation...
+            </Typography>
+          </Box>
+        )}
+
         {/* Initial Prompt State when not yet analyzed */}
-        {!evaluation && !isLoading && !isError && (
+        {!evaluation && !isLoading && !isError && !isInitialLoading && (
           <Paper
             variant="outlined"
             sx={{
@@ -125,7 +176,7 @@ export const PortfolioAiEvaluationCard: React.FC<PortfolioAiEvaluationCardProps>
               color="text.secondary"
               sx={{ maxWidth: 650, mx: 'auto', mb: 3, lineHeight: 1.6 }}
             >
-              Analyze your current asset allocation, single-stock concentrations, tax wrapper distribution (ISA, SIPP, GIA), and forward macro stress scenarios using <strong>Gemma 4 12B</strong> on LM Studio.
+              Analyze your current asset allocation, single-stock concentrations, tax wrapper distribution (ISA, SIPP, GIA), and forward macro stress scenarios using your configured AI provider.
             </Typography>
             <Button
               variant="contained"
@@ -139,12 +190,12 @@ export const PortfolioAiEvaluationCard: React.FC<PortfolioAiEvaluationCardProps>
           </Paper>
         )}
 
-        {/* Loading Progress State */}
+        {/* Loading Progress State — LLM evaluation in flight */}
         {isLoading && (
           <Box sx={{ py: 6, textAlign: 'center' }}>
             <LinearProgress sx={{ mb: 3, borderRadius: 2, height: 6 }} />
             <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
-              Evaluating Portfolio with Gemma 4 12B...
+              Running AI Evaluation...
             </Typography>
             <Typography variant="body2" color="text.secondary">
               Synthesizing asset allocations, concentration risk, tax wrapper placement, and macro stress scenarios.

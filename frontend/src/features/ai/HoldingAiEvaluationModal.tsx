@@ -18,6 +18,7 @@ import {
   ListItemIcon,
   ListItemText,
   Alert,
+  Tooltip,
 } from '@mui/material';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined';
@@ -27,7 +28,8 @@ import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import TrendingDownIcon from '@mui/icons-material/TrendingDown';
 import HorizontalRuleOutlinedIcon from '@mui/icons-material/HorizontalRuleOutlined';
 import StarIcon from '@mui/icons-material/Star';
-import { useEvaluateHolding } from './useAi';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import { useEvaluateHolding, useLatestHoldingEvaluation } from './useAi';
 import type { HoldingAiEvaluation, AiStance, AiRiskLevel } from '../../types';
 
 interface HoldingAiEvaluationModalProps {
@@ -73,28 +75,26 @@ export const HoldingAiEvaluationModal: React.FC<HoldingAiEvaluationModalProps> =
   instrumentName,
   initialData,
 }) => {
-  const [evaluation, setEvaluation] = useState<HoldingAiEvaluation | null>(initialData || null);
+  // Load cached evaluation from DB on open
+  const cachedQuery = useLatestHoldingEvaluation(portfolioId, instrumentId);
   const evaluateMutation = useEvaluateHolding(portfolioId);
 
+  // Prefer fresh mutation result, fall back to prop, then DB cache
+  const evaluation: HoldingAiEvaluation | null =
+    evaluateMutation.data ?? initialData ?? cachedQuery.data ?? null;
+
   useEffect(() => {
-    if (open) {
-      if (initialData) {
-        setEvaluation(initialData);
-      } else {
-        evaluateMutation.mutate(instrumentId, {
-          onSuccess: (data) => setEvaluation(data),
-        });
-      }
+    if (open && !initialData && cachedQuery.data === null && !cachedQuery.isLoading) {
+      // No cached result in DB — trigger LLM evaluation automatically
+      evaluateMutation.mutate(instrumentId);
     }
-  }, [open, instrumentId, initialData]);
+  }, [open, instrumentId, initialData, cachedQuery.data, cachedQuery.isLoading]);
 
   const handleRefresh = () => {
-    evaluateMutation.mutate(instrumentId, {
-      onSuccess: (data) => setEvaluation(data),
-    });
+    evaluateMutation.mutate(instrumentId);
   };
 
-  const isLoading = evaluateMutation.isPending;
+  const isLoading = evaluateMutation.isPending || (cachedQuery.isLoading && !evaluation);
   const isError = evaluateMutation.isError;
   const error = evaluateMutation.error;
 
@@ -102,6 +102,23 @@ export const HoldingAiEvaluationModal: React.FC<HoldingAiEvaluationModalProps> =
   const riskColor = evaluation
     ? getRiskLevelColor(evaluation.riskLevel, evaluation.riskScore)
     : '#16a34a';
+
+  const providerLabel = evaluation?.modelUsed
+    ? evaluation.modelUsed.toUpperCase().replace('_', ' ')
+    : null;
+
+  const lastEvaluatedLabel = evaluation?.evaluatedAt
+    ? (() => {
+        const diff = Date.now() - new Date(evaluation.evaluatedAt).getTime();
+        const mins = Math.floor(diff / 60000);
+        const hrs = Math.floor(mins / 60);
+        const days = Math.floor(hrs / 24);
+        if (days > 0) return `${days}d ago`;
+        if (hrs > 0) return `${hrs}h ago`;
+        if (mins > 0) return `${mins}m ago`;
+        return 'just now';
+      })()
+    : null;
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
@@ -118,9 +135,31 @@ export const HoldingAiEvaluationModal: React.FC<HoldingAiEvaluationModalProps> =
                 {symbol} — {instrumentName}
               </Typography>
             </Stack>
-            <Typography variant="caption" color="text.secondary">
-              AI Fundamental & Risk Evaluation powered by Gemma 4 12B
-            </Typography>
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+              {providerLabel && (
+                <Chip
+                  label={providerLabel}
+                  size="small"
+                  variant="outlined"
+                  sx={{ fontWeight: 600, fontSize: '0.68rem', letterSpacing: 0.4 }}
+                />
+              )}
+              {lastEvaluatedLabel && (
+                <Tooltip title={`Last evaluated: ${new Date(evaluation!.evaluatedAt).toLocaleString()}`}>
+                  <Stack direction="row" spacing={0.4} sx={{ alignItems: 'center' }}>
+                    <AccessTimeIcon sx={{ fontSize: 12, color: 'text.secondary' }} />
+                    <Typography variant="caption" color="text.secondary">
+                      {lastEvaluatedLabel}
+                    </Typography>
+                  </Stack>
+                </Tooltip>
+              )}
+              {!providerLabel && (
+                <Typography variant="caption" color="text.secondary">
+                  AI Fundamental &amp; Risk Evaluation
+                </Typography>
+              )}
+            </Stack>
           </Box>
           {stanceProps && (
             <Chip
@@ -138,10 +177,10 @@ export const HoldingAiEvaluationModal: React.FC<HoldingAiEvaluationModalProps> =
           <Box sx={{ py: 6, textAlign: 'center' }}>
             <LinearProgress sx={{ mb: 3, borderRadius: 2, height: 6 }} />
             <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
-              Synthesizing Fundamental & Risk Analysis...
+              Synthesizing Fundamental &amp; Risk Analysis...
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Querying Gemma 4 12B on LM Studio with financial valuation multiples, portfolio weighting, and 52-week quote ranges.
+              Querying your AI provider with financial valuation multiples, portfolio weighting, and 52-week quote ranges.
             </Typography>
           </Box>
         )}
@@ -156,8 +195,8 @@ export const HoldingAiEvaluationModal: React.FC<HoldingAiEvaluationModalProps> =
             }
             sx={{ mb: 2 }}
           >
-            Failed to evaluate holding: {error?.message || 'Connection to LM Studio failed'}.
-            Make sure LM Studio is running locally with Gemma 4 12B loaded.
+            Failed to evaluate holding: {error?.message || 'Connection to AI provider failed'}.
+            Check that your AI provider is configured and reachable.
           </Alert>
         )}
 

@@ -682,6 +682,92 @@ class LmStudioGatewayTests {
         assertTrue(status.availableModels().contains("secondary-instance-12b"));
         assertTrue(status.availableModels().contains("Standalone Model"));
     }
+
+    @Test
+    @DisplayName("getProviderName returns LM_STUDIO")
+    void testGetProviderName() {
+        assertEquals("LM_STUDIO", gateway.getProviderName());
+    }
+
+    @Test
+    @DisplayName("constructor with null ObjectMapper initializes default mapper")
+    void testConstructorWithNullObjectMapper() {
+        LmStudioGateway gw = new LmStudioGateway(properties, RestClient.builder().build(), null);
+        assertEquals("LM_STUDIO", gw.getProviderName());
+    }
+
+    @Test
+    @DisplayName("generateChatCompletion handles response parsing anomalies in native and openai endpoints")
+    void testGenerateChatCompletionResponseAnomalies() {
+        // Native endpoint returns non-array output -> falls back to chat completions
+        String malformedNative = "{\"output\": \"not-an-array\"}";
+        String validChat = "{\"choices\": [{\"message\": {\"content\": \"Fallback answer\"}}]}";
+
+        mockServer.expect(requestTo("http://localhost:1234/api/v1/chat"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess(malformedNative, MediaType.APPLICATION_JSON));
+
+        mockServer.expect(requestTo("http://localhost:1234/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess(validChat, MediaType.APPLICATION_JSON));
+
+        String result = gateway.generateChatCompletion("sys", "user");
+        mockServer.verify();
+        assertEquals("Fallback answer", result);
+
+        // Native endpoint returns output items missing content or blank
+        mockServer.reset();
+        String blankContentNative = "{\"output\": [{}, {\"content\": \"   \"}]}";
+        mockServer.expect(requestTo("http://localhost:1234/api/v1/chat"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess(blankContentNative, MediaType.APPLICATION_JSON));
+
+        mockServer.expect(requestTo("http://localhost:1234/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess(validChat, MediaType.APPLICATION_JSON));
+
+        String result2 = gateway.generateChatCompletion("sys", "user");
+        mockServer.verify();
+        assertEquals("Fallback answer", result2);
+
+        // Both endpoints return malformed JSON
+        mockServer.reset();
+        mockServer.expect(requestTo("http://localhost:1234/api/v1/chat"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("unparseable-native", MediaType.APPLICATION_JSON));
+
+        mockServer.expect(requestTo("http://localhost:1234/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("unparseable-chat", MediaType.APPLICATION_JSON));
+
+        assertThrows(IllegalStateException.class, () -> gateway.generateChatCompletion("sys", "user"));
+        mockServer.verify();
+
+        // Chat completion endpoint returns choices not an array, or missing message / content
+        mockServer.reset();
+        mockServer.expect(requestTo("http://localhost:1234/api/v1/chat"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
+
+        mockServer.expect(requestTo("http://localhost:1234/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("{\"choices\": [{}]}", MediaType.APPLICATION_JSON));
+
+        assertThrows(IllegalStateException.class, () -> gateway.generateChatCompletion("sys", "user"));
+        mockServer.verify();
+
+        mockServer.reset();
+        mockServer.expect(requestTo("http://localhost:1234/api/v1/chat"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
+
+        mockServer.expect(requestTo("http://localhost:1234/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("{\"choices\": [{\"message\": {\"content\": \"   \"}}]}", MediaType.APPLICATION_JSON));
+
+        assertThrows(IllegalStateException.class, () -> gateway.generateChatCompletion("sys", "user"));
+        mockServer.verify();
+    }
 }
 
 

@@ -21,7 +21,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
 @Component
-public class LmStudioGateway {
+public class LmStudioGateway implements AiGateway {
 
     private static final Logger log = LoggerFactory.getLogger(LmStudioGateway.class);
 
@@ -251,5 +251,10 @@ public class LmStudioGateway {
             log.debug("Could not parse OpenAI-compatible response: {}", e.getMessage());
         }
         return Optional.empty();
+    }
+
+    @Override
+    public String getProviderName() {
+        return "LM_STUDIO";
     }
 }
