@@ -656,7 +656,7 @@ paths:
   /ai/status:
     get:
       operationId: getAiStatus
-      summary: Check local LM Studio connection status and model availability
+      summary: Check configured AI provider connection status and model availability
       responses:
         '200':
           description: AI system status
@@ -668,7 +668,7 @@ paths:
       - { $ref: '#/components/parameters/PortfolioId' }
     post:
       operationId: evaluatePortfolioAi
-      summary: Run comprehensive AI evaluation on the portfolio
+      summary: Run comprehensive AI evaluation on the portfolio (calls LLM)
       responses:
         '200':
           description: Portfolio AI evaluation
@@ -676,19 +676,65 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/PortfolioAiEvaluation' }
         '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/ai/evaluation:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+    get:
+      operationId: getLatestPortfolioAiEvaluation
+      summary: Retrieve latest persisted AI evaluation for the portfolio (no LLM call)
+      responses:
+        '200':
+          description: Latest portfolio AI evaluation
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PortfolioAiEvaluation' }
+        '204':
+          description: No AI evaluation has been performed yet
+        '404': { $ref: '#/components/responses/Problem' }
   /portfolios/{portfolioId}/holdings/{instrumentId}/ai/evaluate:
     parameters:
       - { $ref: '#/components/parameters/PortfolioId' }
       - { $ref: '#/components/parameters/InstrumentId' }
     post:
       operationId: evaluateHoldingAi
-      summary: Run deep-dive AI evaluation on an individual holding
+      summary: Run deep-dive AI evaluation on an individual holding (calls LLM)
       responses:
         '200':
           description: Holding AI evaluation
           content:
             application/json:
               schema: { $ref: '#/components/schemas/HoldingAiEvaluation' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/holdings/{instrumentId}/ai/evaluation:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+      - { $ref: '#/components/parameters/InstrumentId' }
+    get:
+      operationId: getLatestHoldingAiEvaluation
+      summary: Retrieve latest persisted AI evaluation for an individual holding (no LLM call)
+      responses:
+        '200':
+          description: Latest holding AI evaluation
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HoldingAiEvaluation' }
+        '204':
+          description: No AI evaluation has been performed yet for this holding
+        '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/holdings/ai/evaluations:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+    get:
+      operationId: listLatestHoldingAiEvaluations
+      summary: List all latest persisted holding AI evaluations for the portfolio (no LLM call)
+      responses:
+        '200':
+          description: List of latest holding AI evaluations
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/HoldingAiEvaluation' }
         '404': { $ref: '#/components/responses/Problem' }
   /portfolios/{portfolioId}/accounts/{accountId}/transactions:
     parameters:

@@ -5,11 +5,15 @@ import tools.jackson.databind.ObjectMapper;
 import com.takakim.investtracker.api.ApiDtos;
 import com.takakim.investtracker.domain.Account;
 import com.takakim.investtracker.domain.AccountStatus;
+import com.takakim.investtracker.domain.HoldingAiEvaluation;
 import com.takakim.investtracker.domain.Instrument;
 import com.takakim.investtracker.domain.Portfolio;
+import com.takakim.investtracker.domain.PortfolioAiEvaluation;
 import com.takakim.investtracker.domain.Position;
 import com.takakim.investtracker.repository.AccountRepository;
+import com.takakim.investtracker.repository.HoldingAiEvaluationRepository;
 import com.takakim.investtracker.repository.InstrumentRepository;
+import com.takakim.investtracker.repository.PortfolioAiEvaluationRepository;
 import com.takakim.investtracker.repository.PortfolioRepository;
 import com.takakim.investtracker.service.PositionService;
 import com.takakim.investtracker.service.ResourceNotFoundException;
@@ -45,7 +49,7 @@ public class AiEvaluationService {
 
     private static final Logger log = LoggerFactory.getLogger(AiEvaluationService.class);
 
-    private final LmStudioGateway lmStudioGateway;
+    private final AiGatewayFactory gatewayFactory;
     private final PortfolioRepository portfolioRepository;
     private final AccountRepository accountRepository;
     private final InstrumentRepository instrumentRepository;
@@ -53,19 +57,23 @@ public class AiEvaluationService {
     private final AnalyticsEngine analyticsEngine;
     private final YahooFinanceGateway yahooFinanceGateway;
     private final ObjectMapper objectMapper;
+    private final PortfolioAiEvaluationRepository portfolioAiEvaluationRepository;
+    private final HoldingAiEvaluationRepository holdingAiEvaluationRepository;
 
     @Autowired
     public AiEvaluationService(
-            LmStudioGateway lmStudioGateway,
+            AiGatewayFactory gatewayFactory,
             PortfolioRepository portfolioRepository,
             AccountRepository accountRepository,
             InstrumentRepository instrumentRepository,
             PositionService positionService,
             AnalyticsEngine analyticsEngine,
             @Autowired(required = false) YahooFinanceGateway yahooFinanceGateway,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            PortfolioAiEvaluationRepository portfolioAiEvaluationRepository,
+            HoldingAiEvaluationRepository holdingAiEvaluationRepository
     ) {
-        this.lmStudioGateway = lmStudioGateway;
+        this.gatewayFactory = gatewayFactory;
         this.portfolioRepository = portfolioRepository;
         this.accountRepository = accountRepository;
         this.instrumentRepository = instrumentRepository;
@@ -73,10 +81,65 @@ public class AiEvaluationService {
         this.analyticsEngine = analyticsEngine;
         this.yahooFinanceGateway = yahooFinanceGateway;
         this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();
+        this.portfolioAiEvaluationRepository = portfolioAiEvaluationRepository;
+        this.holdingAiEvaluationRepository = holdingAiEvaluationRepository;
     }
 
     public AiStatusDto getStatus() {
-        return lmStudioGateway.checkStatus();
+        return gatewayFactory.getActiveGateway().checkStatus();
+    }
+
+    /**
+     * Returns the latest persisted portfolio AI evaluation for the given portfolio,
+     * or empty if no evaluation has been run yet.
+     */
+    public Optional<PortfolioAiEvaluationDto> getLatestPortfolioEvaluation(UUID portfolioId) {
+        // Verify portfolio exists
+        portfolioRepository.findById(portfolioId)
+                .orElseThrow(() -> new ResourceNotFoundException("Portfolio not found: " + portfolioId));
+        return portfolioAiEvaluationRepository.findByPortfolioId(portfolioId)
+                .flatMap(this::deserializePortfolioEvaluation);
+    }
+
+    /**
+     * Returns all persisted holding AI evaluations for the given portfolio.
+     */
+    public List<HoldingAiEvaluationDto> getLatestHoldingEvaluations(UUID portfolioId) {
+        portfolioRepository.findById(portfolioId)
+                .orElseThrow(() -> new ResourceNotFoundException("Portfolio not found: " + portfolioId));
+        return holdingAiEvaluationRepository.findByPortfolioId(portfolioId).stream()
+                .map(this::deserializeHoldingEvaluation)
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .toList();
+    }
+
+    /**
+     * Returns the latest persisted holding AI evaluation for a specific instrument in the portfolio.
+     */
+    public Optional<HoldingAiEvaluationDto> getLatestHoldingEvaluation(UUID portfolioId, UUID instrumentId) {
+        portfolioRepository.findById(portfolioId)
+                .orElseThrow(() -> new ResourceNotFoundException("Portfolio not found: " + portfolioId));
+        return holdingAiEvaluationRepository.findByPortfolioIdAndInstrumentId(portfolioId, instrumentId)
+                .flatMap(this::deserializeHoldingEvaluation);
+    }
+
+    private Optional<PortfolioAiEvaluationDto> deserializePortfolioEvaluation(PortfolioAiEvaluation entity) {
+        try {
+            return Optional.of(objectMapper.readValue(entity.getResultJson(), PortfolioAiEvaluationDto.class));
+        } catch (Exception e) {
+            log.warn("Failed to deserialize portfolio AI evaluation {}: {}", entity.getId(), e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    private Optional<HoldingAiEvaluationDto> deserializeHoldingEvaluation(HoldingAiEvaluation entity) {
+        try {
+            return Optional.of(objectMapper.readValue(entity.getResultJson(), HoldingAiEvaluationDto.class));
+        } catch (Exception e) {
+            log.warn("Failed to deserialize holding AI evaluation {}: {}", entity.getId(), e.getMessage());
+            return Optional.empty();
+        }
     }
 
     public HoldingAiEvaluationDto evaluateHolding(UUID portfolioId, UUID instrumentId) {
@@ -218,8 +281,13 @@ public class AiEvaluationService {
                 fiftyTwoWeekHigh != null ? String.format("%.2f", fiftyTwoWeekHigh) : "N/A"
         );
 
-        String rawResponse = lmStudioGateway.generateChatCompletion(systemPrompt, userPrompt);
-        return parseHoldingResponse(rawResponse, instrument, totalQty, latestPrice, avgCost, totalUnrealizedGain, unrealizedGainPct, weightPct, fiftyTwoWeekHigh, fiftyTwoWeekLow, portfolio.getBaseCurrency().code());
+        AiGateway gateway = gatewayFactory.getActiveGateway();
+        String rawResponse = gateway.generateChatCompletion(systemPrompt, userPrompt);
+        HoldingAiEvaluationDto result = parseHoldingResponse(rawResponse, instrument, totalQty, latestPrice, avgCost,
+                totalUnrealizedGain, unrealizedGainPct, weightPct, fiftyTwoWeekHigh, fiftyTwoWeekLow,
+                portfolio.getBaseCurrency().code(), gateway.getProviderName());
+        persistHoldingEvaluation(portfolioId, instrumentId, gateway.getProviderName(), result);
+        return result;
     }
 
     public PortfolioAiEvaluationDto evaluatePortfolio(UUID portfolioId) {
@@ -297,8 +365,69 @@ public class AiEvaluationService {
                 accountsSummary.length() > 0 ? accountsSummary.toString() : "No registered accounts"
         );
 
-        String rawResponse = lmStudioGateway.generateChatCompletion(systemPrompt, userPrompt);
-        return parsePortfolioResponse(rawResponse, portfolio);
+        AiGateway gateway = gatewayFactory.getActiveGateway();
+        String rawResponse = gateway.generateChatCompletion(systemPrompt, userPrompt);
+        PortfolioAiEvaluationDto result = parsePortfolioResponse(rawResponse, portfolio, gateway.getProviderName());
+        persistPortfolioEvaluation(portfolioId, gateway.getProviderName(), result);
+        return result;
+    }
+
+    @Transactional
+    public void persistPortfolioEvaluation(UUID portfolioId, String providerName, PortfolioAiEvaluationDto dto) {
+        try {
+            String json = objectMapper.writeValueAsString(dto);
+            Optional<PortfolioAiEvaluation> existing = portfolioAiEvaluationRepository.findByPortfolioId(portfolioId);
+            if (existing.isPresent()) {
+                PortfolioAiEvaluation entity = existing.get();
+                entity.setProvider(providerName);
+                entity.setModelUsed(dto.modelUsed() != null ? dto.modelUsed() : providerName);
+                entity.setOverallRiskScore(dto.overallRiskScore());
+                entity.setOverallRiskLevel(dto.overallRiskLevel().name());
+                entity.setExecutiveSummary(dto.executiveSummary());
+                entity.setResultJson(json);
+                entity.setEvaluatedAt(dto.evaluatedAt());
+                portfolioAiEvaluationRepository.save(entity);
+            } else {
+                PortfolioAiEvaluation entity = new PortfolioAiEvaluation(
+                        portfolioId, providerName,
+                        dto.modelUsed() != null ? dto.modelUsed() : providerName,
+                        dto.overallRiskScore(), dto.overallRiskLevel().name(),
+                        dto.executiveSummary(), json, dto.evaluatedAt());
+                portfolioAiEvaluationRepository.save(entity);
+            }
+        } catch (Exception e) {
+            log.error("Failed to persist portfolio AI evaluation for {}: {}", portfolioId, e.getMessage());
+        }
+    }
+
+    @Transactional
+    public void persistHoldingEvaluation(UUID portfolioId, UUID instrumentId, String providerName, HoldingAiEvaluationDto dto) {
+        try {
+            String json = objectMapper.writeValueAsString(dto);
+            Optional<HoldingAiEvaluation> existing = holdingAiEvaluationRepository
+                    .findByPortfolioIdAndInstrumentId(portfolioId, instrumentId);
+            if (existing.isPresent()) {
+                HoldingAiEvaluation entity = existing.get();
+                entity.setProvider(providerName);
+                entity.setModelUsed(dto.modelUsed() != null ? dto.modelUsed() : providerName);
+                entity.setStance(dto.stance().name());
+                entity.setRiskScore(dto.riskScore());
+                entity.setRiskLevel(dto.riskLevel().name());
+                entity.setExecutiveSummary(dto.executiveSummary());
+                entity.setResultJson(json);
+                entity.setEvaluatedAt(dto.evaluatedAt());
+                holdingAiEvaluationRepository.save(entity);
+            } else {
+                HoldingAiEvaluation entity = new HoldingAiEvaluation(
+                        portfolioId, instrumentId, providerName,
+                        dto.modelUsed() != null ? dto.modelUsed() : providerName,
+                        dto.stance().name(), dto.riskScore(), dto.riskLevel().name(),
+                        dto.executiveSummary(), json, dto.evaluatedAt());
+                holdingAiEvaluationRepository.save(entity);
+            }
+        } catch (Exception e) {
+            log.error("Failed to persist holding AI evaluation for {}/{}: {}", portfolioId, instrumentId, e.getMessage());
+        }
     }
 
     private HoldingAiEvaluationDto parseHoldingResponse(
@@ -312,11 +441,12 @@ public class AiEvaluationService {
             Double weightPct,
             Double fiftyTwoWeekHigh,
             Double fiftyTwoWeekLow,
-            String baseCurrency
+            String baseCurrency,
+            String providerName
     ) {
         String cleanJson = extractJson(rawResponse);
         if (cleanJson.isBlank() || cleanJson.equals("{}")) {
-            return fallbackHoldingEvaluation(instrument, qty, price, avgCost, unrealizedGain, unrealizedGainPct, weightPct, fiftyTwoWeekHigh, fiftyTwoWeekLow, baseCurrency, rawResponse);
+            return fallbackHoldingEvaluation(instrument, qty, price, avgCost, unrealizedGain, unrealizedGainPct, weightPct, fiftyTwoWeekHigh, fiftyTwoWeekLow, baseCurrency, rawResponse, providerName);
         }
         try {
             JsonNode root = objectMapper.readTree(cleanJson);
@@ -353,16 +483,16 @@ public class AiEvaluationService {
                     risks,
                     tradeoff,
                     metrics,
-                    "gemma4-12b",
+                    providerName,
                     Instant.now()
             );
         } catch (Exception e) {
-            log.warn("Failed to parse JSON response from LM Studio: {}. Falling back to default holding evaluation.", e.getMessage());
-            return fallbackHoldingEvaluation(instrument, qty, price, avgCost, unrealizedGain, unrealizedGainPct, weightPct, fiftyTwoWeekHigh, fiftyTwoWeekLow, baseCurrency, rawResponse);
+            log.warn("Failed to parse JSON response from AI provider: {}. Falling back to default holding evaluation.", e.getMessage());
+            return fallbackHoldingEvaluation(instrument, qty, price, avgCost, unrealizedGain, unrealizedGainPct, weightPct, fiftyTwoWeekHigh, fiftyTwoWeekLow, baseCurrency, rawResponse, providerName);
         }
     }
 
-    private PortfolioAiEvaluationDto parsePortfolioResponse(String rawResponse, Portfolio portfolio) {
+    private PortfolioAiEvaluationDto parsePortfolioResponse(String rawResponse, Portfolio portfolio, String providerName) {
         String cleanJson = extractJson(rawResponse);
         try {
             JsonNode root = objectMapper.readTree(cleanJson);
@@ -391,11 +521,11 @@ public class AiEvaluationService {
                     recommendations,
                     macroScenarios,
                     List.of(),
-                    "gemma4-12b",
+                    providerName,
                     Instant.now()
             );
         } catch (Exception e) {
-            log.warn("Failed to parse JSON portfolio response from LM Studio: {}. Falling back to default.", e.getMessage());
+            log.warn("Failed to parse JSON portfolio response from AI provider: {}. Falling back to default.", e.getMessage());
             return new PortfolioAiEvaluationDto(
                     portfolio.getId(),
                     portfolio.getName(),
@@ -409,7 +539,7 @@ public class AiEvaluationService {
                     List.of("Maintain adequate cash buffer for rebalancing opportunities"),
                     List.of("Interest rate sensitivity and equity market volatility"),
                     List.of(),
-                    "gemma4-12b",
+                    providerName,
                     Instant.now()
             );
         }
@@ -442,7 +572,8 @@ public class AiEvaluationService {
             Double high52,
             Double low52,
             String baseCurrency,
-            String rawText
+            String rawText,
+            String providerName
     ) {
         return new HoldingAiEvaluationDto(
                 instrument.getId(),
@@ -463,7 +594,7 @@ public class AiEvaluationService {
                 List.of("Subject to standard market and sector volatility"),
                 "Evaluate position weight against target rebalancing plan before selling.",
                 new HoldingFinancialMetricsDto(null, null, null, null, null, null, null, high52, low52, null, null, instrument.getAssetClass().name(), baseCurrency),
-                "gemma4-12b",
+                providerName,
                 Instant.now()
         );
     }

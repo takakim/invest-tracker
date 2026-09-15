@@ -127,6 +127,8 @@ const mockPortfolioEvaluation: PortfolioAiEvaluation = {
 describe('AI Intelligence Feature Suite', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.spyOn(aiApi, 'getLatestPortfolioEvaluation').mockResolvedValue(null);
+    vi.spyOn(aiApi, 'getLatestHoldingEvaluation').mockResolvedValue(null);
   });
 
   describe('Utility Functions', () => {
@@ -147,23 +149,40 @@ describe('AI Intelligence Feature Suite', () => {
   });
 
   describe('AiStatusIndicator', () => {
-    it('renders connected chip with model name when LM Studio is online', async () => {
+    it('renders connected chip with provider and model name when provider is online', async () => {
       vi.spyOn(aiApi, 'getAiStatus').mockResolvedValue(mockAiStatusConnected);
 
       renderWithProviders(<AiStatusIndicator />);
 
       await waitFor(() => {
-        expect(screen.getByText('AI: gemma4-12b')).toBeInTheDocument();
+        expect(screen.getByText('LM STUDIO: gemma4-12b')).toBeInTheDocument();
       });
     });
 
-    it('renders offline chip when LM Studio is disconnected', async () => {
+    it('renders provider name and model for OpenAI provider', async () => {
+      vi.spyOn(aiApi, 'getAiStatus').mockResolvedValue({
+        enabled: true,
+        connected: true,
+        provider: 'OPENAI',
+        baseUrl: 'https://api.openai.com',
+        configuredModel: 'gpt-4o-mini',
+        availableModels: ['gpt-4o-mini', 'gpt-4o'],
+      });
+
+      renderWithProviders(<AiStatusIndicator />);
+
+      await waitFor(() => {
+        expect(screen.getByText('OPENAI: gpt-4o-mini')).toBeInTheDocument();
+      });
+    });
+
+    it('renders offline chip with provider name when provider is disconnected', async () => {
       vi.spyOn(aiApi, 'getAiStatus').mockResolvedValue(mockAiStatusOffline);
 
       renderWithProviders(<AiStatusIndicator />);
 
       await waitFor(() => {
-        expect(screen.getByText('AI: Offline')).toBeInTheDocument();
+        expect(screen.getByText('LM STUDIO: Offline')).toBeInTheDocument();
       });
     });
   });
@@ -195,7 +214,7 @@ describe('AI Intelligence Feature Suite', () => {
       expect(screen.getByText('28.2')).toBeInTheDocument();
     });
 
-    it('triggers evaluation mutation when opened without initialData', async () => {
+    it('triggers evaluation mutation when opened without initialData and no cache', async () => {
       const evaluateSpy = vi.spyOn(aiApi, 'evaluateHolding').mockResolvedValue(mockHoldingEvaluation);
 
       renderWithProviders(
@@ -213,6 +232,29 @@ describe('AI Intelligence Feature Suite', () => {
         expect(evaluateSpy).toHaveBeenCalledWith('port-1', 'inst-1');
         expect(screen.getByText('ACCUMULATE')).toBeInTheDocument();
       });
+    });
+
+    it('renders cached holding evaluation immediately when available', async () => {
+      vi.spyOn(aiApi, 'getLatestHoldingEvaluation').mockResolvedValue(mockHoldingEvaluation);
+      const evaluateSpy = vi.spyOn(aiApi, 'evaluateHolding');
+
+      renderWithProviders(
+        <HoldingAiEvaluationModal
+          open={true}
+          onClose={vi.fn()}
+          portfolioId="port-1"
+          instrumentId="inst-1"
+          symbol="NVDA"
+          instrumentName="NVIDIA Corporation"
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('ACCUMULATE')).toBeInTheDocument();
+        expect(screen.getByText(/Dominant leader in accelerated computing/i)).toBeInTheDocument();
+      });
+      // Cached evaluation is shown without auto-triggering a new evaluation call
+      expect(evaluateSpy).not.toHaveBeenCalled();
     });
 
     it('handles error state gracefully with retry button', async () => {
@@ -249,7 +291,10 @@ describe('AI Intelligence Feature Suite', () => {
         />
       );
 
-      expect(screen.getByText(/Comprehensive Portfolio Intelligence/i)).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText(/Comprehensive Portfolio Intelligence/i)).toBeInTheDocument();
+      });
+
       const analyzeBtn = screen.getByRole('button', { name: /Analyze Tech & Dividend Portfolio/i });
       fireEvent.click(analyzeBtn);
 
@@ -263,6 +308,25 @@ describe('AI Intelligence Feature Suite', () => {
         expect(screen.getByText(/Macro Stress Scenarios/i)).toBeInTheDocument();
         expect(screen.getByText(/Strategic Action Items & Recommendations/i)).toBeInTheDocument();
         expect(screen.getByText('Top Holdings AI Stance & Risk Matrix')).toBeInTheDocument();
+      });
+    });
+
+    it('renders cached portfolio evaluation immediately when present', async () => {
+      vi.spyOn(aiApi, 'getAiStatus').mockResolvedValue(mockAiStatusConnected);
+      vi.spyOn(aiApi, 'getLatestPortfolioEvaluation').mockResolvedValue(mockPortfolioEvaluation);
+
+      renderWithProviders(
+        <PortfolioAiEvaluationCard
+          portfolioId="port-1"
+          portfolioName="Tech & Dividend Portfolio"
+          baseCurrency="USD"
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Portfolio Executive Thesis')).toBeInTheDocument();
+        expect(screen.getByText(/Well-positioned growth portfolio with healthy cash buffer/i)).toBeInTheDocument();
+        expect(screen.getByText('GEMMA4-12B')).toBeInTheDocument();
       });
     });
   });
