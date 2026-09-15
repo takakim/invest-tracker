@@ -98,7 +98,31 @@ public class AiEvaluationService {
         portfolioRepository.findById(portfolioId)
                 .orElseThrow(() -> new ResourceNotFoundException("Portfolio not found: " + portfolioId));
         return portfolioAiEvaluationRepository.findByPortfolioId(portfolioId)
-                .flatMap(this::deserializePortfolioEvaluation);
+                .flatMap(this::deserializePortfolioEvaluation)
+                .map(dto -> enrichWithLatestHoldingEvaluations(portfolioId, dto));
+    }
+
+    private PortfolioAiEvaluationDto enrichWithLatestHoldingEvaluations(UUID portfolioId, PortfolioAiEvaluationDto dto) {
+        List<HoldingAiEvaluationDto> latestHoldings = getLatestHoldingEvaluations(portfolioId);
+        if (latestHoldings.isEmpty()) {
+            return dto;
+        }
+        return new PortfolioAiEvaluationDto(
+                dto.portfolioId(),
+                dto.portfolioName(),
+                dto.baseCurrency(),
+                dto.overallRiskScore(),
+                dto.overallRiskLevel(),
+                dto.executiveSummary(),
+                dto.diversificationAssessment(),
+                dto.concentrationRisks(),
+                dto.taxAndLocationOptimization(),
+                dto.topRecommendations(),
+                dto.macroStressScenarios(),
+                latestHoldings,
+                dto.modelUsed(),
+                dto.evaluatedAt()
+        );
     }
 
     /**
@@ -330,7 +354,16 @@ public class AiEvaluationService {
                   "concentrationRisks": ["string", "string", ...],
                   "taxAndLocationOptimization": ["string", "string", ...],
                   "topRecommendations": ["string", "string", ...],
-                  "macroStressScenarios": ["string", "string", ...]
+                  "macroStressScenarios": ["string", "string", ...],
+                  "topHoldingEvaluations": [
+                    {
+                      "symbol": "ticker symbol matching top holdings list",
+                      "stance": "HOLD" | "ACCUMULATE" | "TRIM" | "SELL",
+                      "riskScore": 1 to 10,
+                      "riskLevel": "LOW" | "MODERATE" | "HIGH" | "VERY_HIGH",
+                      "executiveSummary": "1-2 sentence holding recommendation"
+                    }
+                  ]
                 }
                 Do not include markdown or conversational text outside of the JSON object.
                 """;
@@ -367,7 +400,7 @@ public class AiEvaluationService {
 
         AiGateway gateway = gatewayFactory.getActiveGateway();
         String rawResponse = gateway.generateChatCompletion(systemPrompt, userPrompt);
-        PortfolioAiEvaluationDto result = parsePortfolioResponse(rawResponse, portfolio, gateway.getProviderName());
+        PortfolioAiEvaluationDto result = parsePortfolioResponse(rawResponse, portfolio, gateway.getProviderName(), analytics.topHoldings());
         persistPortfolioEvaluation(portfolioId, gateway.getProviderName(), result);
         return result;
     }
@@ -493,6 +526,15 @@ public class AiEvaluationService {
     }
 
     private PortfolioAiEvaluationDto parsePortfolioResponse(String rawResponse, Portfolio portfolio, String providerName) {
+        return parsePortfolioResponse(rawResponse, portfolio, providerName, List.of());
+    }
+
+    private PortfolioAiEvaluationDto parsePortfolioResponse(
+            String rawResponse,
+            Portfolio portfolio,
+            String providerName,
+            List<HoldingExposure> topHoldings
+    ) {
         String cleanJson = extractJson(rawResponse);
         try {
             JsonNode root = objectMapper.readTree(cleanJson);
@@ -508,6 +550,11 @@ public class AiEvaluationService {
             List<String> recommendations = extractStringList(root.get("topRecommendations"));
             List<String> macroScenarios = extractStringList(root.get("macroStressScenarios"));
 
+            List<HoldingAiEvaluationDto> holdingEvaluations = parseTopHoldingEvaluations(root.get("topHoldingEvaluations"), portfolio, providerName, topHoldings);
+            if (holdingEvaluations.isEmpty()) {
+                holdingEvaluations = getLatestHoldingEvaluations(portfolio.getId());
+            }
+
             return new PortfolioAiEvaluationDto(
                     portfolio.getId(),
                     portfolio.getName(),
@@ -520,12 +567,13 @@ public class AiEvaluationService {
                     taxOpt,
                     recommendations,
                     macroScenarios,
-                    List.of(),
+                    holdingEvaluations,
                     providerName,
                     Instant.now()
             );
         } catch (Exception e) {
             log.warn("Failed to parse JSON portfolio response from AI provider: {}. Falling back to default.", e.getMessage());
+            List<HoldingAiEvaluationDto> fallbackHoldings = getLatestHoldingEvaluations(portfolio.getId());
             return new PortfolioAiEvaluationDto(
                     portfolio.getId(),
                     portfolio.getName(),
@@ -538,11 +586,81 @@ public class AiEvaluationService {
                     List.of("Ensure ISA/SIPP contribution limits are utilized before taxable accounts"),
                     List.of("Maintain adequate cash buffer for rebalancing opportunities"),
                     List.of("Interest rate sensitivity and equity market volatility"),
-                    List.of(),
+                    fallbackHoldings,
                     providerName,
                     Instant.now()
             );
         }
+    }
+
+    private List<HoldingAiEvaluationDto> parseTopHoldingEvaluations(
+            JsonNode topHoldingsNode,
+            Portfolio portfolio,
+            String providerName,
+            List<HoldingExposure> topHoldings
+    ) {
+        List<HoldingAiEvaluationDto> list = new ArrayList<>();
+        if (topHoldingsNode == null || !topHoldingsNode.isArray() || topHoldings == null || topHoldings.isEmpty()) {
+            return list;
+        }
+        for (JsonNode item : topHoldingsNode) {
+            String sym = item.path("symbol").asText(null);
+            if (sym == null || sym.isBlank()) continue;
+            HoldingExposure matched = topHoldings.stream()
+                    .filter(h -> (h.ticker() != null && sym.equalsIgnoreCase(h.ticker()))
+                            || (h.instrumentName() != null && sym.equalsIgnoreCase(h.instrumentName())))
+                    .findFirst()
+                    .orElse(null);
+            if (matched != null) {
+                AiStance stance = parseStance(item.path("stance").asText(null));
+                int rScore = item.path("riskScore").asInt(5);
+                if (rScore < 1) rScore = 1;
+                if (rScore > 10) rScore = 10;
+                AiRiskLevel rLevel = parseRiskLevel(item.path("riskLevel").asText(null), rScore);
+                String execSummary = item.path("executiveSummary").asText("Automated assessment for " + matched.ticker());
+                List<String> strengths = extractStringList(item.get("strengths"));
+                List<String> risks = extractStringList(item.get("risks"));
+                String tradeoff = item.path("holdingVsSellingTradeoff").asText("Hold vs sell trade-off based on portfolio allocation.");
+
+                BigDecimal avgCost = (matched.costBasis() != null && matched.costBasis().compareTo(BigDecimal.ZERO) > 0
+                        && matched.quantity() != null && matched.quantity().compareTo(BigDecimal.ZERO) > 0)
+                        ? matched.costBasis().divide(matched.quantity(), 4, RoundingMode.HALF_UP)
+                        : BigDecimal.ZERO;
+
+                Double unGainPct = (matched.costBasis() != null && matched.costBasis().compareTo(BigDecimal.ZERO) > 0
+                        && matched.unrealizedGainLoss() != null)
+                        ? matched.unrealizedGainLoss().divide(matched.costBasis(), 4, RoundingMode.HALF_UP).doubleValue() * 100.0
+                        : 0.0;
+
+                Double weight = matched.weightPercentage() != null ? matched.weightPercentage().doubleValue() : 0.0;
+
+                HoldingAiEvaluationDto hDto = new HoldingAiEvaluationDto(
+                        matched.instrumentId(),
+                        matched.ticker(),
+                        matched.instrumentName(),
+                        matched.assetClass().name(),
+                        matched.quantity(),
+                        matched.currentPrice(),
+                        avgCost,
+                        matched.unrealizedGainLoss() != null ? matched.unrealizedGainLoss() : BigDecimal.ZERO,
+                        unGainPct,
+                        weight,
+                        stance,
+                        rScore,
+                        rLevel,
+                        execSummary,
+                        strengths,
+                        risks,
+                        tradeoff,
+                        new HoldingFinancialMetricsDto(null, null, null, null, null, null, null, null, null, null, null, matched.assetClass().name(), portfolio.getBaseCurrency().code()),
+                        providerName,
+                        Instant.now()
+                );
+                persistHoldingEvaluation(portfolio.getId(), matched.instrumentId(), providerName, hDto);
+                list.add(hDto);
+            }
+        }
+        return list;
     }
 
     private HoldingFinancialMetricsDto parseMetrics(JsonNode node, Instrument instrument, Double high52, Double low52, String curr) {
