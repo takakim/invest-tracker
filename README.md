@@ -110,9 +110,14 @@ Vite development server runs at `http://localhost:5173` and proxies `/api` reque
 
 ## AI Portfolio & Holding Intelligence Engine
 
-Invest Tracker features an AI intelligence engine designed to connect to a local LLM running on **LM Studio** (optimized for **Gemma 4 12B**) or any OpenAI-compatible API.
+Invest Tracker features an AI intelligence engine that generates structured financial evaluations, risk ratings, and strategic action plans. It supports multiple LLM provider backends and automatically persists the latest intelligence for each portfolio and holding in PostgreSQL.
 
 ### Key Capabilities
+- **Evaluation Persistence**:
+  - Automatically saves the latest portfolio-level and holding-level AI evaluations to the database.
+  - Previous analyses are immediately available without re-running expensive LLM inferences.
+  - Displays the model/provider used and relative timestamp (e.g. `1h ago`).
+  - Includes a one-click **Re-evaluate** button to generate fresh intelligence on demand.
 - **Portfolio-Level Intelligence**:
   - **Risk Meter (1–10 Gauge)**: Consolidated portfolio risk score and risk categorization (`LOW`, `MODERATE`, `HIGH`, `VERY_HIGH`).
   - **Diversification & Concentration Assessment**: Scans for single-asset concentration, regional exposure, and sector imbalances.
@@ -126,29 +131,59 @@ Invest Tracker features an AI intelligence engine designed to connect to a local
   - **Fundamental Ratios**: P/E, Forward P/E, PEG, Debt-to-Equity, ROE, enriched with live 52-week price ranges from Yahoo Finance.
   - Accessible directly on each row of the positions table via the sparkle action icon.
 
-### LM Studio Configuration
+### Supported AI Providers
 
-1. **Start the Local Server in LM Studio**:
-   - Open LM Studio and go to the **Local Server** tab.
-   - Load **Gemma 4 12B** (`google/gemma-4-12b`) or your chosen model.
-   - Start the server on port `1234`.
+Select your provider via the `AI_PROVIDER` environment variable:
 
-2. **Docker Compose Networking**:
-   When running via `./start.sh` or Docker Compose, the backend container communicates with your host machine via `http://host.docker.internal:1234`.
+| Provider | `AI_PROVIDER` | Default Model | Required Credentials |
+| :--- | :--- | :--- | :--- |
+| **LM Studio** (local, default) | `LM_STUDIO` | `google/gemma-4-12b` | None (runs locally) |
+| **OpenAI** | `OPENAI` | `gpt-4o-mini` | `OPENAI_API_KEY` |
+| **Google Gemini** | `GEMINI` | `gemini-2.0-flash` | `GEMINI_API_KEY` |
+| **Anthropic Claude** | `ANTHROPIC` | `claude-3-5-haiku-latest` | `ANTHROPIC_API_KEY` |
 
-   Configurable via `.env` or environment variables:
+#### 1. LM Studio (Local Inference, Free & Private)
+1. Open LM Studio and navigate to the **Local Server** tab.
+2. Load **Gemma 4 12B** (`google/gemma-4-12b`) or your preferred model.
+3. Start the server on port `1234`.
+4. Set in `.env`:
    ```env
+   AI_PROVIDER=LM_STUDIO
    AI_ENABLED=true
    AI_BASE_URL=http://host.docker.internal:1234
    AI_MODEL=google/gemma-4-12b
    AI_TIMEOUT_SECONDS=1200
    ```
 
-3. **Inference Timeouts**:
-   Local LLMs generating structured financial reports can take several minutes. The stack is preconfigured with a 20-minute timeout (`1200s`) across:
-   - Backend `RestClient` socket read timeout (`AI_TIMEOUT_SECONDS=1200`)
-   - Nginx reverse proxy `proxy_read_timeout 1200s`
-   - Frontend HTTP client
+#### 2. OpenAI
+```env
+AI_PROVIDER=OPENAI
+AI_ENABLED=true
+AI_MODEL=gpt-4o-mini
+OPENAI_API_KEY=sk-proj-...
+```
+
+#### 3. Google Gemini
+```env
+AI_PROVIDER=GEMINI
+AI_ENABLED=true
+AI_MODEL=gemini-2.0-flash
+GEMINI_API_KEY=AIzaSy...
+```
+
+#### 4. Anthropic Claude
+```env
+AI_PROVIDER=ANTHROPIC
+AI_ENABLED=true
+AI_MODEL=claude-3-5-haiku-latest
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+### Inference Timeouts
+Complex prompts evaluated by local LLMs can take several minutes. The stack is preconfigured with a 20-minute timeout (`1200s`) across:
+- Backend `RestClient` socket read timeout (`AI_TIMEOUT_SECONDS=1200`)
+- Nginx reverse proxy `proxy_read_timeout 1200s`
+- Frontend HTTP client
 
 ---
 

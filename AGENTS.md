@@ -86,6 +86,9 @@ invest-tracker/
 7. **No Superficial Patches**:
    - Identify the root cause when tests fail.
    - Never suppress exceptions with empty fallbacks, comment out assertions, or delete failing tests.
+8. **Always Maintain an Active Task Checklist**:
+   - Always create a structured task list (`task.md` or equivalent checklist) before starting implementation.
+   - Keep the task list continuously updated as work progresses, marking items as pending (`[ ]`), in-progress (`[/]`), or completed (`[x]`), ensuring complete transparency into execution state.
 
 ---
 

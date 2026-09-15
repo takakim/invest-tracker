@@ -46,12 +46,19 @@ app:
       max-attempts: ${REFRESH_MAX_ATTEMPTS:5}
   ai:
     enabled: ${AI_ENABLED:true}
+    provider: ${AI_PROVIDER:LM_STUDIO}
     base-url: ${AI_BASE_URL:http://localhost:1234}
     model: ${AI_MODEL:google/gemma-4-12b}
     api-key: ${AI_API_KEY:}
     temperature: ${AI_TEMPERATURE:0.2}
     max-tokens: ${AI_MAX_TOKENS:2048}
     timeout-seconds: ${AI_TIMEOUT_SECONDS:1200}
+    openai-api-key: ${OPENAI_API_KEY:}
+    openai-base-url: ${OPENAI_BASE_URL:https://api.openai.com}
+    gemini-api-key: ${GEMINI_API_KEY:}
+    gemini-base-url: ${GEMINI_BASE_URL:https://generativelanguage.googleapis.com}
+    anthropic-api-key: ${ANTHROPIC_API_KEY:}
+    anthropic-base-url: ${ANTHROPIC_BASE_URL:https://api.anthropic.com}
 
 management:
   endpoints:
