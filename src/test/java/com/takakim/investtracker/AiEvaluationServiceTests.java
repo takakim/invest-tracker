@@ -12,16 +12,21 @@ import com.takakim.investtracker.domain.AccountTaxTreatment;
 import com.takakim.investtracker.domain.AssetClass;
 import com.takakim.investtracker.domain.CostBasisMethod;
 import com.takakim.investtracker.domain.Currency;
+import com.takakim.investtracker.domain.HoldingAiEvaluation;
 import com.takakim.investtracker.domain.Instrument;
 import com.takakim.investtracker.domain.Portfolio;
+import com.takakim.investtracker.domain.PortfolioAiEvaluation;
 import com.takakim.investtracker.domain.ReturnMethod;
 import com.takakim.investtracker.repository.AccountRepository;
+import com.takakim.investtracker.repository.HoldingAiEvaluationRepository;
 import com.takakim.investtracker.repository.InstrumentRepository;
+import com.takakim.investtracker.repository.PortfolioAiEvaluationRepository;
 import com.takakim.investtracker.repository.PortfolioRepository;
 import com.takakim.investtracker.service.PositionService;
 import com.takakim.investtracker.service.ResourceNotFoundException;
 import com.takakim.investtracker.service.ai.AiEvaluationService;
-import com.takakim.investtracker.service.ai.LmStudioGateway;
+import com.takakim.investtracker.service.ai.AiGateway;
+import com.takakim.investtracker.service.ai.AiGatewayFactory;
 import com.takakim.investtracker.service.ai.dto.AiRiskLevel;
 import com.takakim.investtracker.service.ai.dto.AiStance;
 import com.takakim.investtracker.service.ai.dto.AiStatusDto;
@@ -49,7 +54,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class AiEvaluationServiceTests {
 
     @Mock
-    private LmStudioGateway lmStudioGateway;
+    private AiGatewayFactory gatewayFactory;
+    @Mock
+    private AiGateway gateway;
     @Mock
     private PortfolioRepository portfolioRepository;
     @Mock
@@ -62,6 +69,10 @@ class AiEvaluationServiceTests {
     private AnalyticsEngine analyticsEngine;
     @Mock
     private YahooFinanceGateway yahooFinanceGateway;
+    @Mock
+    private PortfolioAiEvaluationRepository portfolioAiEvaluationRepository;
+    @Mock
+    private HoldingAiEvaluationRepository holdingAiEvaluationRepository;
 
     private AiEvaluationService service;
     private ObjectMapper objectMapper;
@@ -76,16 +87,24 @@ class AiEvaluationServiceTests {
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
+        lenient().when(gatewayFactory.getActiveGateway()).thenReturn(gateway);
+        lenient().when(gateway.getProviderName()).thenReturn("LM_STUDIO");
         service = new AiEvaluationService(
-                lmStudioGateway,
+                gatewayFactory,
                 portfolioRepository,
                 accountRepository,
                 instrumentRepository,
                 positionService,
                 analyticsEngine,
                 yahooFinanceGateway,
-                objectMapper
+                objectMapper,
+                portfolioAiEvaluationRepository,
+                holdingAiEvaluationRepository
         );
+
+        // Stub persistence repositories so evaluations can be saved without errors
+        lenient().when(portfolioAiEvaluationRepository.findByPortfolioId(any())).thenReturn(Optional.empty());
+        lenient().when(holdingAiEvaluationRepository.findByPortfolioIdAndInstrumentId(any(), any())).thenReturn(Optional.empty());
 
         testPortfolio = new Portfolio("Growth Portfolio", new Currency("GBP"), CostBasisMethod.FIFO, ReturnMethod.TWR);
         testInstrument = new Instrument("Apple Inc.", AssetClass.STOCK, "AAPL", "US0378331005", "NASDAQ", new Currency("USD"));
@@ -138,11 +157,11 @@ class AiEvaluationServiceTests {
     @DisplayName("getStatus delegates to LmStudioGateway")
     void testGetStatus() {
         AiStatusDto expected = new AiStatusDto(true, true, "LM_STUDIO", "http://localhost:1234", "gemma4-12b", List.of("gemma4-12b"), null);
-        when(lmStudioGateway.checkStatus()).thenReturn(expected);
+        when(gateway.checkStatus()).thenReturn(expected);
 
         AiStatusDto actual = service.getStatus();
         assertSame(expected, actual);
-        verify(lmStudioGateway).checkStatus();
+        verify(gateway).checkStatus();
     }
 
     @Test
@@ -174,7 +193,7 @@ class AiEvaluationServiceTests {
                 }
                 """;
 
-        when(lmStudioGateway.generateChatCompletion(anyString(), anyString())).thenReturn(llmOutput);
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(llmOutput);
 
         HoldingAiEvaluationDto result = service.evaluateHolding(portfolioId, instrumentId);
 
@@ -187,7 +206,7 @@ class AiEvaluationServiceTests {
         assertEquals(2, result.strengths().size());
         assertEquals(2, result.risks().size());
         assertEquals(31.5, result.fundamentalMetrics().peRatio());
-        assertEquals("gemma4-12b", result.modelUsed());
+        assertEquals("LM_STUDIO", result.modelUsed());
     }
 
     @Test
@@ -214,7 +233,7 @@ class AiEvaluationServiceTests {
                 Let me know if you need more details.
                 """;
 
-        when(lmStudioGateway.generateChatCompletion(anyString(), anyString())).thenReturn(markdownOutput);
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(markdownOutput);
 
         HoldingAiEvaluationDto result = service.evaluateHolding(portfolioId, instrumentId);
 
@@ -232,7 +251,7 @@ class AiEvaluationServiceTests {
         when(positionService.listPortfolioPositionsPerformance(portfolioId, false)).thenReturn(List.of(testPosition));
         when(analyticsEngine.calculate(eq(portfolioId), any())).thenReturn(testAnalytics);
 
-        when(lmStudioGateway.generateChatCompletion(anyString(), anyString()))
+        when(gateway.generateChatCompletion(anyString(), anyString()))
                 .thenReturn("Sorry, I cannot provide financial advice as an AI model.");
 
         HoldingAiEvaluationDto result = service.evaluateHolding(portfolioId, instrumentId);
@@ -297,7 +316,7 @@ class AiEvaluationServiceTests {
                   "executiveSummary": "Trading near 52-week high; take partial profits."
                 }
                 """;
-        when(lmStudioGateway.generateChatCompletion(anyString(), anyString())).thenReturn(llmOutput);
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(llmOutput);
 
         HoldingAiEvaluationDto result = service.evaluateHolding(portfolioId, instrumentId);
 
@@ -332,7 +351,7 @@ class AiEvaluationServiceTests {
                 }
                 """;
 
-        when(lmStudioGateway.generateChatCompletion(anyString(), anyString())).thenReturn(llmOutput);
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(llmOutput);
 
         PortfolioAiEvaluationDto result = service.evaluatePortfolio(portfolioId);
 
@@ -356,7 +375,7 @@ class AiEvaluationServiceTests {
         when(accountRepository.findAllByPortfolioIdAndStatusOrderByNameAsc(portfolioId, AccountStatus.ACTIVE))
                 .thenReturn(List.of());
 
-        when(lmStudioGateway.generateChatCompletion(anyString(), anyString())).thenReturn("Error generating output.");
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn("Error generating output.");
 
         PortfolioAiEvaluationDto result = service.evaluatePortfolio(portfolioId);
 
@@ -415,7 +434,7 @@ class AiEvaluationServiceTests {
                   "fundamentalMetrics": null
                 }
                 """;
-        when(lmStudioGateway.generateChatCompletion(anyString(), anyString())).thenReturn(llmOutput);
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(llmOutput);
 
         HoldingAiEvaluationDto result = service.evaluateHolding(portfolioId, cashId);
 
@@ -449,7 +468,7 @@ class AiEvaluationServiceTests {
                   "concentrationRisks": "not-an-array"
                 }
                 """;
-        when(lmStudioGateway.generateChatCompletion(anyString(), anyString())).thenReturn(llmLowScore);
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(llmLowScore);
 
         PortfolioAiEvaluationDto result = service.evaluatePortfolio(portfolioId);
 
@@ -463,8 +482,9 @@ class AiEvaluationServiceTests {
     @DisplayName("constructor with null ObjectMapper initializes default")
     void testConstructorWithNullObjectMapper() {
         AiEvaluationService s = new AiEvaluationService(
-                lmStudioGateway, portfolioRepository, accountRepository, instrumentRepository,
-                positionService, analyticsEngine, null, null
+                gatewayFactory, portfolioRepository, accountRepository, instrumentRepository,
+                positionService, analyticsEngine, null, null,
+                portfolioAiEvaluationRepository, holdingAiEvaluationRepository
         );
         assertNotNull(s);
     }
@@ -498,7 +518,7 @@ class AiEvaluationServiceTests {
                   }
                 }
                 """;
-        when(lmStudioGateway.generateChatCompletion(anyString(), anyString())).thenReturn(fullMetricsJson);
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(fullMetricsJson);
 
         HoldingAiEvaluationDto result = service.evaluateHolding(portfolioId, instrumentId);
 
@@ -535,7 +555,7 @@ class AiEvaluationServiceTests {
                   "risks": []
                 }
                 """;
-        when(lmStudioGateway.generateChatCompletion(anyString(), anyString())).thenReturn(jsonTrim);
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(jsonTrim);
 
         HoldingAiEvaluationDto resultTrim = service.evaluateHolding(portfolioId, instrumentId);
         assertEquals(AiStance.TRIM, resultTrim.stance());
@@ -552,7 +572,7 @@ class AiEvaluationServiceTests {
                   "executiveSummary": "Thesis broken."
                 }
                 """;
-        when(lmStudioGateway.generateChatCompletion(anyString(), anyString())).thenReturn(jsonSell);
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(jsonSell);
 
         HoldingAiEvaluationDto resultSell = service.evaluateHolding(portfolioId, instrumentId);
         assertEquals(AiStance.SELL, resultSell.stance());
@@ -567,7 +587,7 @@ class AiEvaluationServiceTests {
                   "executiveSummary": "Attractive entry point."
                 }
                 """;
-        when(lmStudioGateway.generateChatCompletion(anyString(), anyString())).thenReturn(jsonAccumulate);
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(jsonAccumulate);
 
         HoldingAiEvaluationDto resultAccumulate = service.evaluateHolding(portfolioId, instrumentId);
         assertEquals(AiStance.ACCUMULATE, resultAccumulate.stance());
@@ -601,7 +621,7 @@ class AiEvaluationServiceTests {
                   "executiveSummary": "Zero range quote handled."
                 }
                 """;
-        when(lmStudioGateway.generateChatCompletion(anyString(), anyString())).thenReturn(llmOutput);
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(llmOutput);
 
         HoldingAiEvaluationDto result = service.evaluateHolding(portfolioId, instrumentId);
         assertNotNull(result);
@@ -635,7 +655,7 @@ class AiEvaluationServiceTests {
                   }
                 }
                 """;
-        when(lmStudioGateway.generateChatCompletion(anyString(), anyString())).thenReturn(nullMetricsJson);
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(nullMetricsJson);
 
         HoldingAiEvaluationDto result = service.evaluateHolding(portfolioId, instrumentId);
 
@@ -660,7 +680,7 @@ class AiEvaluationServiceTests {
         when(analyticsEngine.calculate(eq(portfolioId), any())).thenReturn(testAnalytics);
         when(yahooFinanceGateway.fetchChart("AAPL", "1d", "1mo")).thenThrow(new RuntimeException("Network timeout"));
 
-        when(lmStudioGateway.generateChatCompletion(anyString(), anyString())).thenReturn("   ");
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn("   ");
 
         HoldingAiEvaluationDto result = service.evaluateHolding(portfolioId, instrumentId);
 
@@ -678,7 +698,7 @@ class AiEvaluationServiceTests {
         when(analyticsEngine.calculate(eq(portfolioId), any())).thenReturn(testAnalytics);
 
         String unclosedFence = "```json\n{\n  \"stance\": \"HOLD\",\n  \"riskScore\": 6,\n  \"executiveSummary\": \"Unclosed fence test\"\n}";
-        when(lmStudioGateway.generateChatCompletion(anyString(), anyString())).thenReturn(unclosedFence);
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(unclosedFence);
 
         HoldingAiEvaluationDto result = service.evaluateHolding(portfolioId, instrumentId);
 
@@ -721,7 +741,7 @@ class AiEvaluationServiceTests {
                   "executiveSummary": "Clamped under one"
                 }
                 """;
-        when(lmStudioGateway.generateChatCompletion(anyString(), anyString())).thenReturn(jsonUnderOne);
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(jsonUnderOne);
 
         HoldingAiEvaluationDto result = service.evaluateHolding(portfolioId, noIsinId);
         assertNotNull(result);
@@ -758,7 +778,7 @@ class AiEvaluationServiceTests {
                   "topRecommendations": ["Diversify"]
                 }
                 """;
-        when(lmStudioGateway.generateChatCompletion(anyString(), anyString())).thenReturn(jsonHighScore);
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(jsonHighScore);
 
         PortfolioAiEvaluationDto result = service.evaluatePortfolio(portfolioId);
         assertNotNull(result);
@@ -801,7 +821,7 @@ class AiEvaluationServiceTests {
                   "executiveSummary": "Null stance test"
                 }
                 """;
-        when(lmStudioGateway.generateChatCompletion(anyString(), anyString())).thenReturn(jsonNullStance);
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(jsonNullStance);
 
         HoldingAiEvaluationDto result = service.evaluateHolding(portfolioId, assetId);
         assertNotNull(result);
@@ -823,7 +843,7 @@ class AiEvaluationServiceTests {
                   "executiveSummary": "Null risk level test"
                 }
                 """;
-        when(lmStudioGateway.generateChatCompletion(anyString(), anyString())).thenReturn(jsonNullRiskLevel);
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(jsonNullRiskLevel);
 
         PortfolioAiEvaluationDto result = service.evaluatePortfolio(portfolioId);
         assertNotNull(result);
@@ -851,7 +871,7 @@ class AiEvaluationServiceTests {
                   "executiveSummary": "Null indicators handled"
                 }
                 """;
-        when(lmStudioGateway.generateChatCompletion(anyString(), anyString())).thenReturn(json);
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(json);
 
         HoldingAiEvaluationDto result = service.evaluateHolding(portfolioId, instrumentId);
         assertNotNull(result);
@@ -876,7 +896,7 @@ class AiEvaluationServiceTests {
                   "strengths": ["Valid strength", "", null, 42]
                 }
                 """;
-        when(lmStudioGateway.generateChatCompletion(anyString(), anyString())).thenReturn(json);
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(json);
 
         HoldingAiEvaluationDto result = service.evaluateHolding(portfolioId, instrumentId);
         assertNotNull(result);
@@ -947,7 +967,7 @@ class AiEvaluationServiceTests {
                   "executiveSummary": "Zero value handled"
                 }
                 """;
-        when(lmStudioGateway.generateChatCompletion(anyString(), anyString())).thenReturn(json);
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(json);
 
         HoldingAiEvaluationDto result = service.evaluateHolding(portfolioId, id);
         assertNotNull(result);
@@ -960,14 +980,16 @@ class AiEvaluationServiceTests {
     @DisplayName("evaluateHolding works when yahooFinanceGateway is null and extracts json without code fence")
     void testEvaluateHoldingWithNullYahooGatewayAndRawJsonText() {
         AiEvaluationService serviceWithoutYahoo = new AiEvaluationService(
-                lmStudioGateway,
+                gatewayFactory,
                 portfolioRepository,
                 accountRepository,
                 instrumentRepository,
                 positionService,
                 analyticsEngine,
                 null,
-                objectMapper
+                objectMapper,
+                portfolioAiEvaluationRepository,
+                holdingAiEvaluationRepository
         );
 
         when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(testPortfolio));
@@ -976,13 +998,479 @@ class AiEvaluationServiceTests {
         when(analyticsEngine.calculate(eq(portfolioId), any())).thenReturn(testAnalytics);
 
         String responseWithoutFences = "Here is the result: {\"stance\": \"ACCUMULATE\", \"riskScore\": 6} Thank you!";
-        when(lmStudioGateway.generateChatCompletion(anyString(), anyString())).thenReturn(responseWithoutFences);
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(responseWithoutFences);
 
         HoldingAiEvaluationDto result = serviceWithoutYahoo.evaluateHolding(portfolioId, instrumentId);
         assertNotNull(result);
         assertEquals(AiStance.ACCUMULATE, result.stance());
         assertEquals(6, result.riskScore());
         assertEquals(AiRiskLevel.MODERATE, result.riskLevel());
+    }
+
+    @Test
+    @DisplayName("getLatestPortfolioEvaluation returns empty when no evaluation exists")
+    void testGetLatestPortfolioEvaluationEmpty() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(testPortfolio));
+        when(portfolioAiEvaluationRepository.findByPortfolioId(portfolioId)).thenReturn(Optional.empty());
+
+        Optional<PortfolioAiEvaluationDto> result = service.getLatestPortfolioEvaluation(portfolioId);
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    @DisplayName("getLatestPortfolioEvaluation throws when portfolio does not exist")
+    void testGetLatestPortfolioEvaluationPortfolioNotFound() {
+        UUID missingId = UUID.randomUUID();
+        when(portfolioRepository.findById(missingId)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () -> service.getLatestPortfolioEvaluation(missingId));
+    }
+
+    @Test
+    @DisplayName("getLatestPortfolioEvaluation returns deserialized DTO when valid JSON exists")
+    void testGetLatestPortfolioEvaluationSuccess() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(testPortfolio));
+        String json = """
+                {
+                  "portfolioId": "%s",
+                  "portfolioName": "Growth Portfolio",
+                  "baseCurrency": "GBP",
+                  "overallRiskScore": 5,
+                  "overallRiskLevel": "MODERATE",
+                  "executiveSummary": "Healthy thesis",
+                  "diversificationAssessment": "Good",
+                  "concentrationRisks": [],
+                  "taxAndLocationOptimization": [],
+                  "topRecommendations": [],
+                  "macroStressScenarios": [],
+                  "topHoldingEvaluations": [],
+                  "modelUsed": "LM_STUDIO",
+                  "evaluatedAt": "2026-09-15T00:00:00Z"
+                }
+                """.formatted(portfolioId);
+        PortfolioAiEvaluation eval = new PortfolioAiEvaluation(
+                portfolioId, "LM_STUDIO", "gemma4-12b", 5, "MODERATE", "Healthy thesis", json, Instant.now()
+        );
+        when(portfolioAiEvaluationRepository.findByPortfolioId(portfolioId)).thenReturn(Optional.of(eval));
+
+        Optional<PortfolioAiEvaluationDto> result = service.getLatestPortfolioEvaluation(portfolioId);
+        assertTrue(result.isPresent());
+        assertEquals("Growth Portfolio", result.get().portfolioName());
+        assertEquals(5, result.get().overallRiskScore());
+    }
+
+    @Test
+    @DisplayName("getLatestPortfolioEvaluation returns empty when JSON is invalid")
+    void testGetLatestPortfolioEvaluationInvalidJson() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(testPortfolio));
+        PortfolioAiEvaluation eval = new PortfolioAiEvaluation(
+                portfolioId, "LM_STUDIO", "gemma4-12b", 5, "MODERATE", "Healthy thesis", "not-valid-json", Instant.now()
+        );
+        when(portfolioAiEvaluationRepository.findByPortfolioId(portfolioId)).thenReturn(Optional.of(eval));
+
+        Optional<PortfolioAiEvaluationDto> result = service.getLatestPortfolioEvaluation(portfolioId);
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    @DisplayName("getLatestHoldingEvaluation returns empty when no evaluation exists")
+    void testGetLatestHoldingEvaluationEmpty() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(testPortfolio));
+        when(holdingAiEvaluationRepository.findByPortfolioIdAndInstrumentId(portfolioId, instrumentId)).thenReturn(Optional.empty());
+
+        Optional<HoldingAiEvaluationDto> result = service.getLatestHoldingEvaluation(portfolioId, instrumentId);
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    @DisplayName("getLatestHoldingEvaluation throws when portfolio does not exist")
+    void testGetLatestHoldingEvaluationPortfolioNotFound() {
+        UUID missingId = UUID.randomUUID();
+        when(portfolioRepository.findById(missingId)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () -> service.getLatestHoldingEvaluation(missingId, instrumentId));
+    }
+
+    @Test
+    @DisplayName("getLatestHoldingEvaluation returns deserialized DTO when valid JSON exists")
+    void testGetLatestHoldingEvaluationSuccess() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(testPortfolio));
+        String json = """
+                {
+                  "instrumentId": "%s",
+                  "symbol": "AAPL",
+                  "name": "Apple Inc.",
+                  "assetClass": "STOCK",
+                  "quantity": 10,
+                  "currentPrice": 200,
+                  "averageCostBasis": 150,
+                  "unrealizedGainLoss": 500,
+                  "unrealizedGainLossPercentage": 33.3,
+                  "portfolioWeightPercentage": 12.5,
+                  "stance": "HOLD",
+                  "riskScore": 4,
+                  "riskLevel": "MODERATE",
+                  "executiveSummary": "Solid cash flows",
+                  "strengths": ["Brand"],
+                  "risks": ["Valuation"],
+                  "holdingVsSellingTradeoff": "Hold",
+                  "fundamentalMetrics": null,
+                  "modelUsed": "LM_STUDIO",
+                  "evaluatedAt": "2026-09-15T00:00:00Z"
+                }
+                """.formatted(instrumentId);
+        HoldingAiEvaluation eval = new HoldingAiEvaluation(
+                portfolioId, instrumentId, "LM_STUDIO", "gemma4-12b", "HOLD", 4, "MODERATE", "Solid cash flows", json, Instant.now()
+        );
+        when(holdingAiEvaluationRepository.findByPortfolioIdAndInstrumentId(portfolioId, instrumentId)).thenReturn(Optional.of(eval));
+
+        Optional<HoldingAiEvaluationDto> result = service.getLatestHoldingEvaluation(portfolioId, instrumentId);
+        assertTrue(result.isPresent());
+        assertEquals("AAPL", result.get().symbol());
+        assertEquals(AiStance.HOLD, result.get().stance());
+    }
+
+    @Test
+    @DisplayName("getLatestHoldingEvaluation returns empty when JSON is unparseable")
+    void testGetLatestHoldingEvaluationInvalidJson() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(testPortfolio));
+        HoldingAiEvaluation eval = new HoldingAiEvaluation(
+                portfolioId, instrumentId, "LM_STUDIO", "gemma4-12b", "HOLD", 4, "MODERATE", "Solid cash flows", "corrupt-json", Instant.now()
+        );
+        when(holdingAiEvaluationRepository.findByPortfolioIdAndInstrumentId(portfolioId, instrumentId)).thenReturn(Optional.of(eval));
+
+        Optional<HoldingAiEvaluationDto> result = service.getLatestHoldingEvaluation(portfolioId, instrumentId);
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    @DisplayName("getLatestHoldingEvaluations returns list and filters out invalid JSON items")
+    void testGetLatestHoldingEvaluationsList() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(testPortfolio));
+        String validJson = """
+                {
+                  "instrumentId": "%s",
+                  "symbol": "AAPL",
+                  "name": "Apple Inc.",
+                  "assetClass": "STOCK",
+                  "quantity": 10,
+                  "currentPrice": 200,
+                  "averageCostBasis": 150,
+                  "unrealizedGainLoss": 500,
+                  "unrealizedGainLossPercentage": 33.3,
+                  "portfolioWeightPercentage": 12.5,
+                  "stance": "HOLD",
+                  "riskScore": 4,
+                  "riskLevel": "MODERATE",
+                  "executiveSummary": "Solid cash flows",
+                  "strengths": ["Brand"],
+                  "risks": ["Valuation"],
+                  "holdingVsSellingTradeoff": "Hold",
+                  "fundamentalMetrics": null,
+                  "modelUsed": "LM_STUDIO",
+                  "evaluatedAt": "2026-09-15T00:00:00Z"
+                }
+                """.formatted(instrumentId);
+        HoldingAiEvaluation validEval = new HoldingAiEvaluation(
+                portfolioId, instrumentId, "LM_STUDIO", "gemma4-12b", "HOLD", 4, "MODERATE", "Solid cash flows", validJson, Instant.now()
+        );
+        HoldingAiEvaluation invalidEval = new HoldingAiEvaluation(
+                portfolioId, UUID.randomUUID(), "LM_STUDIO", "gemma4-12b", "HOLD", 4, "MODERATE", "Corrupt", "invalid-json", Instant.now()
+        );
+        when(holdingAiEvaluationRepository.findByPortfolioId(portfolioId)).thenReturn(List.of(validEval, invalidEval));
+
+        List<HoldingAiEvaluationDto> list = service.getLatestHoldingEvaluations(portfolioId);
+        assertEquals(1, list.size());
+        assertEquals("AAPL", list.get(0).symbol());
+    }
+
+    @Test
+    @DisplayName("getLatestHoldingEvaluations throws when portfolio does not exist")
+    void testGetLatestHoldingEvaluationsPortfolioNotFound() {
+        UUID missingId = UUID.randomUUID();
+        when(portfolioRepository.findById(missingId)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () -> service.getLatestHoldingEvaluations(missingId));
+    }
+
+    @Test
+    @DisplayName("evaluatePortfolio updates existing evaluation entity when already present in repository")
+    void testEvaluatePortfolioUpdatesExistingEntity() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(testPortfolio));
+        when(positionService.listPortfolioPositionsPerformance(portfolioId, false)).thenReturn(List.of(testPosition));
+        when(analyticsEngine.calculate(eq(portfolioId), any())).thenReturn(testAnalytics);
+        when(accountRepository.findAllByPortfolioIdAndStatusOrderByNameAsc(portfolioId, AccountStatus.ACTIVE)).thenReturn(List.of());
+
+        PortfolioAiEvaluation existing = new PortfolioAiEvaluation(
+                portfolioId, "OLD_PROVIDER", "old-model", 7, "HIGH", "Old summary", "{}", Instant.now().minusSeconds(3600)
+        );
+        when(portfolioAiEvaluationRepository.findByPortfolioId(portfolioId)).thenReturn(Optional.of(existing));
+
+        String json = """
+                {
+                  "overallRiskScore": 3,
+                  "overallRiskLevel": "LOW",
+                  "executiveSummary": "Updated portfolio health",
+                  "diversificationAssessment": "Strong",
+                  "concentrationRisks": [],
+                  "taxAndLocationOptimization": [],
+                  "topRecommendations": ["Hold"],
+                  "macroStressScenarios": []
+                }
+                """;
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(json);
+
+        PortfolioAiEvaluationDto result = service.evaluatePortfolio(portfolioId);
+        assertNotNull(result);
+        assertEquals(3, result.overallRiskScore());
+        verify(portfolioAiEvaluationRepository).save(existing);
+        assertEquals(3, existing.getOverallRiskScore());
+        assertEquals("LM_STUDIO", existing.getProvider());
+    }
+
+    @Test
+    @DisplayName("evaluateHolding updates existing holding evaluation entity when already present in repository")
+    void testEvaluateHoldingUpdatesExistingEntity() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(testPortfolio));
+        when(instrumentRepository.findById(instrumentId)).thenReturn(Optional.of(testInstrument));
+        when(positionService.listPortfolioPositionsPerformance(portfolioId, false)).thenReturn(List.of(testPosition));
+        when(analyticsEngine.calculate(eq(portfolioId), any())).thenReturn(testAnalytics);
+
+        HoldingAiEvaluation existing = new HoldingAiEvaluation(
+                portfolioId, instrumentId, "OLD_PROVIDER", "old-model", "HOLD", 6, "MODERATE", "Old summary", "{}", Instant.now().minusSeconds(3600)
+        );
+        when(holdingAiEvaluationRepository.findByPortfolioIdAndInstrumentId(portfolioId, instrumentId)).thenReturn(Optional.of(existing));
+
+        String json = """
+                {
+                  "stance": "STRONG_BUY",
+                  "riskScore": 2,
+                  "riskLevel": "LOW",
+                  "executiveSummary": "Upgraded stance"
+                }
+                """;
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(json);
+
+        HoldingAiEvaluationDto result = service.evaluateHolding(portfolioId, instrumentId);
+        assertNotNull(result);
+        assertEquals(AiStance.STRONG_BUY, result.stance());
+        verify(holdingAiEvaluationRepository).save(existing);
+        assertEquals(2, existing.getRiskScore());
+        assertEquals("STRONG_BUY", existing.getStance());
+    }
+
+    @Test
+    @DisplayName("evaluatePortfolio handles exception during persistence gracefully")
+    void testEvaluatePortfolioPersistenceHandlesRepositoryException() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(testPortfolio));
+        when(positionService.listPortfolioPositionsPerformance(portfolioId, false)).thenReturn(List.of(testPosition));
+        when(analyticsEngine.calculate(eq(portfolioId), any())).thenReturn(testAnalytics);
+        when(accountRepository.findAllByPortfolioIdAndStatusOrderByNameAsc(portfolioId, AccountStatus.ACTIVE)).thenReturn(List.of());
+
+        doThrow(new RuntimeException("Database offline")).when(portfolioAiEvaluationRepository).save(any());
+
+        String json = """
+                {
+                  "overallRiskScore": 4,
+                  "overallRiskLevel": "MODERATE",
+                  "executiveSummary": "Persistence error tolerance test"
+                }
+                """;
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(json);
+
+        PortfolioAiEvaluationDto result = service.evaluatePortfolio(portfolioId);
+        assertNotNull(result);
+        assertEquals(4, result.overallRiskScore());
+    }
+
+    @Test
+    @DisplayName("evaluateHolding handles exception during persistence gracefully")
+    void testEvaluateHoldingPersistenceHandlesRepositoryException() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(testPortfolio));
+        when(instrumentRepository.findById(instrumentId)).thenReturn(Optional.of(testInstrument));
+        when(positionService.listPortfolioPositionsPerformance(portfolioId, false)).thenReturn(List.of(testPosition));
+        when(analyticsEngine.calculate(eq(portfolioId), any())).thenReturn(testAnalytics);
+
+        doThrow(new RuntimeException("Database offline")).when(holdingAiEvaluationRepository).save(any());
+
+        String json = """
+                {
+                  "stance": "HOLD",
+                  "riskScore": 5,
+                  "executiveSummary": "Holding persistence error tolerance test"
+                }
+                """;
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(json);
+
+        HoldingAiEvaluationDto result = service.evaluateHolding(portfolioId, instrumentId);
+        assertNotNull(result);
+        assertEquals(AiStance.HOLD, result.stance());
+    }
+
+    @Test
+    @DisplayName("evaluateHolding handles empty json object string fallback")
+    void testEvaluateHoldingEmptyJsonObjectFallback() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(testPortfolio));
+        when(instrumentRepository.findById(instrumentId)).thenReturn(Optional.of(testInstrument));
+        when(positionService.listPortfolioPositionsPerformance(portfolioId, false)).thenReturn(List.of(testPosition));
+        when(analyticsEngine.calculate(eq(portfolioId), any())).thenReturn(testAnalytics);
+
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn("{}");
+
+        HoldingAiEvaluationDto result = service.evaluateHolding(portfolioId, instrumentId);
+        assertNotNull(result);
+        assertEquals(AiStance.HOLD, result.stance());
+    }
+
+    @Test
+    @DisplayName("evaluateHolding parses partial fundamental metrics when only some fields are present")
+    void testEvaluateHoldingPartialMetrics() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(testPortfolio));
+        when(instrumentRepository.findById(instrumentId)).thenReturn(Optional.of(testInstrument));
+        when(positionService.listPortfolioPositionsPerformance(portfolioId, false)).thenReturn(List.of(testPosition));
+        when(analyticsEngine.calculate(eq(portfolioId), any())).thenReturn(testAnalytics);
+
+        String partialMetricsJson = """
+                {
+                  "stance": "HOLD",
+                  "riskScore": 5,
+                  "fundamentalMetrics": {
+                    "peRatio": 22.5,
+                    "dividendYield": 0.02
+                  }
+                }
+                """;
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(partialMetricsJson);
+
+        HoldingAiEvaluationDto result = service.evaluateHolding(portfolioId, instrumentId);
+        assertNotNull(result);
+        assertNotNull(result.fundamentalMetrics());
+        assertEquals(22.5, result.fundamentalMetrics().peRatio());
+        assertEquals(0.02, result.fundamentalMetrics().dividendYield());
+        assertNull(result.fundamentalMetrics().forwardPe());
+        assertNull(result.fundamentalMetrics().priceToBook());
+    }
+
+    @Test
+    @DisplayName("persistPortfolioEvaluation handles null modelUsed when existing entity is present and absent")
+    void testPersistPortfolioEvaluationNullModelUsed() {
+        PortfolioAiEvaluationDto dto = new PortfolioAiEvaluationDto(
+                portfolioId, "Test Portfolio", "GBP",
+                5, AiRiskLevel.MODERATE, "Summary", "Diversification",
+                List.of(), List.of(), List.of(), List.of(), List.of(),
+                null, Instant.now()
+        );
+
+        // When existing entity is absent
+        when(portfolioAiEvaluationRepository.findByPortfolioId(portfolioId)).thenReturn(Optional.empty());
+        service.persistPortfolioEvaluation(portfolioId, "TEST_PROVIDER", dto);
+        verify(portfolioAiEvaluationRepository).save(argThat(entity -> "TEST_PROVIDER".equals(entity.getModelUsed())));
+
+        // When existing entity is present
+        PortfolioAiEvaluation existing = new PortfolioAiEvaluation(
+                portfolioId, "OLD_PROVIDER", "old-model", 4, "LOW", "Old", "{}", Instant.now()
+        );
+        when(portfolioAiEvaluationRepository.findByPortfolioId(portfolioId)).thenReturn(Optional.of(existing));
+        service.persistPortfolioEvaluation(portfolioId, "NEW_PROVIDER", dto);
+        assertEquals("NEW_PROVIDER", existing.getModelUsed());
+    }
+
+    @Test
+    @DisplayName("persistHoldingEvaluation handles null modelUsed when existing entity is present and absent")
+    void testPersistHoldingEvaluationNullModelUsed() {
+        HoldingAiEvaluationDto dto = new HoldingAiEvaluationDto(
+                instrumentId, "AAPL", "Apple Inc.", "STOCK",
+                BigDecimal.ONE, BigDecimal.TEN, BigDecimal.ONE, BigDecimal.ZERO,
+                0.0, 10.0, AiStance.HOLD, 5, AiRiskLevel.MODERATE,
+                "Summary", List.of(), List.of(), "Tradeoff", null,
+                null, Instant.now()
+        );
+
+        // When existing entity is absent
+        when(holdingAiEvaluationRepository.findByPortfolioIdAndInstrumentId(portfolioId, instrumentId)).thenReturn(Optional.empty());
+        service.persistHoldingEvaluation(portfolioId, instrumentId, "TEST_PROVIDER", dto);
+        verify(holdingAiEvaluationRepository).save(argThat(entity -> "TEST_PROVIDER".equals(entity.getModelUsed())));
+
+        // When existing entity is present
+        HoldingAiEvaluation existing = new HoldingAiEvaluation(
+                portfolioId, instrumentId, "OLD_PROVIDER", "old-model", "HOLD", 4, "LOW", "Old", "{}", Instant.now()
+        );
+        when(holdingAiEvaluationRepository.findByPortfolioIdAndInstrumentId(portfolioId, instrumentId)).thenReturn(Optional.of(existing));
+        service.persistHoldingEvaluation(portfolioId, instrumentId, "NEW_PROVIDER", dto);
+        assertEquals("NEW_PROVIDER", existing.getModelUsed());
+    }
+
+    @Test
+    @DisplayName("evaluateHolding handles null totalPortfolioVal, blank ticker, and unbalanced brace in response")
+    void testEvaluateHoldingNullPortfolioValAndUnbalancedBrace() {
+        Instrument blankTickerInst = new Instrument("Blank Ticker", AssetClass.STOCK, "   ", "US1111111111", "NASDAQ", new Currency("USD"));
+        UUID blankId = blankTickerInst.getId();
+
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(testPortfolio));
+        when(instrumentRepository.findById(blankId)).thenReturn(Optional.of(blankTickerInst));
+
+        ApiDtos.PositionPerformanceResponse pos = new ApiDtos.PositionPerformanceResponse(
+                UUID.randomUUID(), UUID.randomUUID(), "Account",
+                blankId, "Blank Ticker", "   ", "US1111111111", AssetClass.STOCK,
+                "ACTIVE",
+                BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ZERO,
+                BigDecimal.TEN, BigDecimal.TEN, BigDecimal.TEN, BigDecimal.ZERO,
+                BigDecimal.TEN, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO,
+                "USD", BigDecimal.ONE, "USD",
+                BigDecimal.ZERO, BigDecimal.ZERO,
+                List.of(), List.of(), List.of()
+        );
+        when(positionService.listPortfolioPositionsPerformance(portfolioId, false)).thenReturn(List.of(pos));
+
+        // Mock Analytics with null totalCurrentValue
+        PortfolioAnalytics mockAnalytics = mock(PortfolioAnalytics.class);
+        when(mockAnalytics.totalCurrentValue()).thenReturn(null);
+        when(analyticsEngine.calculate(eq(portfolioId), any())).thenReturn(mockAnalytics);
+
+        // Response with unbalanced brace
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn("Some text with { only opening brace");
+
+        HoldingAiEvaluationDto result = service.evaluateHolding(portfolioId, blankId);
+        assertNotNull(result);
+        assertEquals(0.0, result.portfolioWeightPercentage());
+        assertEquals(AiStance.HOLD, result.stance());
+    }
+
+    @Test
+    @DisplayName("evaluateHolding handles empty quote indicators and missing stance field")
+    void testEvaluateHoldingEmptyQuoteIndicatorsAndMissingStance() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(testPortfolio));
+        when(instrumentRepository.findById(instrumentId)).thenReturn(Optional.of(testInstrument));
+        when(positionService.listPortfolioPositionsPerformance(portfolioId, false)).thenReturn(List.of(testPosition));
+        when(analyticsEngine.calculate(eq(portfolioId), any())).thenReturn(testAnalytics);
+
+        YahooFinanceDtos.ChartEntry entryEmptyQuote = new YahooFinanceDtos.ChartEntry(
+                null, null, new YahooFinanceDtos.ChartIndicators(List.of()), null
+        );
+        when(yahooFinanceGateway.fetchChart("AAPL", "1d", "1mo")).thenReturn(Optional.of(entryEmptyQuote));
+
+        // JSON missing stance and overallRiskLevel completely
+        String jsonNoStance = """
+                {
+                  "riskScore": 6,
+                  "executiveSummary": "Missing stance and riskLevel test",
+                  "fundamentalMetrics": {
+                    "forwardPe": 18.0
+                  }
+                }
+                """;
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(jsonNoStance);
+
+        HoldingAiEvaluationDto result = service.evaluateHolding(portfolioId, instrumentId);
+        assertNotNull(result);
+        assertEquals(AiStance.HOLD, result.stance());
+        assertEquals(6, result.riskScore());
+        assertEquals(AiRiskLevel.MODERATE, result.riskLevel());
+        assertNull(result.fundamentalMetrics().peRatio());
+        assertNull(result.fundamentalMetrics().dividendYield());
+        assertEquals(18.0, result.fundamentalMetrics().forwardPe());
     }
 }
 

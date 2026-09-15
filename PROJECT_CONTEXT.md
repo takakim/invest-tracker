@@ -650,4 +650,12 @@ Before changing the repository:
   - OpenAPI 3.1.1 contract synchronized in `docs/api/openapi.yaml`.
   - Frontend UI: `AiStatusIndicator.tsx` connection badge, `PortfolioAiEvaluationCard.tsx` portfolio intelligence card with interactive risk gauge and collapsible analysis sections, `HoldingAiEvaluationModal.tsx` position evaluation dialog, `PositionTable.tsx` row action button, and `PortfolioDetailPage.tsx` integration.
   - Verification: 738 backend tests and 119 frontend tests passing with 90.08% JaCoCo branch coverage (mandatory >=90% gate met), 0 OWASP CVEs, and 0 npm vulnerabilities.
+- AI Intelligence Persistence & Multi-Provider Support (OpenAI, Gemini, Anthropic, LM Studio):
+  - `V13__ai_evaluations.sql`: PostgreSQL tables `portfolio_ai_evaluations` and `holding_ai_evaluations` with unique constraints for latest evaluation upsert and relational foreign keys.
+  - Entities & Repositories: `PortfolioAiEvaluation`, `HoldingAiEvaluation`, `PortfolioAiEvaluationRepository`, `HoldingAiEvaluationRepository`.
+  - Multi-Provider Gateway Abstraction: `AiGateway` interface implemented by `LmStudioGateway`, `OpenAiGateway`, `GeminiGateway`, and `AnthropicGateway`, dynamically selected via `AiGatewayFactory` according to `AI_PROVIDER`.
+  - REST API: `GET /api/v1/portfolios/{id}/ai/evaluation`, `GET /api/v1/portfolios/{id}/holdings/{instId}/ai/evaluation`, and `GET /api/v1/portfolios/{id}/holdings/ai/evaluations` (`AiController`).
+  - Frontend: Cached evaluation retrieval on mount in `useAi.ts`, `PortfolioAiEvaluationCard.tsx`, and `HoldingAiEvaluationModal.tsx` displaying provider badge and relative timestamp (`1h ago`) with instant loading and on-demand `Re-evaluate` button; provider badge in `AiStatusIndicator.tsx`.
+  - Verification: All unit, persistence, Testcontainers integration, and Vitest frontend tests passing with 0 vulnerabilities.
+
 

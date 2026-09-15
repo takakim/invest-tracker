@@ -28,11 +28,14 @@ export const AiStatusIndicator: React.FC<AiStatusIndicatorProps> = ({ size = 'sm
   }
 
   const isConnected = Boolean(status.connected);
-  const modelName = status.configuredModel || 'gemma4-12b';
+  const modelName = status.configuredModel || 'N/A';
+  const providerName = status.provider
+    ? status.provider.replace('_', ' ')
+    : 'AI Provider';
 
   const tooltipTitle = isConnected ? (
     <Box sx={{ p: 0.5 }}>
-      <strong>LM Studio Connected</strong>
+      <strong>{providerName} Connected</strong>
       <div>Model: {modelName}</div>
       <div>Endpoint: {status.baseUrl}</div>
       {status.availableModels && status.availableModels.length > 0 && (
@@ -43,10 +46,10 @@ export const AiStatusIndicator: React.FC<AiStatusIndicatorProps> = ({ size = 'sm
     </Box>
   ) : (
     <Box sx={{ p: 0.5 }}>
-      <strong>LM Studio Offline</strong>
+      <strong>{providerName} Offline</strong>
       <div>Endpoint: {status.baseUrl}</div>
       <div style={{ marginTop: 4, fontSize: '0.75rem', opacity: 0.85 }}>
-        Start LM Studio Local Server at {status.baseUrl} and ensure {modelName} is loaded.
+        Configure {providerName} and ensure it is reachable.
       </div>
       {status.errorMessage && (
         <div style={{ marginTop: 4, color: '#fca5a5', fontSize: '0.75rem' }}>
@@ -66,7 +69,7 @@ export const AiStatusIndicator: React.FC<AiStatusIndicatorProps> = ({ size = 'sm
             <ErrorOutlineOutlinedIcon sx={{ fontSize: '14px !important', color: 'text.secondary' }} />
           )
         }
-        label={isConnected ? `AI: ${modelName}` : 'AI: Offline'}
+        label={isConnected ? `${providerName}: ${modelName}` : `${providerName}: Offline`}
         size={size}
         variant="outlined"
         color={isConnected ? 'success' : 'default'}
