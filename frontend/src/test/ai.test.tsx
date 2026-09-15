@@ -10,6 +10,7 @@ import * as aiApi from '../api/ai';
 import { AiStatusIndicator } from '../features/ai/AiStatusIndicator';
 import { HoldingAiEvaluationModal, getStanceChipProps, getRiskLevelColor } from '../features/ai/HoldingAiEvaluationModal';
 import { PortfolioAiEvaluationCard } from '../features/ai/PortfolioAiEvaluationCard';
+import { isEvaluationStale, getStalenessDays } from '../features/ai';
 import type { AiStatus, HoldingAiEvaluation, PortfolioAiEvaluation } from '../types';
 
 function createTestQueryClient() {
@@ -146,6 +147,21 @@ describe('AI Intelligence Feature Suite', () => {
       expect(getRiskLevelColor('HIGH', 7)).toBe('#ea580c');
       expect(getRiskLevelColor('VERY_HIGH', 10)).toBe('#dc2626');
     });
+
+    it('determines evaluation staleness correctly for <=7d and >7d', () => {
+      const now = new Date();
+      const freshDate = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString();
+      const staleDate = new Date(now.getTime() - 8 * 24 * 60 * 60 * 1000).toISOString();
+
+      expect(isEvaluationStale(freshDate)).toBe(false);
+      expect(isEvaluationStale(staleDate)).toBe(true);
+      expect(isEvaluationStale(undefined)).toBe(false);
+      expect(isEvaluationStale(freshDate, true)).toBe(true);
+      expect(isEvaluationStale(staleDate, false)).toBe(true);
+      expect(getStalenessDays(staleDate)).toBeGreaterThanOrEqual(8);
+      expect(getStalenessDays(freshDate)).toBe(2);
+      expect(getStalenessDays(undefined)).toBe(0);
+    });
   });
 
   describe('AiStatusIndicator', () => {
@@ -276,6 +292,30 @@ describe('AI Intelligence Feature Suite', () => {
         expect(screen.getByRole('button', { name: /Retry/i })).toBeInTheDocument();
       });
     });
+
+    it('renders staleness alert and chip when evaluation is older than 7 days', async () => {
+      const staleEvaluation: HoldingAiEvaluation = {
+        ...mockHoldingEvaluation,
+        evaluatedAt: new Date(Date.now() - 9 * 24 * 60 * 60 * 1000).toISOString(),
+        isStale: true,
+      };
+
+      renderWithProviders(
+        <HoldingAiEvaluationModal
+          open={true}
+          onClose={vi.fn()}
+          portfolioId="port-1"
+          instrumentId="inst-1"
+          symbol="NVDA"
+          instrumentName="NVIDIA Corporation"
+          initialData={staleEvaluation}
+        />
+      );
+
+      expect(screen.getByText('Stale (>7d)')).toBeInTheDocument();
+      expect(screen.getByText(/Outdated Evaluation \(>7 days\)/i)).toBeInTheDocument();
+      expect(screen.getAllByRole('button', { name: /Re-evaluate/i }).length).toBeGreaterThanOrEqual(1);
+    });
   });
 
   describe('PortfolioAiEvaluationCard', () => {
@@ -327,6 +367,35 @@ describe('AI Intelligence Feature Suite', () => {
         expect(screen.getByText('Portfolio Executive Thesis')).toBeInTheDocument();
         expect(screen.getByText(/Well-positioned growth portfolio with healthy cash buffer/i)).toBeInTheDocument();
         expect(screen.getByText('GEMMA4-12B')).toBeInTheDocument();
+      });
+    });
+
+    it('renders staleness banner, header chip, and table stale badge when portfolio evaluation is older than 7 days', async () => {
+      vi.spyOn(aiApi, 'getAiStatus').mockResolvedValue(mockAiStatusConnected);
+      const staleHolding: HoldingAiEvaluation = {
+        ...mockHoldingEvaluation,
+        evaluatedAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+        isStale: true,
+      };
+      const stalePortfolio: PortfolioAiEvaluation = {
+        ...mockPortfolioEvaluation,
+        evaluatedAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+        isStale: true,
+        topHoldingEvaluations: [staleHolding],
+      };
+      vi.spyOn(aiApi, 'getLatestPortfolioEvaluation').mockResolvedValue(stalePortfolio);
+
+      renderWithProviders(
+        <PortfolioAiEvaluationCard
+          portfolioId="port-1"
+          portfolioName="Tech & Dividend Portfolio"
+          baseCurrency="USD"
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/Outdated Evaluation \(>7 days\)/i)).toBeInTheDocument();
+        expect(screen.getAllByText('Stale (>7d)').length).toBeGreaterThanOrEqual(2);
       });
     });
   });

@@ -30,6 +30,7 @@ import HorizontalRuleOutlinedIcon from '@mui/icons-material/HorizontalRuleOutlin
 import StarIcon from '@mui/icons-material/Star';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import { useEvaluateHolding, useLatestHoldingEvaluation } from './useAi';
+import { isEvaluationStale } from './aiStaleness';
 import type { HoldingAiEvaluation, AiStance, AiRiskLevel } from '../../types';
 
 interface HoldingAiEvaluationModalProps {
@@ -39,23 +40,23 @@ interface HoldingAiEvaluationModalProps {
   instrumentId: string;
   symbol: string;
   instrumentName: string;
-  initialData?: HoldingAiEvaluation | null;
+  initialData?: HoldingAiEvaluation;
 }
 
-export const getStanceChipProps = (stance: AiStance) => {
+export const getStanceChipProps = (stance: AiStance | string) => {
   switch (stance) {
     case 'STRONG_BUY':
-      return { color: 'success' as const, label: 'STRONG BUY', icon: <StarIcon /> };
+      return { label: 'STRONG BUY', color: 'success' as const, icon: <StarIcon fontSize="small" /> };
     case 'ACCUMULATE':
-      return { color: 'success' as const, label: 'ACCUMULATE', icon: <TrendingUpIcon /> };
+      return { label: 'ACCUMULATE', color: 'success' as const, icon: <TrendingUpIcon fontSize="small" /> };
     case 'HOLD':
-      return { color: 'info' as const, label: 'HOLD', icon: <HorizontalRuleOutlinedIcon /> };
+      return { label: 'HOLD', color: 'info' as const, icon: <HorizontalRuleOutlinedIcon fontSize="small" /> };
     case 'TRIM':
-      return { color: 'warning' as const, label: 'TRIM', icon: <TrendingDownIcon /> };
+      return { label: 'TRIM', color: 'warning' as const, icon: <TrendingDownIcon fontSize="small" /> };
     case 'SELL':
-      return { color: 'error' as const, label: 'SELL', icon: <TrendingDownIcon /> };
+      return { label: 'SELL', color: 'error' as const, icon: <TrendingDownIcon fontSize="small" /> };
     default:
-      return { color: 'default' as const, label: stance, icon: undefined };
+      return { label: stance, color: 'default' as const, icon: undefined };
   }
 };
 
@@ -97,6 +98,8 @@ export const HoldingAiEvaluationModal: React.FC<HoldingAiEvaluationModalProps> =
   const isLoading = evaluateMutation.isPending || (cachedQuery.isLoading && !evaluation);
   const isError = evaluateMutation.isError;
   const error = evaluateMutation.error;
+
+  const isStale = isEvaluationStale(evaluation?.evaluatedAt, evaluation?.isStale);
 
   const stanceProps = evaluation ? getStanceChipProps(evaluation.stance) : null;
   const riskColor = evaluation
@@ -142,6 +145,14 @@ export const HoldingAiEvaluationModal: React.FC<HoldingAiEvaluationModalProps> =
                   size="small"
                   variant="outlined"
                   sx={{ fontWeight: 600, fontSize: '0.68rem', letterSpacing: 0.4 }}
+                />
+              )}
+              {isStale && (
+                <Chip
+                  label="Stale (>7d)"
+                  size="small"
+                  color="warning"
+                  sx={{ fontWeight: 700, fontSize: '0.68rem', letterSpacing: 0.3 }}
                 />
               )}
               {lastEvaluatedLabel && (
@@ -202,6 +213,27 @@ export const HoldingAiEvaluationModal: React.FC<HoldingAiEvaluationModalProps> =
 
         {!isLoading && evaluation && (
           <Stack spacing={3}>
+            {isStale && (
+              <Alert
+                severity="warning"
+                action={
+                  <Button
+                    color="inherit"
+                    size="small"
+                    onClick={handleRefresh}
+                    disabled={isLoading}
+                    startIcon={<RefreshIcon />}
+                  >
+                    Re-evaluate
+                  </Button>
+                }
+              >
+                <strong>Outdated Evaluation (&gt;7 days):</strong> This holding was evaluated on{' '}
+                {new Date(evaluation.evaluatedAt).toLocaleDateString()} ({lastEvaluatedLabel}).
+                Market valuation multiples, prices, and balance sheet conditions may have changed.
+              </Alert>
+            )}
+
             {/* Risk & Allocation Bar */}
             <Paper variant="outlined" sx={{ p: 2, bgcolor: 'background.default' }}>
               <Grid container spacing={2} sx={{ alignItems: 'center' }}>

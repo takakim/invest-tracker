@@ -2347,6 +2347,7 @@ components:
         fundamentalMetrics: { $ref: '#/components/schemas/HoldingFinancialMetrics' }
         modelUsed: { type: string }
         evaluatedAt: { type: string, format: date-time }
+        isStale: { type: boolean }
     PortfolioAiEvaluation:
       type: object
       required: [portfolioId, portfolioName, baseCurrency, overallRiskScore, overallRiskLevel, executiveSummary, diversificationAssessment, concentrationRisks, taxAndLocationOptimization, topRecommendations, macroStressScenarios, topHoldingEvaluations, modelUsed, evaluatedAt]
@@ -2375,6 +2376,7 @@ components:
           items: { $ref: '#/components/schemas/HoldingAiEvaluation' }
         modelUsed: { type: string }
         evaluatedAt: { type: string, format: date-time }
+        isStale: { type: boolean }
 
 
 

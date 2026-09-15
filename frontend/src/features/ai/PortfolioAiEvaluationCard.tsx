@@ -39,6 +39,7 @@ import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import { useEvaluatePortfolio, useLatestPortfolioEvaluation } from './useAi';
 import { HoldingAiEvaluationModal, getStanceChipProps, getRiskLevelColor } from './HoldingAiEvaluationModal';
 import { AiStatusIndicator } from './AiStatusIndicator';
+import { isEvaluationStale } from './aiStaleness';
 import type { PortfolioAiEvaluation, HoldingAiEvaluation } from '../../types';
 
 interface PortfolioAiEvaluationCardProps {
@@ -97,6 +98,10 @@ export const PortfolioAiEvaluationCard: React.FC<PortfolioAiEvaluationCardProps>
       })()
     : null;
 
+  const isStale = evaluation
+    ? isEvaluationStale(evaluation.evaluatedAt, evaluation.isStale)
+    : false;
+
   return (
     <Card variant="outlined" sx={{ borderRadius: 2 }}>
       <CardHeader
@@ -109,6 +114,14 @@ export const PortfolioAiEvaluationCard: React.FC<PortfolioAiEvaluationCardProps>
                 size="small"
                 variant="outlined"
                 sx={{ fontWeight: 600, fontSize: '0.7rem', letterSpacing: 0.5 }}
+              />
+            )}
+            {isStale && (
+              <Chip
+                label="Stale (>7d)"
+                size="small"
+                color="warning"
+                sx={{ fontWeight: 700, fontSize: '0.68rem', letterSpacing: 0.3 }}
               />
             )}
             {lastEvaluatedLabel && (
@@ -222,6 +235,27 @@ export const PortfolioAiEvaluationCard: React.FC<PortfolioAiEvaluationCardProps>
         {/* Evaluated Results View */}
         {evaluation && (
           <Stack spacing={3}>
+            {isStale && (
+              <Alert
+                severity="warning"
+                action={
+                  <Button
+                    color="inherit"
+                    size="small"
+                    onClick={handleRunAnalysis}
+                    disabled={isLoading}
+                    startIcon={<RefreshIcon />}
+                  >
+                    Re-evaluate
+                  </Button>
+                }
+              >
+                <strong>Outdated Evaluation (&gt;7 days):</strong> This portfolio was evaluated on{' '}
+                {new Date(evaluation.evaluatedAt).toLocaleDateString()} ({lastEvaluatedLabel}).
+                Market conditions, asset weights, and holding valuations may have shifted.
+              </Alert>
+            )}
+
             {/* Top Score Bar */}
             <Paper variant="outlined" sx={{ p: 2.5, bgcolor: 'background.default' }}>
               <Grid container spacing={3} sx={{ alignItems: 'center' }}>
@@ -417,15 +451,30 @@ export const PortfolioAiEvaluationCard: React.FC<PortfolioAiEvaluationCardProps>
                       {evaluation.topHoldingEvaluations.map((holding) => {
                         const stanceProps = getStanceChipProps(holding.stance);
                         const holdingRiskColor = getRiskLevelColor(holding.riskLevel, holding.riskScore);
+                        const isHoldingStale = isEvaluationStale(holding.evaluatedAt, holding.isStale);
                         return (
                           <TableRow key={holding.instrumentId} hover>
                             <TableCell>
-                              <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                {holding.symbol}
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                {holding.name}
-                              </Typography>
+                              <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                                <Box>
+                                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                    {holding.symbol}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {holding.name}
+                                  </Typography>
+                                </Box>
+                                {isHoldingStale && (
+                                  <Tooltip title="Evaluation is older than 7 days">
+                                    <Chip
+                                      label="Stale (>7d)"
+                                      size="small"
+                                      color="warning"
+                                      sx={{ height: 20, fontSize: '0.65rem', fontWeight: 700 }}
+                                    />
+                                  </Tooltip>
+                                )}
+                              </Stack>
                             </TableCell>
                             <TableCell align="right">
                               <Typography variant="body2">

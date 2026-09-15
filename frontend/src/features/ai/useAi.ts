@@ -61,6 +61,9 @@ export function useEvaluatePortfolio(portfolioId: string) {
             holding
           );
         });
+        queryClient.invalidateQueries({
+          queryKey: AI_QUERY_KEYS.holdingEvaluations(portfolioId),
+        });
       }
     },
   });
