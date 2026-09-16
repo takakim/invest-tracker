@@ -320,6 +320,13 @@ public class MarketDataService {
         return marketObservationRepository.countByInstrumentId(instrumentId);
     }
 
+    public boolean hasHistoricalObservationBefore(UUID instrumentId, Instant threshold) {
+        if (instrumentId == null || threshold == null) {
+            return false;
+        }
+        return marketObservationRepository.findFirstByInstrumentIdAndObservedAtBefore(instrumentId, threshold).isPresent();
+    }
+
     @Transactional
     public List<MarketObservation> syncHistoricalPrices(UUID instrumentId, Instant from, Instant to) {
         return backfillHistoricalPrices(instrumentId, from, to);
