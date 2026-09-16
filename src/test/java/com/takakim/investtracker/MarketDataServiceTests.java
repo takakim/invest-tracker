@@ -1074,4 +1074,21 @@ class MarketDataServiceTests {
         assertNotNull(quote);
         assertEquals(0, new BigDecimal("100.00").compareTo(quote.price()));
     }
+
+    @Test
+    @DisplayName("hasHistoricalObservationBefore checks repository coverage")
+    void testHasHistoricalObservationBefore() {
+        UUID id = instrument.getId();
+        Instant threshold = Instant.now().minus(30, ChronoUnit.DAYS);
+        when(marketObservationRepository.findFirstByInstrumentIdAndObservedAtBefore(id, threshold))
+                .thenReturn(Optional.of(new MarketObservation(instrument, BigDecimal.TEN, "USD", threshold.minusSeconds(10), ObservationSourceType.PROVIDER, "FEED")));
+        assertTrue(marketDataService.hasHistoricalObservationBefore(id, threshold));
+
+        when(marketObservationRepository.findFirstByInstrumentIdAndObservedAtBefore(id, threshold))
+                .thenReturn(Optional.empty());
+        assertFalse(marketDataService.hasHistoricalObservationBefore(id, threshold));
+
+        assertFalse(marketDataService.hasHistoricalObservationBefore(null, threshold));
+        assertFalse(marketDataService.hasHistoricalObservationBefore(id, null));
+    }
 }
