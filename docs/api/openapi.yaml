@@ -663,6 +663,23 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AiStatus' }
+  /ai/config:
+    put:
+      operationId: updateAiConfig
+      summary: Dynamically update AI settings such as request timeout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AiConfigRequest' }
+      responses:
+        '200':
+          description: Updated AI system status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AiStatus' }
+        '400': { $ref: '#/components/responses/Problem' }
+
   /portfolios/{portfolioId}/ai/evaluate:
     parameters:
       - { $ref: '#/components/parameters/PortfolioId' }
@@ -2292,7 +2309,7 @@ components:
       enum: [LOW, MODERATE, HIGH, VERY_HIGH]
     AiStatus:
       type: object
-      required: [enabled, connected, provider, baseUrl, configuredModel, availableModels]
+      required: [enabled, connected, provider, baseUrl, configuredModel, availableModels, timeoutSeconds]
       properties:
         enabled: { type: boolean }
         connected: { type: boolean }
@@ -2303,7 +2320,19 @@ components:
           type: array
           items: { type: string }
         errorMessage: { type: string, nullable: true }
+        timeoutSeconds: { type: integer, example: 60 }
+    AiConfigRequest:
+      type: object
+      required: [timeoutSeconds]
+      properties:
+        timeoutSeconds:
+          type: integer
+          minimum: 5
+          maximum: 3600
+          description: AI provider HTTP read timeout in seconds
+          example: 120
     HoldingFinancialMetrics:
+
       type: object
       properties:
         peRatio: { type: number, nullable: true }

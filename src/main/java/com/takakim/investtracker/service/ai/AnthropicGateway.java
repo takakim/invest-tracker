@@ -32,6 +32,7 @@ public class AnthropicGateway implements AiGateway {
     private final AiProperties properties;
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
+    private final SimpleClientHttpRequestFactory requestFactory;
 
     @Autowired
     public AnthropicGateway(AiProperties properties, RestClient.Builder restClientBuilder, ObjectMapper objectMapper) {
@@ -41,9 +42,9 @@ public class AnthropicGateway implements AiGateway {
         int timeout = properties != null && properties.getTimeoutSeconds() > 0
                 ? properties.getTimeoutSeconds() : 60;
 
-        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-        requestFactory.setConnectTimeout(Duration.ofSeconds(Math.min(timeout, 10)));
-        requestFactory.setReadTimeout(Duration.ofSeconds(timeout));
+        this.requestFactory = new SimpleClientHttpRequestFactory();
+        this.requestFactory.setConnectTimeout(Duration.ofSeconds(Math.min(timeout, 10)));
+        this.requestFactory.setReadTimeout(Duration.ofSeconds(timeout));
 
         String baseUrl = (properties != null && properties.getAnthropicBaseUrl() != null
                 && !properties.getAnthropicBaseUrl().isBlank())
@@ -52,7 +53,7 @@ public class AnthropicGateway implements AiGateway {
 
         this.restClient = (restClientBuilder != null ? restClientBuilder : RestClient.builder())
                 .baseUrl(baseUrl)
-                .requestFactory(requestFactory)
+                .requestFactory(this.requestFactory)
                 .build();
     }
 
@@ -60,18 +61,19 @@ public class AnthropicGateway implements AiGateway {
         this.properties = properties;
         this.restClient = restClient;
         this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();
+        this.requestFactory = null;
     }
 
     @Override
     public AiStatusDto checkStatus() {
         if (!properties.isEnabled()) {
             return new AiStatusDto(false, false, PROVIDER_NAME, properties.getAnthropicBaseUrl(),
-                    properties.getModel(), List.of(), "AI evaluation is disabled in configuration");
+                    properties.getModel(), List.of(), "AI evaluation is disabled in configuration", getTimeoutSeconds());
         }
         String apiKey = properties.getAnthropicApiKey();
         if (apiKey == null || apiKey.isBlank()) {
             return new AiStatusDto(true, false, PROVIDER_NAME, properties.getAnthropicBaseUrl(),
-                    properties.getModel(), List.of(), "ANTHROPIC_API_KEY is not configured");
+                    properties.getModel(), List.of(), "ANTHROPIC_API_KEY is not configured", getTimeoutSeconds());
         }
 
         // Anthropic has no public /models endpoint that accepts no body;
@@ -93,21 +95,21 @@ public class AnthropicGateway implements AiGateway {
                     .retrieve()
                     .body(String.class);
             return new AiStatusDto(true, true, PROVIDER_NAME, properties.getAnthropicBaseUrl(),
-                    properties.getModel(), List.of(properties.getModel() != null ? properties.getModel() : DEFAULT_MODEL), null);
+                    properties.getModel(), List.of(properties.getModel() != null ? properties.getModel() : DEFAULT_MODEL), null, getTimeoutSeconds());
         } catch (RestClientResponseException e) {
             // 4xx means we reached Anthropic but the request was rejected (e.g. invalid model) — still "connected"
             if (e.getStatusCode().is4xxClientError()) {
                 String configuredModel = properties.getModel() != null ? properties.getModel() : DEFAULT_MODEL;
                 return new AiStatusDto(true, true, PROVIDER_NAME, properties.getAnthropicBaseUrl(),
-                        configuredModel, List.of(configuredModel), null);
+                        configuredModel, List.of(configuredModel), null, getTimeoutSeconds());
             }
             log.warn("Failed to connect to Anthropic API: {}", e.getMessage());
             return new AiStatusDto(true, false, PROVIDER_NAME, properties.getAnthropicBaseUrl(),
-                    properties.getModel(), List.of(), "Cannot connect to Anthropic: " + e.getMessage());
+                    properties.getModel(), List.of(), "Cannot connect to Anthropic: " + e.getMessage(), getTimeoutSeconds());
         } catch (Exception e) {
             log.warn("Failed to connect to Anthropic API: {}", e.getMessage());
             return new AiStatusDto(true, false, PROVIDER_NAME, properties.getAnthropicBaseUrl(),
-                    properties.getModel(), List.of(), "Cannot connect to Anthropic: " + e.getMessage());
+                    properties.getModel(), List.of(), "Cannot connect to Anthropic: " + e.getMessage(), getTimeoutSeconds());
         }
     }
 
@@ -179,4 +181,17 @@ public class AnthropicGateway implements AiGateway {
     public String getProviderName() {
         return PROVIDER_NAME;
     }
+
+    @Override
+    public void setTimeoutSeconds(int timeoutSeconds) {
+        if (requestFactory != null) {
+            requestFactory.setReadTimeout(Duration.ofSeconds(timeoutSeconds));
+        }
+    }
+
+    @Override
+    public int getTimeoutSeconds() {
+        return properties != null ? properties.getTimeoutSeconds() : 60;
+    }
 }
+

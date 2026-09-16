@@ -1,15 +1,19 @@
 package com.takakim.investtracker.api;
 
 import com.takakim.investtracker.service.ai.AiEvaluationService;
+import com.takakim.investtracker.service.ai.dto.AiConfigRequest;
 import com.takakim.investtracker.service.ai.dto.AiStatusDto;
 import com.takakim.investtracker.service.ai.dto.HoldingAiEvaluationDto;
 import com.takakim.investtracker.service.ai.dto.PortfolioAiEvaluationDto;
+import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -27,6 +31,14 @@ public class AiController {
     public ResponseEntity<AiStatusDto> getStatus() {
         return ResponseEntity.ok(aiEvaluationService.getStatus());
     }
+
+    /** Dynamically update AI settings such as request timeout. */
+    @PutMapping("/ai/config")
+    public ResponseEntity<AiStatusDto> updateConfig(@Valid @RequestBody AiConfigRequest request) {
+        AiStatusDto updated = aiEvaluationService.updateConfig(request);
+        return ResponseEntity.ok(updated);
+    }
+
 
     /** Trigger a new portfolio-level AI evaluation (calls the LLM). */
     @PostMapping("/portfolios/{portfolioId}/ai/evaluate")

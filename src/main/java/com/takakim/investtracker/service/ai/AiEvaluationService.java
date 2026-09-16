@@ -19,6 +19,7 @@ import com.takakim.investtracker.service.PositionService;
 import com.takakim.investtracker.service.ResourceNotFoundException;
 import com.takakim.investtracker.service.analytics.HoldingExposure;
 import com.takakim.investtracker.service.analytics.PortfolioAnalytics;
+import com.takakim.investtracker.service.ai.dto.AiConfigRequest;
 import com.takakim.investtracker.service.ai.dto.AiRiskLevel;
 import com.takakim.investtracker.service.ai.dto.AiStance;
 import com.takakim.investtracker.service.ai.dto.AiStatusDto;
@@ -88,6 +89,15 @@ public class AiEvaluationService {
     public AiStatusDto getStatus() {
         return gatewayFactory.getActiveGateway().checkStatus();
     }
+
+    @Transactional
+    public AiStatusDto updateConfig(AiConfigRequest request) {
+        if (request != null && request.timeoutSeconds() != null) {
+            gatewayFactory.updateTimeout(request.timeoutSeconds());
+        }
+        return getStatus();
+    }
+
 
     /**
      * Returns the latest persisted portfolio AI evaluation for the given portfolio,

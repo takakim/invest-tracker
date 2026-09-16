@@ -24,6 +24,7 @@ import {
   TableHead,
   TableRow,
   Tooltip,
+  IconButton,
 } from '@mui/material';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined';
@@ -35,12 +36,15 @@ import PsychologyIcon from '@mui/icons-material/Psychology';
 import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined';
 import LaunchIcon from '@mui/icons-material/Launch';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import SettingsIcon from '@mui/icons-material/Settings';
 
 import { useEvaluatePortfolio, useLatestPortfolioEvaluation } from './useAi';
 import { HoldingAiEvaluationModal, getStanceChipProps, getRiskLevelColor } from './HoldingAiEvaluationModal';
 import { AiStatusIndicator } from './AiStatusIndicator';
+import { AiSettingsModal } from './AiSettingsModal';
 import { isEvaluationStale } from './aiStaleness';
 import type { PortfolioAiEvaluation, HoldingAiEvaluation } from '../../types';
+
 
 interface PortfolioAiEvaluationCardProps {
   portfolioId: string;
@@ -54,6 +58,7 @@ export const PortfolioAiEvaluationCard: React.FC<PortfolioAiEvaluationCardProps>
 }) => {
   const [selectedHolding, setSelectedHolding] = useState<HoldingAiEvaluation | null>(null);
   const [holdingModalOpen, setHoldingModalOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Load cached evaluation from DB on mount
   const cachedQuery = useLatestPortfolioEvaluation(portfolioId);
@@ -135,6 +140,16 @@ export const PortfolioAiEvaluationCard: React.FC<PortfolioAiEvaluationCardProps>
               </Tooltip>
             )}
             <AiStatusIndicator />
+            <Tooltip title="AI Gateway Settings">
+              <IconButton
+                size="small"
+                onClick={() => setSettingsOpen(true)}
+                data-testid="portfolio-ai-settings-btn"
+                aria-label="AI Gateway Settings"
+              >
+                <SettingsIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
             {evaluation && (
               <Button
                 variant="outlined"
@@ -148,6 +163,7 @@ export const PortfolioAiEvaluationCard: React.FC<PortfolioAiEvaluationCardProps>
             )}
           </Stack>
         }
+
         title={
           <Typography variant="h6" sx={{ fontWeight: 700 }}>
             AI Portfolio Intelligence
@@ -221,16 +237,22 @@ export const PortfolioAiEvaluationCard: React.FC<PortfolioAiEvaluationCardProps>
           <Alert
             severity="error"
             action={
-              <Button color="inherit" size="small" onClick={handleRunAnalysis}>
-                Retry
-              </Button>
+              <Stack direction="row" spacing={1}>
+                <Button color="inherit" size="small" onClick={() => setSettingsOpen(true)}>
+                  Adjust Timeout
+                </Button>
+                <Button color="inherit" size="small" onClick={handleRunAnalysis}>
+                  Retry
+                </Button>
+              </Stack>
             }
             sx={{ mb: 2 }}
           >
-            Failed to evaluate portfolio: {error?.message || 'Connection to LM Studio failed'}.
-            Verify that LM Studio is running locally at <code>http://localhost:1234</code> with Gemma 4 12B loaded.
+            Failed to evaluate portfolio: {error?.message || 'Connection to AI provider failed'}.
+            Verify that your AI provider is reachable or increase the inference timeout.
           </Alert>
         )}
+
 
         {/* Evaluated Results View */}
         {evaluation && (
@@ -543,7 +565,9 @@ export const PortfolioAiEvaluationCard: React.FC<PortfolioAiEvaluationCardProps>
             initialData={selectedHolding}
           />
         )}
+        <AiSettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       </CardContent>
     </Card>
   );
 };
+

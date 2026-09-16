@@ -923,7 +923,13 @@ export interface AiStatus {
   configuredModel: string;
   availableModels: string[];
   errorMessage?: string | null;
+  timeoutSeconds?: number;
 }
+
+export interface AiConfigRequest {
+  timeoutSeconds: number;
+}
+
 
 export interface HoldingFinancialMetrics {
   peRatio?: number | null;
