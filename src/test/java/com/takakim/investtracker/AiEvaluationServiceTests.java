@@ -1871,6 +1871,23 @@ class AiEvaluationServiceTests {
 
         verify(gatewayFactory, never()).updateTimeout(anyInt());
     }
+
+    @Test
+    @DisplayName("updateConfig updates provider and model on gateway factory")
+    void testUpdateConfigWithProviderAndModel() {
+        when(gatewayFactory.getActiveGateway()).thenReturn(gateway);
+        when(gateway.checkStatus()).thenReturn(new AiStatusDto(true, true, "OPENAI", "https://api.openai.com", "gpt-4o", List.of(), null, 90));
+
+        com.takakim.investtracker.service.ai.dto.AiConfigRequest request =
+                new com.takakim.investtracker.service.ai.dto.AiConfigRequest(90, "OPENAI", "gpt-4o");
+        AiStatusDto status = service.updateConfig(request);
+
+        assertNotNull(status);
+        assertEquals("OPENAI", status.provider());
+        verify(gatewayFactory).updateTimeout(90);
+        verify(gatewayFactory).updateProvider("OPENAI");
+        verify(gatewayFactory).updateModel("gpt-4o");
+    }
 }
 
 

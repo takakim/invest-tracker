@@ -513,7 +513,7 @@ describe('AI Intelligence Feature Suite', () => {
       await waitFor(() => {
         expect(screen.getByText('AI Gateway Settings')).toBeInTheDocument();
         expect(screen.getByText('LM STUDIO')).toBeInTheDocument();
-        expect(screen.getByText('gemma4-12b')).toBeInTheDocument();
+        expect(screen.getByTestId('ai-model-chip-gemma4-12b')).toBeInTheDocument();
         expect(screen.getByText('1m (60s)')).toBeInTheDocument();
         expect(screen.getByText('5m (300s)')).toBeInTheDocument();
         expect(screen.getByText('20m (1200s)')).toBeInTheDocument();
@@ -530,7 +530,7 @@ describe('AI Intelligence Feature Suite', () => {
       renderWithProviders(<AiSettingsModal open={true} onClose={vi.fn()} />);
 
       await waitFor(() => {
-        expect(screen.getByText('gemma4-12b')).toBeInTheDocument();
+        expect(screen.getByTestId('ai-model-chip-gemma4-12b')).toBeInTheDocument();
         expect(screen.getByText('5m (300s)')).toBeInTheDocument();
       });
 
@@ -544,8 +544,77 @@ describe('AI Intelligence Feature Suite', () => {
       fireEvent.click(screen.getByTestId('ai-save-settings-btn'));
 
       await waitFor(() => {
-        expect(updateConfigSpy).toHaveBeenCalledWith({ timeoutSeconds: 300 });
+        expect(updateConfigSpy).toHaveBeenCalledWith({
+          timeoutSeconds: 300,
+          provider: 'LM_STUDIO',
+          model: 'gemma4-12b',
+        });
         expect(screen.getByTestId('ai-settings-success-alert')).toBeInTheDocument();
+      });
+    });
+
+    it('allows switching provider and model and saving', async () => {
+      vi.spyOn(aiApi, 'getAiStatus').mockResolvedValue(mockAiStatusConnected);
+      const updateConfigSpy = vi.spyOn(aiApi, 'updateAiConfig').mockResolvedValue({
+        ...mockAiStatusConnected,
+        provider: 'OPENAI',
+        configuredModel: 'gpt-4o',
+      });
+
+      renderWithProviders(<AiSettingsModal open={true} onClose={vi.fn()} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('ai-provider-chip-OPENAI')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId('ai-provider-chip-OPENAI'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('ai-model-chip-gpt-4o')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId('ai-model-chip-gpt-4o'));
+
+      const modelInput = screen.getByTestId('ai-model-input') as HTMLInputElement;
+      expect(modelInput.value).toBe('gpt-4o');
+
+      fireEvent.click(screen.getByTestId('ai-save-settings-btn'));
+
+      await waitFor(() => {
+        expect(updateConfigSpy).toHaveBeenCalledWith({
+          timeoutSeconds: 60,
+          provider: 'OPENAI',
+          model: 'gpt-4o',
+        });
+      });
+    });
+
+    it('allows selecting Auto (Detect Loaded) model chip', async () => {
+      vi.spyOn(aiApi, 'getAiStatus').mockResolvedValue(mockAiStatusConnected);
+      const updateConfigSpy = vi.spyOn(aiApi, 'updateAiConfig').mockResolvedValue({
+        ...mockAiStatusConnected,
+        configuredModel: 'auto',
+      });
+
+      renderWithProviders(<AiSettingsModal open={true} onClose={vi.fn()} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('ai-model-chip-auto')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId('ai-model-chip-auto'));
+
+      const modelInput = screen.getByTestId('ai-model-input') as HTMLInputElement;
+      expect(modelInput.value).toBe('auto');
+
+      fireEvent.click(screen.getByTestId('ai-save-settings-btn'));
+
+      await waitFor(() => {
+        expect(updateConfigSpy).toHaveBeenCalledWith({
+          timeoutSeconds: 60,
+          provider: 'LM_STUDIO',
+          model: 'auto',
+        });
       });
     });
 
@@ -555,7 +624,7 @@ describe('AI Intelligence Feature Suite', () => {
       renderWithProviders(<AiSettingsModal open={true} onClose={vi.fn()} />);
 
       await waitFor(() => {
-        expect(screen.getByText('gemma4-12b')).toBeInTheDocument();
+        expect(screen.getByTestId('ai-model-chip-gemma4-12b')).toBeInTheDocument();
         expect(screen.getByTestId('ai-timeout-input')).toBeInTheDocument();
       });
 
