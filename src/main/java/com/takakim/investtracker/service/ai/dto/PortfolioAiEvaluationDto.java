@@ -1,6 +1,7 @@
 package com.takakim.investtracker.service.ai.dto;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 
@@ -20,4 +21,7 @@ public record PortfolioAiEvaluationDto(
         String modelUsed,
         Instant evaluatedAt
 ) {
+    public boolean isStale() {
+        return evaluatedAt != null && evaluatedAt.isBefore(Instant.now().minus(7, ChronoUnit.DAYS));
+    }
 }

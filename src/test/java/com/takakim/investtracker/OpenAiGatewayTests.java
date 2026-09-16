@@ -286,9 +286,21 @@ class OpenAiGatewayTests {
     }
 
     @Test
-    @DisplayName("test constructor handles null ObjectMapper")
+    @DisplayName("test constructor handles null ObjectMapper and null properties")
     void testConstructorNullMapper() {
         OpenAiGateway gw = new OpenAiGateway(properties, RestClient.builder().build(), null);
         assertEquals("OPENAI", gw.getProviderName());
+        OpenAiGateway gwNull = new OpenAiGateway(null, (RestClient.Builder) null, null);
+        assertEquals(60, gwNull.getTimeoutSeconds());
+    }
+
+    @Test
+    @DisplayName("Autowired constructor sets timeouts and setTimeoutSeconds updates requestFactory")
+    void testAutowiredConstructorAndSetTimeoutSeconds() {
+        OpenAiGateway gw = new OpenAiGateway(properties, RestClient.builder(), objectMapper);
+        assertEquals(30, gw.getTimeoutSeconds());
+        gw.setTimeoutSeconds(120);
+        gateway.setTimeoutSeconds(90);
     }
 }
+

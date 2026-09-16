@@ -10,6 +10,8 @@ import * as aiApi from '../api/ai';
 import { AiStatusIndicator } from '../features/ai/AiStatusIndicator';
 import { HoldingAiEvaluationModal, getStanceChipProps, getRiskLevelColor } from '../features/ai/HoldingAiEvaluationModal';
 import { PortfolioAiEvaluationCard } from '../features/ai/PortfolioAiEvaluationCard';
+import { AiSettingsModal } from '../features/ai/AiSettingsModal';
+import { isEvaluationStale, getStalenessDays } from '../features/ai';
 import type { AiStatus, HoldingAiEvaluation, PortfolioAiEvaluation } from '../types';
 
 function createTestQueryClient() {
@@ -40,6 +42,7 @@ const mockAiStatusConnected: AiStatus = {
   baseUrl: 'http://localhost:1234',
   configuredModel: 'gemma4-12b',
   availableModels: ['gemma4-12b', 'qwen2.5-7b'],
+  timeoutSeconds: 60,
 };
 
 const mockAiStatusOffline: AiStatus = {
@@ -50,7 +53,9 @@ const mockAiStatusOffline: AiStatus = {
   configuredModel: 'gemma4-12b',
   availableModels: [],
   errorMessage: 'Connection refused',
+  timeoutSeconds: 60,
 };
+
 
 const mockHoldingEvaluation: HoldingAiEvaluation = {
   instrumentId: 'inst-1',
@@ -146,6 +151,21 @@ describe('AI Intelligence Feature Suite', () => {
       expect(getRiskLevelColor('HIGH', 7)).toBe('#ea580c');
       expect(getRiskLevelColor('VERY_HIGH', 10)).toBe('#dc2626');
     });
+
+    it('determines evaluation staleness correctly for <=7d and >7d', () => {
+      const now = new Date();
+      const freshDate = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString();
+      const staleDate = new Date(now.getTime() - 8 * 24 * 60 * 60 * 1000).toISOString();
+
+      expect(isEvaluationStale(freshDate)).toBe(false);
+      expect(isEvaluationStale(staleDate)).toBe(true);
+      expect(isEvaluationStale(undefined)).toBe(false);
+      expect(isEvaluationStale(freshDate, true)).toBe(true);
+      expect(isEvaluationStale(staleDate, false)).toBe(true);
+      expect(getStalenessDays(staleDate)).toBeGreaterThanOrEqual(8);
+      expect(getStalenessDays(freshDate)).toBe(2);
+      expect(getStalenessDays(undefined)).toBe(0);
+    });
   });
 
   describe('AiStatusIndicator', () => {
@@ -185,6 +205,23 @@ describe('AI Intelligence Feature Suite', () => {
         expect(screen.getByText('LM STUDIO: Offline')).toBeInTheDocument();
       });
     });
+
+    it('opens AiSettingsModal when clicking status chip', async () => {
+      vi.spyOn(aiApi, 'getAiStatus').mockResolvedValue(mockAiStatusConnected);
+
+      renderWithProviders(<AiStatusIndicator />);
+
+      await waitFor(() => {
+        expect(screen.getByText('LM STUDIO: gemma4-12b')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId('ai-status-chip'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('ai-settings-modal')).toBeInTheDocument();
+        expect(screen.getByText('AI Gateway Settings')).toBeInTheDocument();
+      });
+    });
   });
 
   describe('HoldingAiEvaluationModal', () => {
@@ -214,7 +251,7 @@ describe('AI Intelligence Feature Suite', () => {
       expect(screen.getByText('28.2')).toBeInTheDocument();
     });
 
-    it('triggers evaluation mutation when opened without initialData and no cache', async () => {
+    it('renders initial prompt card when opened without initialData and no cache, and only triggers on button click', async () => {
       const evaluateSpy = vi.spyOn(aiApi, 'evaluateHolding').mockResolvedValue(mockHoldingEvaluation);
 
       renderWithProviders(
@@ -227,6 +264,17 @@ describe('AI Intelligence Feature Suite', () => {
           instrumentName="NVIDIA Corporation"
         />
       );
+
+      await waitFor(() => {
+        expect(screen.getByText('Fundamental & Risk Evaluation')).toBeInTheDocument();
+        expect(screen.getByTestId('evaluate-holding-btn')).toBeInTheDocument();
+      });
+
+      // Does NOT auto-trigger LLM evaluation
+      expect(evaluateSpy).not.toHaveBeenCalled();
+
+      // Trigger manually
+      fireEvent.click(screen.getByTestId('evaluate-holding-btn'));
 
       await waitFor(() => {
         expect(evaluateSpy).toHaveBeenCalledWith('port-1', 'inst-1');
@@ -257,8 +305,8 @@ describe('AI Intelligence Feature Suite', () => {
       expect(evaluateSpy).not.toHaveBeenCalled();
     });
 
-    it('handles error state gracefully with retry button', async () => {
-      vi.spyOn(aiApi, 'evaluateHolding').mockRejectedValue(new Error('LM Studio unreachable'));
+    it('handles error state gracefully with retry and adjust timeout buttons', async () => {
+      vi.spyOn(aiApi, 'evaluateHolding').mockRejectedValue(new Error('LM Studio timeout'));
 
       renderWithProviders(
         <HoldingAiEvaluationModal
@@ -272,9 +320,65 @@ describe('AI Intelligence Feature Suite', () => {
       );
 
       await waitFor(() => {
+        expect(screen.getByTestId('evaluate-holding-btn')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId('evaluate-holding-btn'));
+
+      await waitFor(() => {
         expect(screen.getByText(/Failed to evaluate holding/i)).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /Retry/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /Adjust Timeout/i })).toBeInTheDocument();
       });
+
+      // Clicking Adjust Timeout opens AiSettingsModal
+      fireEvent.click(screen.getByRole('button', { name: /Adjust Timeout/i }));
+      await waitFor(() => {
+        expect(screen.getByTestId('ai-settings-modal')).toBeInTheDocument();
+      });
+    });
+
+    it('opens AI settings modal from AI Settings button in dialog actions', async () => {
+      renderWithProviders(
+        <HoldingAiEvaluationModal
+          open={true}
+          onClose={vi.fn()}
+          portfolioId="port-1"
+          instrumentId="inst-1"
+          symbol="NVDA"
+          instrumentName="NVIDIA Corporation"
+          initialData={mockHoldingEvaluation}
+        />
+      );
+
+      fireEvent.click(screen.getByTestId('holding-ai-settings-btn'));
+      await waitFor(() => {
+        expect(screen.getByTestId('ai-settings-modal')).toBeInTheDocument();
+      });
+    });
+
+    it('renders staleness alert and chip when evaluation is older than 7 days', async () => {
+      const staleEvaluation: HoldingAiEvaluation = {
+        ...mockHoldingEvaluation,
+        evaluatedAt: new Date(Date.now() - 9 * 24 * 60 * 60 * 1000).toISOString(),
+        isStale: true,
+      };
+
+      renderWithProviders(
+        <HoldingAiEvaluationModal
+          open={true}
+          onClose={vi.fn()}
+          portfolioId="port-1"
+          instrumentId="inst-1"
+          symbol="NVDA"
+          instrumentName="NVIDIA Corporation"
+          initialData={staleEvaluation}
+        />
+      );
+
+      expect(screen.getByText('Stale (>7d)')).toBeInTheDocument();
+      expect(screen.getByText(/Outdated Evaluation \(>7 days\)/i)).toBeInTheDocument();
+      expect(screen.getAllByRole('button', { name: /Re-evaluate/i }).length).toBeGreaterThanOrEqual(1);
     });
   });
 
@@ -329,5 +433,141 @@ describe('AI Intelligence Feature Suite', () => {
         expect(screen.getByText('GEMMA4-12B')).toBeInTheDocument();
       });
     });
+
+    it('opens AI settings modal from header settings button and error Adjust Timeout button', async () => {
+      vi.spyOn(aiApi, 'getAiStatus').mockResolvedValue(mockAiStatusConnected);
+      vi.spyOn(aiApi, 'evaluatePortfolio').mockRejectedValue(new Error('Gateway timeout'));
+
+      renderWithProviders(
+        <PortfolioAiEvaluationCard
+          portfolioId="port-1"
+          portfolioName="Tech & Dividend Portfolio"
+          baseCurrency="USD"
+        />
+      );
+
+      // Open from header button
+      const settingsBtn = await screen.findByTestId('portfolio-ai-settings-btn');
+      fireEvent.click(settingsBtn);
+      await waitFor(() => {
+        expect(screen.getByTestId('ai-settings-modal')).toBeInTheDocument();
+      });
+
+      // Close modal
+      fireEvent.click(screen.getByRole('button', { name: /Cancel/i }));
+      await waitFor(() => {
+        expect(screen.queryByTestId('ai-settings-modal')).not.toBeInTheDocument();
+      });
+
+      // Trigger error and test Adjust Timeout button
+      const analyzeBtn = await screen.findByRole('button', { name: /Analyze Tech & Dividend Portfolio/i });
+      fireEvent.click(analyzeBtn);
+      await waitFor(() => {
+        expect(screen.getByText(/Failed to evaluate portfolio/i)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /Adjust Timeout/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /Adjust Timeout/i }));
+      await waitFor(() => {
+        expect(screen.getByTestId('ai-settings-modal')).toBeInTheDocument();
+      });
+    });
+
+
+    it('renders staleness banner, header chip, and table stale badge when portfolio evaluation is older than 7 days', async () => {
+      vi.spyOn(aiApi, 'getAiStatus').mockResolvedValue(mockAiStatusConnected);
+      const staleHolding: HoldingAiEvaluation = {
+        ...mockHoldingEvaluation,
+        evaluatedAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+        isStale: true,
+      };
+      const stalePortfolio: PortfolioAiEvaluation = {
+        ...mockPortfolioEvaluation,
+        evaluatedAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+        isStale: true,
+        topHoldingEvaluations: [staleHolding],
+      };
+      vi.spyOn(aiApi, 'getLatestPortfolioEvaluation').mockResolvedValue(stalePortfolio);
+
+      renderWithProviders(
+        <PortfolioAiEvaluationCard
+          portfolioId="port-1"
+          portfolioName="Tech & Dividend Portfolio"
+          baseCurrency="USD"
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/Outdated Evaluation \(>7 days\)/i)).toBeInTheDocument();
+        expect(screen.getAllByText('Stale (>7d)').length).toBeGreaterThanOrEqual(2);
+      });
+    });
+  });
+
+  describe('AiSettingsModal', () => {
+    it('renders provider status and preset options', async () => {
+      vi.spyOn(aiApi, 'getAiStatus').mockResolvedValue(mockAiStatusConnected);
+
+      renderWithProviders(<AiSettingsModal open={true} onClose={vi.fn()} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('AI Gateway Settings')).toBeInTheDocument();
+        expect(screen.getByText('LM STUDIO')).toBeInTheDocument();
+        expect(screen.getByText('gemma4-12b')).toBeInTheDocument();
+        expect(screen.getByText('1m (60s)')).toBeInTheDocument();
+        expect(screen.getByText('5m (300s)')).toBeInTheDocument();
+        expect(screen.getByText('20m (1200s)')).toBeInTheDocument();
+      });
+    });
+
+    it('updates timeout input when clicking presets and saves successfully', async () => {
+      vi.spyOn(aiApi, 'getAiStatus').mockResolvedValue(mockAiStatusConnected);
+      const updateConfigSpy = vi.spyOn(aiApi, 'updateAiConfig').mockResolvedValue({
+        ...mockAiStatusConnected,
+        timeoutSeconds: 300,
+      });
+
+      renderWithProviders(<AiSettingsModal open={true} onClose={vi.fn()} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('gemma4-12b')).toBeInTheDocument();
+        expect(screen.getByText('5m (300s)')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText('5m (300s)'));
+
+      const input = screen.getByTestId('ai-timeout-input') as HTMLInputElement;
+      await waitFor(() => {
+        expect(input.value).toBe('300');
+      });
+
+      fireEvent.click(screen.getByTestId('ai-save-settings-btn'));
+
+      await waitFor(() => {
+        expect(updateConfigSpy).toHaveBeenCalledWith({ timeoutSeconds: 300 });
+        expect(screen.getByTestId('ai-settings-success-alert')).toBeInTheDocument();
+      });
+    });
+
+    it('validates timeout range 5 to 3600 seconds', async () => {
+      vi.spyOn(aiApi, 'getAiStatus').mockResolvedValue(mockAiStatusConnected);
+
+      renderWithProviders(<AiSettingsModal open={true} onClose={vi.fn()} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('gemma4-12b')).toBeInTheDocument();
+        expect(screen.getByTestId('ai-timeout-input')).toBeInTheDocument();
+      });
+
+      const input = screen.getByTestId('ai-timeout-input');
+      fireEvent.change(input, { target: { value: '2' } });
+
+      await waitFor(() => {
+        expect(screen.getByText(/Timeout must be between 5 and 3600 seconds/i)).toBeInTheDocument();
+        expect(screen.getByTestId('ai-save-settings-btn')).toBeDisabled();
+      });
+    });
   });
 });
+
+

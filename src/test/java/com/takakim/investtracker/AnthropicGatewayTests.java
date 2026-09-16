@@ -291,9 +291,21 @@ class AnthropicGatewayTests {
     }
 
     @Test
-    @DisplayName("test constructor handles null ObjectMapper")
+    @DisplayName("test constructor handles null ObjectMapper and null properties")
     void testConstructorNullMapper() {
         AnthropicGateway gw = new AnthropicGateway(properties, RestClient.builder().build(), null);
         assertEquals("ANTHROPIC", gw.getProviderName());
+        AnthropicGateway gwNull = new AnthropicGateway(null, (RestClient.Builder) null, null);
+        assertEquals(60, gwNull.getTimeoutSeconds());
+    }
+
+    @Test
+    @DisplayName("Autowired constructor sets timeouts and setTimeoutSeconds updates requestFactory")
+    void testAutowiredConstructorAndSetTimeoutSeconds() {
+        AnthropicGateway gw = new AnthropicGateway(properties, RestClient.builder(), objectMapper);
+        assertEquals(30, gw.getTimeoutSeconds());
+        gw.setTimeoutSeconds(120);
+        gateway.setTimeoutSeconds(90);
     }
 }
+

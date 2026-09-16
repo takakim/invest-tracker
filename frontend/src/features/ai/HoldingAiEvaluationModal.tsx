@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -12,6 +12,7 @@ import {
   Paper,
   Stack,
   LinearProgress,
+  CircularProgress,
   Divider,
   List,
   ListItem,
@@ -29,8 +30,12 @@ import TrendingDownIcon from '@mui/icons-material/TrendingDown';
 import HorizontalRuleOutlinedIcon from '@mui/icons-material/HorizontalRuleOutlined';
 import StarIcon from '@mui/icons-material/Star';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import SettingsIcon from '@mui/icons-material/Settings';
 import { useEvaluateHolding, useLatestHoldingEvaluation } from './useAi';
+import { isEvaluationStale } from './aiStaleness';
+import { AiSettingsModal } from './AiSettingsModal';
 import type { HoldingAiEvaluation, AiStance, AiRiskLevel } from '../../types';
+
 
 interface HoldingAiEvaluationModalProps {
   open: boolean;
@@ -39,23 +44,23 @@ interface HoldingAiEvaluationModalProps {
   instrumentId: string;
   symbol: string;
   instrumentName: string;
-  initialData?: HoldingAiEvaluation | null;
+  initialData?: HoldingAiEvaluation;
 }
 
-export const getStanceChipProps = (stance: AiStance) => {
+export const getStanceChipProps = (stance: AiStance | string) => {
   switch (stance) {
     case 'STRONG_BUY':
-      return { color: 'success' as const, label: 'STRONG BUY', icon: <StarIcon /> };
+      return { label: 'STRONG BUY', color: 'success' as const, icon: <StarIcon fontSize="small" /> };
     case 'ACCUMULATE':
-      return { color: 'success' as const, label: 'ACCUMULATE', icon: <TrendingUpIcon /> };
+      return { label: 'ACCUMULATE', color: 'success' as const, icon: <TrendingUpIcon fontSize="small" /> };
     case 'HOLD':
-      return { color: 'info' as const, label: 'HOLD', icon: <HorizontalRuleOutlinedIcon /> };
+      return { label: 'HOLD', color: 'info' as const, icon: <HorizontalRuleOutlinedIcon fontSize="small" /> };
     case 'TRIM':
-      return { color: 'warning' as const, label: 'TRIM', icon: <TrendingDownIcon /> };
+      return { label: 'TRIM', color: 'warning' as const, icon: <TrendingDownIcon fontSize="small" /> };
     case 'SELL':
-      return { color: 'error' as const, label: 'SELL', icon: <TrendingDownIcon /> };
+      return { label: 'SELL', color: 'error' as const, icon: <TrendingDownIcon fontSize="small" /> };
     default:
-      return { color: 'default' as const, label: stance, icon: undefined };
+      return { label: stance, color: 'default' as const, icon: undefined };
   }
 };
 
@@ -75,6 +80,8 @@ export const HoldingAiEvaluationModal: React.FC<HoldingAiEvaluationModalProps> =
   instrumentName,
   initialData,
 }) => {
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
   // Load cached evaluation from DB on open
   const cachedQuery = useLatestHoldingEvaluation(portfolioId, instrumentId);
   const evaluateMutation = useEvaluateHolding(portfolioId);
@@ -83,20 +90,17 @@ export const HoldingAiEvaluationModal: React.FC<HoldingAiEvaluationModalProps> =
   const evaluation: HoldingAiEvaluation | null =
     evaluateMutation.data ?? initialData ?? cachedQuery.data ?? null;
 
-  useEffect(() => {
-    if (open && !initialData && cachedQuery.data === null && !cachedQuery.isLoading) {
-      // No cached result in DB — trigger LLM evaluation automatically
-      evaluateMutation.mutate(instrumentId);
-    }
-  }, [open, instrumentId, initialData, cachedQuery.data, cachedQuery.isLoading]);
-
   const handleRefresh = () => {
     evaluateMutation.mutate(instrumentId);
   };
 
-  const isLoading = evaluateMutation.isPending || (cachedQuery.isLoading && !evaluation);
+  const isEvaluating = evaluateMutation.isPending;
+  const isInitialLoading = cachedQuery.isLoading && !evaluation;
   const isError = evaluateMutation.isError;
   const error = evaluateMutation.error;
+
+
+  const isStale = isEvaluationStale(evaluation?.evaluatedAt, evaluation?.isStale);
 
   const stanceProps = evaluation ? getStanceChipProps(evaluation.stance) : null;
   const riskColor = evaluation
@@ -144,6 +148,14 @@ export const HoldingAiEvaluationModal: React.FC<HoldingAiEvaluationModalProps> =
                   sx={{ fontWeight: 600, fontSize: '0.68rem', letterSpacing: 0.4 }}
                 />
               )}
+              {isStale && (
+                <Chip
+                  label="Stale (>7d)"
+                  size="small"
+                  color="warning"
+                  sx={{ fontWeight: 700, fontSize: '0.68rem', letterSpacing: 0.3 }}
+                />
+              )}
               {lastEvaluatedLabel && (
                 <Tooltip title={`Last evaluated: ${new Date(evaluation!.evaluatedAt).toLocaleString()}`}>
                   <Stack direction="row" spacing={0.4} sx={{ alignItems: 'center' }}>
@@ -173,7 +185,16 @@ export const HoldingAiEvaluationModal: React.FC<HoldingAiEvaluationModalProps> =
       </DialogTitle>
 
       <DialogContent dividers sx={{ p: 3 }}>
-        {isLoading && (
+        {isInitialLoading && (
+          <Box sx={{ py: 6, textAlign: 'center' }}>
+            <CircularProgress size={36} sx={{ mb: 2 }} />
+            <Typography variant="body1" color="text.secondary">
+              Loading previous evaluation...
+            </Typography>
+          </Box>
+        )}
+
+        {isEvaluating && (
           <Box sx={{ py: 6, textAlign: 'center' }}>
             <LinearProgress sx={{ mb: 3, borderRadius: 2, height: 6 }} />
             <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
@@ -185,23 +206,86 @@ export const HoldingAiEvaluationModal: React.FC<HoldingAiEvaluationModalProps> =
           </Box>
         )}
 
+        {!evaluation && !isEvaluating && !isError && !isInitialLoading && (
+          <Paper
+            variant="outlined"
+            sx={{
+              p: 4,
+              textAlign: 'center',
+              bgcolor: 'background.default',
+              borderStyle: 'dashed',
+              borderRadius: 2,
+            }}
+          >
+            <AutoAwesomeIcon sx={{ fontSize: 48, color: 'primary.main', mb: 1.5 }} />
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
+              Fundamental &amp; Risk Evaluation
+            </Typography>
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ maxWidth: 550, mx: 'auto', mb: 3, lineHeight: 1.6 }}
+            >
+              Generate an AI assessment of valuation multiples, balance sheet solvency, financial health metrics, and holding vs selling tradeoffs for {symbol} ({instrumentName}).
+            </Typography>
+            <Button
+              variant="contained"
+              size="large"
+              startIcon={<AutoAwesomeIcon />}
+              onClick={handleRefresh}
+              sx={{ px: 4, py: 1.2, fontWeight: 700 }}
+              data-testid="evaluate-holding-btn"
+            >
+              Evaluate {symbol}
+            </Button>
+          </Paper>
+        )}
+
         {isError && (
           <Alert
             severity="error"
             action={
-              <Button color="inherit" size="small" onClick={handleRefresh}>
-                Retry
-              </Button>
+              <Stack direction="row" spacing={1}>
+                <Button color="inherit" size="small" onClick={() => setSettingsOpen(true)}>
+                  Adjust Timeout
+                </Button>
+                <Button color="inherit" size="small" onClick={handleRefresh}>
+                  Retry
+                </Button>
+              </Stack>
             }
             sx={{ mb: 2 }}
           >
             Failed to evaluate holding: {error?.message || 'Connection to AI provider failed'}.
-            Check that your AI provider is configured and reachable.
+            Check that your AI provider is reachable or increase the inference timeout.
           </Alert>
         )}
 
-        {!isLoading && evaluation && (
+        {!isEvaluating && evaluation && (
           <Stack spacing={3}>
+
+            {isStale && (
+              <Alert
+                severity="warning"
+                action={
+                  <Button
+                    color="inherit"
+                    size="small"
+                    onClick={handleRefresh}
+                    disabled={isEvaluating}
+                    startIcon={<RefreshIcon />}
+                  >
+                    Re-evaluate
+                  </Button>
+
+                }
+              >
+                <strong>Outdated Evaluation (&gt;7 days):</strong> This holding was evaluated on{' '}
+                {new Date(evaluation.evaluatedAt).toLocaleDateString()} ({lastEvaluatedLabel}).
+                Market valuation multiples, prices, and balance sheet conditions may have changed.
+              </Alert>
+            )}
+
             {/* Risk & Allocation Bar */}
             <Paper variant="outlined" sx={{ p: 2, bgcolor: 'background.default' }}>
               <Grid container spacing={2} sx={{ alignItems: 'center' }}>
@@ -450,7 +534,7 @@ export const HoldingAiEvaluationModal: React.FC<HoldingAiEvaluationModalProps> =
                 size="small"
                 startIcon={<RefreshIcon />}
                 onClick={handleRefresh}
-                disabled={isLoading}
+                disabled={isEvaluating}
               >
                 Re-evaluate
               </Button>
@@ -459,11 +543,35 @@ export const HoldingAiEvaluationModal: React.FC<HoldingAiEvaluationModalProps> =
         )}
       </DialogContent>
 
-      <DialogActions sx={{ px: 3, py: 2 }}>
-        <Button onClick={onClose} variant="contained">
-          Close
+      <DialogActions sx={{ px: 3, py: 2, justifyContent: 'space-between' }}>
+        <Button
+          size="small"
+          color="inherit"
+          startIcon={<SettingsIcon />}
+          onClick={() => setSettingsOpen(true)}
+          data-testid="holding-ai-settings-btn"
+        >
+          AI Settings
         </Button>
+        <Stack direction="row" spacing={1}>
+          {evaluation && !isEvaluating && (
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<RefreshIcon />}
+              onClick={handleRefresh}
+              disabled={isEvaluating}
+            >
+              Re-evaluate
+            </Button>
+          )}
+          <Button onClick={onClose} variant="contained">
+            Close
+          </Button>
+        </Stack>
       </DialogActions>
+      <AiSettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </Dialog>
   );
 };
+

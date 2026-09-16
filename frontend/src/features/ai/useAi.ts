@@ -1,13 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getAiStatus,
+  updateAiConfig,
   evaluatePortfolio,
   evaluateHolding,
   getLatestPortfolioEvaluation,
   getLatestHoldingEvaluation,
   getLatestHoldingEvaluations,
 } from '../../api';
-import type { AiStatus, HoldingAiEvaluation, PortfolioAiEvaluation } from '../../types';
+import type { AiConfigRequest, AiStatus, HoldingAiEvaluation, PortfolioAiEvaluation } from '../../types';
+
 
 export const AI_QUERY_KEYS = {
   status: ['ai', 'status'] as const,
@@ -61,6 +63,9 @@ export function useEvaluatePortfolio(portfolioId: string) {
             holding
           );
         });
+        queryClient.invalidateQueries({
+          queryKey: AI_QUERY_KEYS.holdingEvaluations(portfolioId),
+        });
       }
     },
   });
@@ -111,3 +116,18 @@ export function useEvaluateHolding(portfolioId: string) {
     },
   });
 }
+
+/**
+ * Updates AI settings (such as request timeout) dynamically.
+ */
+export function useUpdateAiConfig() {
+  const queryClient = useQueryClient();
+
+  return useMutation<AiStatus, Error, AiConfigRequest>({
+    mutationFn: (config: AiConfigRequest) => updateAiConfig(config),
+    onSuccess: (data) => {
+      queryClient.setQueryData(AI_QUERY_KEYS.status, data);
+    },
+  });
+}
+

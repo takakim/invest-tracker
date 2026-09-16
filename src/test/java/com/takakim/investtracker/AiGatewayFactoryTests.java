@@ -87,4 +87,17 @@ class AiGatewayFactoryTests {
         when(properties.getProvider()).thenReturn("UNKNOWN_PROVIDER");
         assertSame(lmStudioGateway, factory.getActiveGateway());
     }
+
+    @Test
+    @DisplayName("updateTimeout updates properties and all gateways")
+    void testUpdateTimeout() {
+        factory.updateTimeout(120);
+
+        verify(properties).setTimeoutSeconds(120);
+        verify(lmStudioGateway).setTimeoutSeconds(120);
+        verify(openAiGateway).setTimeoutSeconds(120);
+        verify(geminiGateway).setTimeoutSeconds(120);
+        verify(anthropicGateway).setTimeoutSeconds(120);
+    }
 }
+

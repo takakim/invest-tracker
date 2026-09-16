@@ -2,6 +2,7 @@ package com.takakim.investtracker.service.ai.dto;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 
@@ -27,4 +28,7 @@ public record HoldingAiEvaluationDto(
         String modelUsed,
         Instant evaluatedAt
 ) {
+    public boolean isStale() {
+        return evaluatedAt != null && evaluatedAt.isBefore(Instant.now().minus(7, ChronoUnit.DAYS));
+    }
 }

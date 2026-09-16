@@ -26,5 +26,16 @@ public interface AiGateway {
     /**
      * Returns the provider identifier (e.g. "LM_STUDIO", "OPENAI", "GEMINI", "ANTHROPIC").
      */
-    String getProviderName();
+     String getProviderName();
+
+    /**
+     * Dynamically updates the HTTP read timeout (in seconds) for subsequent inference requests.
+     */
+    default void setTimeoutSeconds(int timeoutSeconds) {}
+
+    /**
+     * Returns the current timeout in seconds.
+     */
+    default int getTimeoutSeconds() { return 60; }
 }
+
