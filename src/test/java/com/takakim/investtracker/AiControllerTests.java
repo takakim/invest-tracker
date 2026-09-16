@@ -235,5 +235,22 @@ class AiControllerTests {
         assertEquals(300, response.getBody().timeoutSeconds());
         verify(aiEvaluationService).updateConfig(request);
     }
+
+    @Test
+    @DisplayName("updateConfig updates AI provider and model")
+    void testUpdateConfigWithProviderAndModel() {
+        com.takakim.investtracker.service.ai.dto.AiConfigRequest request =
+                new com.takakim.investtracker.service.ai.dto.AiConfigRequest(120, "OPENAI", "gpt-4o");
+        AiStatusDto updatedStatus = new AiStatusDto(true, true, "OPENAI", "https://api.openai.com", "gpt-4o", List.of("gpt-4o"), null, 120);
+        when(aiEvaluationService.updateConfig(request)).thenReturn(updatedStatus);
+
+        ResponseEntity<AiStatusDto> response = controller.updateConfig(request);
+
+        assertEquals(200, response.getStatusCode().value());
+        assertNotNull(response.getBody());
+        assertEquals("OPENAI", response.getBody().provider());
+        assertEquals("gpt-4o", response.getBody().configuredModel());
+        verify(aiEvaluationService).updateConfig(request);
+    }
 }
 

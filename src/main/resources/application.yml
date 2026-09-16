@@ -46,9 +46,9 @@ app:
       max-attempts: ${REFRESH_MAX_ATTEMPTS:5}
   ai:
     enabled: ${AI_ENABLED:true}
-    provider: ${AI_PROVIDER:LM_STUDIO}
+    provider: ${AI_PROVIDER:AUTO}
     base-url: ${AI_BASE_URL:http://localhost:1234}
-    model: ${AI_MODEL:google/gemma-4-12b}
+    model: ${AI_MODEL:auto}
     api-key: ${AI_API_KEY:}
     temperature: ${AI_TEMPERATURE:0.2}
     max-tokens: ${AI_MAX_TOKENS:2048}

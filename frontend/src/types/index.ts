@@ -924,10 +924,13 @@ export interface AiStatus {
   availableModels: string[];
   errorMessage?: string | null;
   timeoutSeconds?: number;
+  availableProviders?: string[];
 }
 
 export interface AiConfigRequest {
-  timeoutSeconds: number;
+  timeoutSeconds?: number;
+  provider?: string;
+  model?: string;
 }
 
 

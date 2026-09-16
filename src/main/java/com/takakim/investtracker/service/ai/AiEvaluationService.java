@@ -92,8 +92,16 @@ public class AiEvaluationService {
 
     @Transactional
     public AiStatusDto updateConfig(AiConfigRequest request) {
-        if (request != null && request.timeoutSeconds() != null) {
-            gatewayFactory.updateTimeout(request.timeoutSeconds());
+        if (request != null) {
+            if (request.timeoutSeconds() != null) {
+                gatewayFactory.updateTimeout(request.timeoutSeconds());
+            }
+            if (request.provider() != null && !request.provider().isBlank()) {
+                gatewayFactory.updateProvider(request.provider());
+            }
+            if (request.model() != null && !request.model().isBlank()) {
+                gatewayFactory.updateModel(request.model());
+            }
         }
         return getStatus();
     }

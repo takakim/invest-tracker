@@ -2321,9 +2321,11 @@ components:
           items: { type: string }
         errorMessage: { type: string, nullable: true }
         timeoutSeconds: { type: integer, example: 60 }
+        availableProviders:
+          type: array
+          items: { type: string }
     AiConfigRequest:
       type: object
-      required: [timeoutSeconds]
       properties:
         timeoutSeconds:
           type: integer
@@ -2331,6 +2333,14 @@ components:
           maximum: 3600
           description: AI provider HTTP read timeout in seconds
           example: 120
+        provider:
+          type: string
+          description: AI provider (LM_STUDIO, OPENAI, GEMINI, ANTHROPIC, AUTO)
+          example: LM_STUDIO
+        model:
+          type: string
+          description: AI model name or "auto"
+          example: auto
     HoldingFinancialMetrics:
 
       type: object
