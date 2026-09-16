@@ -111,7 +111,9 @@ public class PortfolioHistoryService {
             }
         }
 
-        // Auto-backfill historical quotes for portfolio held instruments if low observation count
+        // Auto-backfill historical quotes for portfolio held instruments if missing historical coverage
+        long periodDays = ChronoUnit.DAYS.between(periodStart, now);
+        Instant coverageThreshold = periodStart.plus(Math.max(5, periodDays / 4), ChronoUnit.DAYS);
         Set<UUID> heldInstrumentIds = new HashSet<>();
         for (Transaction tx : completedTxs) {
             if (tx.getInstrument() != null && tx.getInstrument().getId() != null) {
@@ -120,7 +122,7 @@ public class PortfolioHistoryService {
         }
         for (UUID instId : heldInstrumentIds) {
             try {
-                if (marketDataService.getObservationCount(instId) < 10) {
+                if (!marketDataService.hasHistoricalObservationBefore(instId, coverageThreshold)) {
                     marketDataService.backfillHistoricalPrices(instId, periodStart, now);
                 }
             } catch (Exception ignored) {
