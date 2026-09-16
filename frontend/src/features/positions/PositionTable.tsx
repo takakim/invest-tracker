@@ -39,9 +39,9 @@ import {
 import { PositionFormModal } from './PositionFormModal';
 import { PositionLotsModal } from './PositionLotsModal';
 import { PositionPerformanceModal } from './PositionPerformanceModal';
-import { HoldingAiEvaluationModal } from '../ai';
+import { HoldingAiEvaluationModal, useLatestHoldingEvaluations, getStanceChipProps, isEvaluationStale } from '../ai';
 import { ConfirmDialog, EmptyState, ErrorAlert, LoadingState, SortableTableHead } from '../../components';
-import type { Position, PositionCreateInput, PositionPerformance, PositionUpdateInput } from '../../types';
+import type { Position, PositionCreateInput, PositionPerformance, PositionUpdateInput, HoldingAiEvaluation } from '../../types';
 import type { PositionFormData } from '../../forms/schemas';
 import { Order, sortRows } from '../../utils/sorting';
 
@@ -71,6 +71,16 @@ export function PositionTable({
   const updateMutation = useUpdatePosition(portfolioId, accountId);
   const archiveMutation = useArchivePosition(portfolioId, accountId);
   const recalculateMutation = useRecalculatePositions(portfolioId);
+
+  const { data: holdingEvaluations = [] } = useLatestHoldingEvaluations(portfolioId);
+
+  const evaluationsByInstrumentId = useMemo(() => {
+    const map = new Map<string, HoldingAiEvaluation>();
+    for (const ev of holdingEvaluations) {
+      map.set(ev.instrumentId, ev);
+    }
+    return map;
+  }, [holdingEvaluations]);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingPosition, setEditingPosition] = useState<Position | null>(null);
@@ -418,16 +428,51 @@ export function PositionTable({
                     </TableCell>
                     <TableCell align="right">
                       <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end', alignItems: 'center' }}>
-                        <Tooltip title="AI fundamental & risk evaluation (Gemma 4 12B)">
-                          <IconButton
-                            size="small"
-                            color="primary"
-                            onClick={() => setAiTarget(item)}
-                            aria-label={`ai evaluate ${item.instrumentName}`}
-                          >
-                            <AutoAwesomeIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
+                        {(() => {
+                          const ev = evaluationsByInstrumentId.get(item.instrumentId);
+                          if (ev) {
+                            const stanceProps = getStanceChipProps(ev.stance);
+                            const isStale = isEvaluationStale(ev.evaluatedAt, ev.isStale);
+                            return (
+                              <Tooltip
+                                title={
+                                  isStale
+                                    ? `AI Stance: ${stanceProps.label} (Stale >7d — evaluated on ${new Date(ev.evaluatedAt).toLocaleDateString()})`
+                                    : `AI Stance: ${stanceProps.label} (Evaluated on ${new Date(ev.evaluatedAt).toLocaleDateString()})`
+                                }
+                              >
+                                <Chip
+                                  icon={<AutoAwesomeIcon sx={{ fontSize: '14px !important' }} />}
+                                  label={isStale ? `${stanceProps.label} ⚠️` : stanceProps.label}
+                                  color={isStale ? 'warning' : stanceProps.color}
+                                  size="small"
+                                  variant="outlined"
+                                  onClick={() => setAiTarget(item)}
+                                  sx={{
+                                    cursor: 'pointer',
+                                    fontWeight: 700,
+                                    fontSize: '0.72rem',
+                                    height: 24,
+                                    borderWidth: 1.5,
+                                  }}
+                                  aria-label={`ai evaluate ${item.instrumentName}`}
+                                />
+                              </Tooltip>
+                            );
+                          }
+                          return (
+                            <Tooltip title="AI fundamental & risk evaluation">
+                              <IconButton
+                                size="small"
+                                color="primary"
+                                onClick={() => setAiTarget(item)}
+                                aria-label={`ai evaluate ${item.instrumentName}`}
+                              >
+                                <AutoAwesomeIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          );
+                        })()}
 
                         <Tooltip title="View performance, dividends, and full ledger">
                           <Button
@@ -539,6 +584,7 @@ export function PositionTable({
           instrumentId={aiTarget.instrumentId}
           symbol={aiTarget.ticker || aiTarget.instrumentName}
           instrumentName={aiTarget.instrumentName}
+          initialData={evaluationsByInstrumentId.get(aiTarget.instrumentId)}
         />
       )}
     </Box>

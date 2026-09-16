@@ -24,6 +24,7 @@ import {
   TableHead,
   TableRow,
   Tooltip,
+  IconButton,
 } from '@mui/material';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined';
@@ -35,11 +36,15 @@ import PsychologyIcon from '@mui/icons-material/Psychology';
 import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined';
 import LaunchIcon from '@mui/icons-material/Launch';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import SettingsIcon from '@mui/icons-material/Settings';
 
 import { useEvaluatePortfolio, useLatestPortfolioEvaluation } from './useAi';
 import { HoldingAiEvaluationModal, getStanceChipProps, getRiskLevelColor } from './HoldingAiEvaluationModal';
 import { AiStatusIndicator } from './AiStatusIndicator';
+import { AiSettingsModal } from './AiSettingsModal';
+import { isEvaluationStale } from './aiStaleness';
 import type { PortfolioAiEvaluation, HoldingAiEvaluation } from '../../types';
+
 
 interface PortfolioAiEvaluationCardProps {
   portfolioId: string;
@@ -53,6 +58,7 @@ export const PortfolioAiEvaluationCard: React.FC<PortfolioAiEvaluationCardProps>
 }) => {
   const [selectedHolding, setSelectedHolding] = useState<HoldingAiEvaluation | null>(null);
   const [holdingModalOpen, setHoldingModalOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Load cached evaluation from DB on mount
   const cachedQuery = useLatestPortfolioEvaluation(portfolioId);
@@ -97,6 +103,10 @@ export const PortfolioAiEvaluationCard: React.FC<PortfolioAiEvaluationCardProps>
       })()
     : null;
 
+  const isStale = evaluation
+    ? isEvaluationStale(evaluation.evaluatedAt, evaluation.isStale)
+    : false;
+
   return (
     <Card variant="outlined" sx={{ borderRadius: 2 }}>
       <CardHeader
@@ -111,6 +121,14 @@ export const PortfolioAiEvaluationCard: React.FC<PortfolioAiEvaluationCardProps>
                 sx={{ fontWeight: 600, fontSize: '0.7rem', letterSpacing: 0.5 }}
               />
             )}
+            {isStale && (
+              <Chip
+                label="Stale (>7d)"
+                size="small"
+                color="warning"
+                sx={{ fontWeight: 700, fontSize: '0.68rem', letterSpacing: 0.3 }}
+              />
+            )}
             {lastEvaluatedLabel && (
               <Tooltip title={`Last evaluated: ${new Date(evaluation!.evaluatedAt).toLocaleString()}`}>
                 <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
@@ -122,6 +140,16 @@ export const PortfolioAiEvaluationCard: React.FC<PortfolioAiEvaluationCardProps>
               </Tooltip>
             )}
             <AiStatusIndicator />
+            <Tooltip title="AI Gateway Settings">
+              <IconButton
+                size="small"
+                onClick={() => setSettingsOpen(true)}
+                data-testid="portfolio-ai-settings-btn"
+                aria-label="AI Gateway Settings"
+              >
+                <SettingsIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
             {evaluation && (
               <Button
                 variant="outlined"
@@ -135,6 +163,7 @@ export const PortfolioAiEvaluationCard: React.FC<PortfolioAiEvaluationCardProps>
             )}
           </Stack>
         }
+
         title={
           <Typography variant="h6" sx={{ fontWeight: 700 }}>
             AI Portfolio Intelligence
@@ -208,20 +237,47 @@ export const PortfolioAiEvaluationCard: React.FC<PortfolioAiEvaluationCardProps>
           <Alert
             severity="error"
             action={
-              <Button color="inherit" size="small" onClick={handleRunAnalysis}>
-                Retry
-              </Button>
+              <Stack direction="row" spacing={1}>
+                <Button color="inherit" size="small" onClick={() => setSettingsOpen(true)}>
+                  Adjust Timeout
+                </Button>
+                <Button color="inherit" size="small" onClick={handleRunAnalysis}>
+                  Retry
+                </Button>
+              </Stack>
             }
             sx={{ mb: 2 }}
           >
-            Failed to evaluate portfolio: {error?.message || 'Connection to LM Studio failed'}.
-            Verify that LM Studio is running locally at <code>http://localhost:1234</code> with Gemma 4 12B loaded.
+            Failed to evaluate portfolio: {error?.message || 'Connection to AI provider failed'}.
+            Verify that your AI provider is reachable or increase the inference timeout.
           </Alert>
         )}
+
 
         {/* Evaluated Results View */}
         {evaluation && (
           <Stack spacing={3}>
+            {isStale && (
+              <Alert
+                severity="warning"
+                action={
+                  <Button
+                    color="inherit"
+                    size="small"
+                    onClick={handleRunAnalysis}
+                    disabled={isLoading}
+                    startIcon={<RefreshIcon />}
+                  >
+                    Re-evaluate
+                  </Button>
+                }
+              >
+                <strong>Outdated Evaluation (&gt;7 days):</strong> This portfolio was evaluated on{' '}
+                {new Date(evaluation.evaluatedAt).toLocaleDateString()} ({lastEvaluatedLabel}).
+                Market conditions, asset weights, and holding valuations may have shifted.
+              </Alert>
+            )}
+
             {/* Top Score Bar */}
             <Paper variant="outlined" sx={{ p: 2.5, bgcolor: 'background.default' }}>
               <Grid container spacing={3} sx={{ alignItems: 'center' }}>
@@ -417,15 +473,30 @@ export const PortfolioAiEvaluationCard: React.FC<PortfolioAiEvaluationCardProps>
                       {evaluation.topHoldingEvaluations.map((holding) => {
                         const stanceProps = getStanceChipProps(holding.stance);
                         const holdingRiskColor = getRiskLevelColor(holding.riskLevel, holding.riskScore);
+                        const isHoldingStale = isEvaluationStale(holding.evaluatedAt, holding.isStale);
                         return (
                           <TableRow key={holding.instrumentId} hover>
                             <TableCell>
-                              <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                {holding.symbol}
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                {holding.name}
-                              </Typography>
+                              <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                                <Box>
+                                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                    {holding.symbol}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {holding.name}
+                                  </Typography>
+                                </Box>
+                                {isHoldingStale && (
+                                  <Tooltip title="Evaluation is older than 7 days">
+                                    <Chip
+                                      label="Stale (>7d)"
+                                      size="small"
+                                      color="warning"
+                                      sx={{ height: 20, fontSize: '0.65rem', fontWeight: 700 }}
+                                    />
+                                  </Tooltip>
+                                )}
+                              </Stack>
                             </TableCell>
                             <TableCell align="right">
                               <Typography variant="body2">
@@ -494,7 +565,9 @@ export const PortfolioAiEvaluationCard: React.FC<PortfolioAiEvaluationCardProps>
             initialData={selectedHolding}
           />
         )}
+        <AiSettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       </CardContent>
     </Card>
   );
 };
+

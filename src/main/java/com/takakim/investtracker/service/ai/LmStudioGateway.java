@@ -28,6 +28,7 @@ public class LmStudioGateway implements AiGateway {
     private final AiProperties properties;
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
+    private final SimpleClientHttpRequestFactory requestFactory;
 
     @Autowired
     public LmStudioGateway(AiProperties properties, RestClient.Builder restClientBuilder, ObjectMapper objectMapper) {
@@ -38,9 +39,9 @@ public class LmStudioGateway implements AiGateway {
                 ? properties.getTimeoutSeconds()
                 : 60;
 
-        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-        requestFactory.setConnectTimeout(Duration.ofSeconds(Math.min(timeout, 10)));
-        requestFactory.setReadTimeout(Duration.ofSeconds(timeout));
+        this.requestFactory = new SimpleClientHttpRequestFactory();
+        this.requestFactory.setConnectTimeout(Duration.ofSeconds(Math.min(timeout, 10)));
+        this.requestFactory.setReadTimeout(Duration.ofSeconds(timeout));
 
         String baseUrl = properties != null && properties.getBaseUrl() != null && !properties.getBaseUrl().isBlank()
                 ? properties.getBaseUrl().replaceAll("/+$", "")
@@ -49,7 +50,7 @@ public class LmStudioGateway implements AiGateway {
         RestClient.Builder builder = restClientBuilder != null ? restClientBuilder : RestClient.builder();
         this.restClient = builder
                 .baseUrl(baseUrl)
-                .requestFactory(requestFactory)
+                .requestFactory(this.requestFactory)
                 .build();
     }
 
@@ -57,11 +58,13 @@ public class LmStudioGateway implements AiGateway {
         this.properties = properties;
         this.restClient = restClient;
         this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();
+        this.requestFactory = null;
     }
+
 
     public AiStatusDto checkStatus() {
         if (!properties.isEnabled()) {
-            return new AiStatusDto(false, false, "LM_STUDIO", properties.getBaseUrl(), properties.getModel(), List.of(), "AI evaluation is disabled in configuration");
+            return new AiStatusDto(false, false, "LM_STUDIO", properties.getBaseUrl(), properties.getModel(), List.of(), "AI evaluation is disabled in configuration", getTimeoutSeconds());
         }
 
         List<String> discoveredModels = new ArrayList<>();
@@ -100,7 +103,7 @@ public class LmStudioGateway implements AiGateway {
                     }
                 }
             }
-            return new AiStatusDto(true, true, "LM_STUDIO", properties.getBaseUrl(), properties.getModel(), discoveredModels, null);
+            return new AiStatusDto(true, true, "LM_STUDIO", properties.getBaseUrl(), properties.getModel(), discoveredModels, null, getTimeoutSeconds());
         } catch (Exception e) {
             log.debug("LM Studio /api/v1/models check failed, attempting /v1/models fallback: {}", e.getMessage());
         }
@@ -124,10 +127,10 @@ public class LmStudioGateway implements AiGateway {
                     }
                 }
             }
-            return new AiStatusDto(true, true, "LM_STUDIO", properties.getBaseUrl(), properties.getModel(), discoveredModels, null);
+            return new AiStatusDto(true, true, "LM_STUDIO", properties.getBaseUrl(), properties.getModel(), discoveredModels, null, getTimeoutSeconds());
         } catch (Exception e) {
             log.warn("Failed to connect to LM Studio at {}: {}", properties.getBaseUrl(), e.getMessage());
-            return new AiStatusDto(true, false, "LM_STUDIO", properties.getBaseUrl(), properties.getModel(), List.of(), "Cannot connect to LM Studio: " + e.getMessage());
+            return new AiStatusDto(true, false, "LM_STUDIO", properties.getBaseUrl(), properties.getModel(), List.of(), "Cannot connect to LM Studio: " + e.getMessage(), getTimeoutSeconds());
         }
     }
 
@@ -257,4 +260,17 @@ public class LmStudioGateway implements AiGateway {
     public String getProviderName() {
         return "LM_STUDIO";
     }
+
+    @Override
+    public void setTimeoutSeconds(int timeoutSeconds) {
+        if (requestFactory != null) {
+            requestFactory.setReadTimeout(Duration.ofSeconds(timeoutSeconds));
+        }
+    }
+
+    @Override
+    public int getTimeoutSeconds() {
+        return properties != null ? properties.getTimeoutSeconds() : 60;
+    }
 }
+

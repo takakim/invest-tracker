@@ -9,6 +9,19 @@ public record AiStatusDto(
         String baseUrl,
         String configuredModel,
         List<String> availableModels,
-        String errorMessage
+        String errorMessage,
+        int timeoutSeconds
 ) {
+    public AiStatusDto(
+            boolean enabled,
+            boolean connected,
+            String provider,
+            String baseUrl,
+            String configuredModel,
+            List<String> availableModels,
+            String errorMessage
+    ) {
+        this(enabled, connected, provider, baseUrl, configuredModel, availableModels, errorMessage, 60);
+    }
 }
+

@@ -291,9 +291,21 @@ class GeminiGatewayTests {
     }
 
     @Test
-    @DisplayName("test constructor handles null ObjectMapper")
+    @DisplayName("test constructor handles null ObjectMapper and null properties")
     void testConstructorNullMapper() {
         GeminiGateway gw = new GeminiGateway(properties, RestClient.builder().build(), null);
         assertEquals("GEMINI", gw.getProviderName());
+        GeminiGateway gwNull = new GeminiGateway(null, (RestClient.Builder) null, null);
+        assertEquals(60, gwNull.getTimeoutSeconds());
+    }
+
+    @Test
+    @DisplayName("Autowired constructor sets timeouts and setTimeoutSeconds updates requestFactory")
+    void testAutowiredConstructorAndSetTimeoutSeconds() {
+        GeminiGateway gw = new GeminiGateway(properties, RestClient.builder(), objectMapper);
+        assertEquals(30, gw.getTimeoutSeconds());
+        gw.setTimeoutSeconds(120);
+        gateway.setTimeoutSeconds(90);
     }
 }
+

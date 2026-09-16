@@ -40,6 +40,7 @@ import com.takakim.investtracker.service.market.yahoo.YahooFinanceDtos;
 import com.takakim.investtracker.service.market.yahoo.YahooFinanceGateway;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -1472,5 +1473,404 @@ class AiEvaluationServiceTests {
         assertNull(result.fundamentalMetrics().dividendYield());
         assertEquals(18.0, result.fundamentalMetrics().forwardPe());
     }
+
+    @Test
+    @DisplayName("HoldingAiEvaluationDto and PortfolioAiEvaluationDto report staleness when older than 7 days")
+    void testEvaluationStalenessCalculation() {
+        Instant now = Instant.now();
+        Instant eightDaysAgo = now.minus(8, ChronoUnit.DAYS);
+        Instant threeDaysAgo = now.minus(3, ChronoUnit.DAYS);
+
+        HoldingAiEvaluationDto freshHolding = new HoldingAiEvaluationDto(
+                instrumentId, "AAPL", "Apple Inc.", "EQUITY",
+                BigDecimal.TEN, BigDecimal.valueOf(150), BigDecimal.valueOf(100),
+                BigDecimal.valueOf(500), 50.0, 10.0,
+                AiStance.ACCUMULATE, 4, AiRiskLevel.LOW,
+                "Strong holding", List.of("Moat"), List.of("None"), "Hold",
+                null, "LM_STUDIO", threeDaysAgo
+        );
+        assertFalse(freshHolding.isStale());
+
+        HoldingAiEvaluationDto staleHolding = new HoldingAiEvaluationDto(
+                instrumentId, "AAPL", "Apple Inc.", "EQUITY",
+                BigDecimal.TEN, BigDecimal.valueOf(150), BigDecimal.valueOf(100),
+                BigDecimal.valueOf(500), 50.0, 10.0,
+                AiStance.ACCUMULATE, 4, AiRiskLevel.LOW,
+                "Strong holding", List.of("Moat"), List.of("None"), "Hold",
+                null, "LM_STUDIO", eightDaysAgo
+        );
+        assertTrue(staleHolding.isStale());
+
+        PortfolioAiEvaluationDto freshPortfolio = new PortfolioAiEvaluationDto(
+                portfolioId, "Main Portfolio", "USD",
+                5, AiRiskLevel.MODERATE, "Executive Summary",
+                "Diversification", List.of("Risk 1"), List.of("Tax 1"),
+                List.of("Rec 1"), List.of("Scenario 1"), List.of(),
+                "LM_STUDIO", threeDaysAgo
+        );
+        assertFalse(freshPortfolio.isStale());
+
+        PortfolioAiEvaluationDto stalePortfolio = new PortfolioAiEvaluationDto(
+                portfolioId, "Main Portfolio", "USD",
+                5, AiRiskLevel.MODERATE, "Executive Summary",
+                "Diversification", List.of("Risk 1"), List.of("Tax 1"),
+                List.of("Rec 1"), List.of("Scenario 1"), List.of(),
+                "LM_STUDIO", eightDaysAgo
+        );
+        assertTrue(stalePortfolio.isStale());
+
+        // Null evaluatedAt cases
+        HoldingAiEvaluationDto nullHoldingDate = new HoldingAiEvaluationDto(
+                instrumentId, "AAPL", "Apple Inc.", "EQUITY",
+                BigDecimal.TEN, BigDecimal.valueOf(150), BigDecimal.valueOf(100),
+                BigDecimal.valueOf(500), 50.0, 10.0,
+                AiStance.HOLD, 5, AiRiskLevel.MODERATE,
+                "Summary", List.of(), List.of(), "Tradeoff",
+                null, "LM_STUDIO", null
+        );
+        assertFalse(nullHoldingDate.isStale());
+
+        PortfolioAiEvaluationDto nullPortfolioDate = new PortfolioAiEvaluationDto(
+                portfolioId, "Main Portfolio", "USD",
+                5, AiRiskLevel.MODERATE, "Summary",
+                "Diversification", List.of(), List.of(),
+                List.of(), List.of(), List.of(),
+                "LM_STUDIO", null
+        );
+        assertFalse(nullPortfolioDate.isStale());
+    }
+
+    @Test
+    @DisplayName("evaluatePortfolio parses and persists top holding evaluations into holdingAiEvaluationRepository")
+    void testEvaluatePortfolioPersistsTopHoldingEvaluations() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(testPortfolio));
+        when(accountRepository.findAllByPortfolioIdAndStatusOrderByNameAsc(eq(portfolioId), any())).thenReturn(List.of());
+        when(analyticsEngine.calculate(eq(portfolioId), any())).thenReturn(testAnalytics);
+
+        String jsonWithTopHoldings = """
+                {
+                  "overallRiskScore": 6,
+                  "overallRiskLevel": "MODERATE",
+                  "executiveSummary": "Overall balanced portfolio with top holdings.",
+                  "diversificationAssessment": "Good allocation across equities.",
+                  "concentrationRisks": ["Tech tilt"],
+                  "taxAndLocationOptimization": ["Max ISA"],
+                  "topRecommendations": ["Hold"],
+                  "macroStressScenarios": ["Rate hike -3%"],
+                  "topHoldingEvaluations": [
+                    {
+                      "symbol": "AAPL",
+                      "stance": "STRONG_BUY",
+                      "riskScore": 3,
+                      "riskLevel": "LOW",
+                      "executiveSummary": "World-class consumer hardware and services ecosystem.",
+                      "strengths": ["Cash flow", "Brand"],
+                      "risks": ["Valuation"]
+                    }
+                  ]
+                }
+                """;
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(jsonWithTopHoldings);
+
+        PortfolioAiEvaluationDto result = service.evaluatePortfolio(portfolioId);
+
+        assertNotNull(result);
+        assertEquals(1, result.topHoldingEvaluations().size());
+        HoldingAiEvaluationDto topHolding = result.topHoldingEvaluations().get(0);
+        assertEquals("AAPL", topHolding.symbol());
+        assertEquals(AiStance.STRONG_BUY, topHolding.stance());
+        assertEquals(3, topHolding.riskScore());
+        assertEquals(AiRiskLevel.LOW, topHolding.riskLevel());
+
+        // Verify holding evaluation was persisted
+        verify(holdingAiEvaluationRepository, atLeastOnce()).save(any(HoldingAiEvaluation.class));
+    }
+
+    @Test
+    @DisplayName("getLatestPortfolioEvaluation enriches result with latest holding evaluations")
+    void testGetLatestPortfolioEvaluationEnrichment() throws Exception {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(testPortfolio));
+
+        PortfolioAiEvaluation storedPortfolio = new PortfolioAiEvaluation(
+                portfolioId, "LM_STUDIO", "gemma4-12b",
+                5, "MODERATE", "Summary",
+                """
+                {
+                  "portfolioId": "%s",
+                  "portfolioName": "Main Portfolio",
+                  "baseCurrency": "USD",
+                  "overallRiskScore": 5,
+                  "overallRiskLevel": "MODERATE",
+                  "executiveSummary": "Summary",
+                  "diversificationAssessment": "Diversified",
+                  "concentrationRisks": [],
+                  "taxAndLocationOptimization": [],
+                  "topRecommendations": [],
+                  "macroStressScenarios": [],
+                  "topHoldingEvaluations": [],
+                  "modelUsed": "gemma4-12b",
+                  "evaluatedAt": "2026-09-14T22:00:00Z"
+                }
+                """.formatted(portfolioId),
+                Instant.now()
+        );
+        when(portfolioAiEvaluationRepository.findByPortfolioId(portfolioId)).thenReturn(Optional.of(storedPortfolio));
+
+        HoldingAiEvaluation storedHolding = new HoldingAiEvaluation(
+                portfolioId, instrumentId, "LM_STUDIO", "gemma4-12b",
+                "ACCUMULATE", 4, "LOW", "Holding summary",
+                """
+                {
+                  "instrumentId": "%s",
+                  "symbol": "AAPL",
+                  "name": "Apple Inc.",
+                  "assetClass": "EQUITY",
+                  "quantity": 10,
+                  "currentPrice": 150.0,
+                  "averageCostBasis": 100.0,
+                  "unrealizedGainLoss": 500.0,
+                  "unrealizedGainLossPercentage": 50.0,
+                  "portfolioWeightPercentage": 10.0,
+                  "stance": "ACCUMULATE",
+                  "riskScore": 4,
+                  "riskLevel": "LOW",
+                  "executiveSummary": "Holding summary",
+                  "strengths": ["Moat"],
+                  "risks": ["Supply chain"],
+                  "holdingVsSellingTradeoff": "Hold",
+                  "fundamentalMetrics": null,
+                  "modelUsed": "gemma4-12b",
+                  "evaluatedAt": "2026-09-14T22:00:00Z"
+                }
+                """.formatted(instrumentId),
+                Instant.now()
+        );
+        when(holdingAiEvaluationRepository.findByPortfolioId(portfolioId)).thenReturn(List.of(storedHolding));
+
+        Optional<PortfolioAiEvaluationDto> resultOpt = service.getLatestPortfolioEvaluation(portfolioId);
+        assertTrue(resultOpt.isPresent());
+        PortfolioAiEvaluationDto result = resultOpt.get();
+        assertEquals(1, result.topHoldingEvaluations().size());
+        assertEquals("AAPL", result.topHoldingEvaluations().get(0).symbol());
+        assertEquals(AiStance.ACCUMULATE, result.topHoldingEvaluations().get(0).stance());
+    }
+
+    @Test
+    @DisplayName("evaluatePortfolio handles edge cases in top holding evaluations parsing")
+    void testEvaluatePortfolioTopHoldingEvaluationsEdgeCases() {
+        UUID untrackedId = UUID.randomUUID();
+        HoldingExposure fundHolding = new HoldingExposure(
+                untrackedId, "Global Index Fund", null, AssetClass.ETF,
+                BigDecimal.ZERO, BigDecimal.valueOf(100),
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, "GBP"
+        );
+
+        UUID costNoQtyId = UUID.randomUUID();
+        HoldingExposure costNoQtyHolding = new HoldingExposure(
+                costNoQtyId, "Cost No Qty", "CNQ", AssetClass.STOCK,
+                BigDecimal.ZERO, BigDecimal.valueOf(100),
+                BigDecimal.ZERO, BigDecimal.valueOf(100), BigDecimal.ZERO, BigDecimal.valueOf(10), "GBP"
+        );
+
+        PortfolioAnalytics customAnalytics = new PortfolioAnalytics(
+                portfolioId, Instant.now(), "GBP",
+                BigDecimal.valueOf(1000), BigDecimal.valueOf(500), BigDecimal.valueOf(500),
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                List.of(), List.of(), List.of(),
+                List.of(
+                        new HoldingExposure(instrumentId, "Apple Inc.", "AAPL", AssetClass.STOCK,
+                                BigDecimal.TEN, BigDecimal.valueOf(180), BigDecimal.valueOf(1800),
+                                BigDecimal.ZERO, BigDecimal.valueOf(100), BigDecimal.valueOf(25), "GBP"),
+                        fundHolding,
+                        costNoQtyHolding
+                ),
+                List.of()
+        );
+
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(testPortfolio));
+        when(accountRepository.findAllByPortfolioIdAndStatusOrderByNameAsc(eq(portfolioId), any())).thenReturn(List.of());
+        when(analyticsEngine.calculate(eq(portfolioId), any())).thenReturn(customAnalytics);
+
+        String jsonWithEdgeCases = """
+                {
+                  "overallRiskScore": 0,
+                  "overallRiskLevel": "LOW",
+                  "executiveSummary": "Summary",
+                  "diversificationAssessment": "Assessment",
+                  "concentrationRisks": [],
+                  "taxAndLocationOptimization": [],
+                  "topRecommendations": [],
+                  "macroStressScenarios": [],
+                  "topHoldingEvaluations": [
+                    { "symbol": "" },
+                    { "stance": "HOLD" },
+                    { "symbol": "UNKNOWN_TICKER", "riskScore": 5 },
+                    {
+                      "symbol": "AAPL",
+                      "stance": "TRIM",
+                      "riskScore": 0,
+                      "executiveSummary": "Low score test"
+                    },
+                    {
+                      "symbol": "Global Index Fund",
+                      "stance": "HOLD",
+                      "riskScore": 15,
+                      "executiveSummary": "Match by instrumentName and high score test"
+                    },
+                    {
+                      "symbol": "CNQ",
+                      "stance": "HOLD",
+                      "riskScore": 5,
+                      "executiveSummary": "Cost with zero quantity test"
+                    }
+                  ]
+                }
+                """;
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(jsonWithEdgeCases);
+
+        PortfolioAiEvaluationDto result = service.evaluatePortfolio(portfolioId);
+        assertNotNull(result);
+        assertEquals(1, result.overallRiskScore());
+        assertEquals(3, result.topHoldingEvaluations().size());
+
+        HoldingAiEvaluationDto aapl = result.topHoldingEvaluations().stream()
+                .filter(h -> "AAPL".equals(h.symbol())).findFirst().orElseThrow();
+        assertEquals(1, aapl.riskScore());
+        assertEquals(BigDecimal.ZERO, aapl.averageCostBasis());
+
+        HoldingAiEvaluationDto fund = result.topHoldingEvaluations().stream()
+                .filter(h -> "Global Index Fund".equals(h.name())).findFirst().orElseThrow();
+        assertEquals(10, fund.riskScore());
+        assertEquals(0.0, fund.portfolioWeightPercentage());
+
+        HoldingAiEvaluationDto cnq = result.topHoldingEvaluations().stream()
+                .filter(h -> "CNQ".equals(h.symbol())).findFirst().orElseThrow();
+        assertEquals(BigDecimal.ZERO, cnq.averageCostBasis());
+    }
+
+    @Test
+    @DisplayName("evaluatePortfolio falls back to stored holding evaluations when topHoldingEvaluations is null or non-array")
+    void testEvaluatePortfolioFallbackToStoredHoldingEvaluations() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(testPortfolio));
+        when(accountRepository.findAllByPortfolioIdAndStatusOrderByNameAsc(eq(portfolioId), any())).thenReturn(List.of());
+        when(analyticsEngine.calculate(eq(portfolioId), any())).thenReturn(testAnalytics);
+        when(holdingAiEvaluationRepository.findByPortfolioId(portfolioId)).thenReturn(List.of());
+
+        String jsonNonArrayHoldings = """
+                {
+                  "overallRiskScore": 15,
+                  "overallRiskLevel": null,
+                  "executiveSummary": "Summary",
+                  "diversificationAssessment": "Assessment",
+                  "concentrationRisks": [],
+                  "taxAndLocationOptimization": [],
+                  "topRecommendations": [],
+                  "macroStressScenarios": [],
+                  "topHoldingEvaluations": "not an array"
+                }
+                """;
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(jsonNonArrayHoldings);
+
+        PortfolioAiEvaluationDto result = service.evaluatePortfolio(portfolioId);
+        assertNotNull(result);
+        assertEquals(10, result.overallRiskScore());
+        assertEquals(AiRiskLevel.VERY_HIGH, result.overallRiskLevel());
+        assertTrue(result.topHoldingEvaluations().isEmpty());
+    }
+
+    @Test
+    @DisplayName("evaluateHolding handles exact empty JSON object and blank text fallback")
+    void testEvaluateHoldingExactEmptyObjectAndBlankFallback() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(testPortfolio));
+        when(instrumentRepository.findById(instrumentId)).thenReturn(Optional.of(testInstrument));
+        when(positionService.listPortfolioPositionsPerformance(portfolioId, false)).thenReturn(List.of(testPosition));
+        when(analyticsEngine.calculate(eq(portfolioId), any())).thenReturn(testAnalytics);
+
+        // Exact "{}" string exercises cleanJson.equals("{}")
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn("{}");
+
+        HoldingAiEvaluationDto result = service.evaluateHolding(portfolioId, instrumentId);
+        assertNotNull(result);
+        assertEquals(AiStance.HOLD, result.stance());
+
+        // Blank string "   " exercises extractJson blank check and fallback with blank rawText
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn("   ");
+
+        HoldingAiEvaluationDto result2 = service.evaluateHolding(portfolioId, instrumentId);
+        assertNotNull(result2);
+        assertEquals("Position reviewed based on cost basis and current market price.", result2.executiveSummary());
+    }
+
+    @Test
+    @DisplayName("evaluatePortfolio with empty topHoldings in analytics skips top holdings parsing")
+    void testEvaluatePortfolioEmptyTopHoldingsInAnalytics() {
+        PortfolioAnalytics analyticsNoHoldings = new PortfolioAnalytics(
+                portfolioId, Instant.now(), "GBP",
+                BigDecimal.valueOf(1000), BigDecimal.valueOf(1000), BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                List.of(), List.of(), List.of(),
+                List.of(), // empty topHoldings
+                List.of()
+        );
+
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(testPortfolio));
+        when(accountRepository.findAllByPortfolioIdAndStatusOrderByNameAsc(eq(portfolioId), any())).thenReturn(List.of());
+        when(analyticsEngine.calculate(eq(portfolioId), any())).thenReturn(analyticsNoHoldings);
+        when(holdingAiEvaluationRepository.findByPortfolioId(portfolioId)).thenReturn(List.of());
+
+        String json = """
+                {
+                  "overallRiskScore": 5,
+                  "overallRiskLevel": "MODERATE",
+                  "executiveSummary": "All cash portfolio",
+                  "diversificationAssessment": "Cash only",
+                  "concentrationRisks": [],
+                  "taxAndLocationOptimization": [],
+                  "topRecommendations": [],
+                  "macroStressScenarios": [],
+                  "topHoldingEvaluations": [
+                    { "symbol": "AAPL", "riskScore": 3 }
+                  ]
+                }
+                """;
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(json);
+
+        PortfolioAiEvaluationDto result = service.evaluatePortfolio(portfolioId);
+        assertNotNull(result);
+        assertTrue(result.topHoldingEvaluations().isEmpty());
+    }
+
+    @Test
+    @DisplayName("updateConfig updates timeout on gateway factory and returns status")
+    void testUpdateConfig() {
+        when(gatewayFactory.getActiveGateway()).thenReturn(gateway);
+        when(gateway.checkStatus()).thenReturn(new AiStatusDto(true, true, "LM_STUDIO", "http://localhost:1234", "gemma4-12b", List.of(), null, 120));
+
+        com.takakim.investtracker.service.ai.dto.AiConfigRequest request =
+                new com.takakim.investtracker.service.ai.dto.AiConfigRequest(120);
+        AiStatusDto status = service.updateConfig(request);
+
+        assertNotNull(status);
+        assertEquals(120, status.timeoutSeconds());
+        verify(gatewayFactory).updateTimeout(120);
+    }
+
+    @Test
+    @DisplayName("updateConfig with null request or timeout does not call updateTimeout")
+    void testUpdateConfigNull() {
+        when(gatewayFactory.getActiveGateway()).thenReturn(gateway);
+        when(gateway.checkStatus()).thenReturn(new AiStatusDto(true, true, "LM_STUDIO", "http://localhost:1234", "gemma4-12b", List.of(), null, 60));
+
+        AiStatusDto status1 = service.updateConfig(null);
+        assertNotNull(status1);
+
+        com.takakim.investtracker.service.ai.dto.AiConfigRequest nullTimeoutReq =
+                new com.takakim.investtracker.service.ai.dto.AiConfigRequest(null);
+        AiStatusDto status2 = service.updateConfig(nullTimeoutReq);
+        assertNotNull(status2);
+
+        verify(gatewayFactory, never()).updateTimeout(anyInt());
+    }
 }
+
 
