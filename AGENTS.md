@@ -194,3 +194,14 @@ Enriches raw InvestEngine CSV exports by cross-referencing ISINs to add standard
 python3 scripts/enrich_investengine_csv.py path/to/SIPP.csv -o path/to/SIPP_enriched.csv
 ```
 
+### 7. `backfill_history.py`
+Backfills multi-year daily market price observations for active portfolio instruments from Yahoo Finance directly into the PostgreSQL database, ensuring smooth and accurate historical portfolio valuation without artificial cliff jumps.
+```bash
+# Backfill all active portfolio instruments with 2y daily price bars
+python3 scripts/backfill_history.py
+
+# Backfill specific tickers with a 5y range
+python3 scripts/backfill_history.py --range 5y --tickers NVDA AAPL RR. VUAG
+```
+
+
