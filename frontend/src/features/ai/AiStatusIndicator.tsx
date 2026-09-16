@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Chip, Tooltip, Box, CircularProgress } from '@mui/material';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import ErrorOutlineOutlinedIcon from '@mui/icons-material/ErrorOutlineOutlined';
 import { useAiStatus } from './useAi';
+import { AiSettingsModal } from './AiSettingsModal';
 
 interface AiStatusIndicatorProps {
   size?: 'small' | 'medium';
@@ -10,6 +11,7 @@ interface AiStatusIndicatorProps {
 
 export const AiStatusIndicator: React.FC<AiStatusIndicatorProps> = ({ size = 'small' }) => {
   const { data: status, isLoading } = useAiStatus();
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   if (isLoading) {
     return (
@@ -43,6 +45,9 @@ export const AiStatusIndicator: React.FC<AiStatusIndicatorProps> = ({ size = 'sm
           Available: {status.availableModels.join(', ')}
         </div>
       )}
+      <div style={{ marginTop: 6, fontSize: '0.7rem', opacity: 0.75, fontStyle: 'italic' }}>
+        Click to adjust timeout or view settings
+      </div>
     </Box>
   ) : (
     <Box sx={{ p: 0.5 }}>
@@ -56,35 +61,44 @@ export const AiStatusIndicator: React.FC<AiStatusIndicatorProps> = ({ size = 'sm
           {status.errorMessage}
         </div>
       )}
+      <div style={{ marginTop: 6, fontSize: '0.7rem', opacity: 0.75, fontStyle: 'italic' }}>
+        Click to adjust timeout or view settings
+      </div>
     </Box>
   );
 
   return (
-    <Tooltip title={tooltipTitle} arrow>
-      <Chip
-        icon={
-          isConnected ? (
-            <AutoAwesomeIcon sx={{ fontSize: '14px !important', color: 'success.main' }} />
-          ) : (
-            <ErrorOutlineOutlinedIcon sx={{ fontSize: '14px !important', color: 'text.secondary' }} />
-          )
-        }
-        label={isConnected ? `${providerName}: ${modelName}` : `${providerName}: Offline`}
-        size={size}
-        variant="outlined"
-        color={isConnected ? 'success' : 'default'}
-        sx={{
-          fontWeight: 600,
-          fontSize: '0.75rem',
-          cursor: 'pointer',
-          borderRadius: 2,
-          borderColor: isConnected ? 'success.main' : 'divider',
-          bgcolor: isConnected ? 'success.50' : 'action.hover',
-          '& .MuiChip-label': {
-            px: 1,
-          },
-        }}
-      />
-    </Tooltip>
+    <>
+      <Tooltip title={tooltipTitle} arrow>
+        <Chip
+          icon={
+            isConnected ? (
+              <AutoAwesomeIcon sx={{ fontSize: '14px !important', color: 'success.main' }} />
+            ) : (
+              <ErrorOutlineOutlinedIcon sx={{ fontSize: '14px !important', color: 'text.secondary' }} />
+            )
+          }
+          label={isConnected ? `${providerName}: ${modelName}` : `${providerName}: Offline`}
+          size={size}
+          variant="outlined"
+          color={isConnected ? 'success' : 'default'}
+          onClick={() => setSettingsOpen(true)}
+          data-testid="ai-status-chip"
+          sx={{
+            fontWeight: 600,
+            fontSize: '0.75rem',
+            cursor: 'pointer',
+            borderRadius: 2,
+            borderColor: isConnected ? 'success.main' : 'divider',
+            bgcolor: isConnected ? 'success.50' : 'action.hover',
+            '& .MuiChip-label': {
+              px: 1,
+            },
+          }}
+        />
+      </Tooltip>
+      <AiSettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+    </>
   );
 };
+

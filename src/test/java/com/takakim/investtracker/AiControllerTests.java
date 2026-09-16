@@ -219,4 +219,21 @@ class AiControllerTests {
         assertEquals("ANTHROPIC", response.getBody().get(0).modelUsed());
         verify(aiEvaluationService).getLatestHoldingEvaluations(portfolioId);
     }
+
+    @Test
+    @DisplayName("updateConfig updates AI timeout and returns updated status")
+    void testUpdateConfig() {
+        com.takakim.investtracker.service.ai.dto.AiConfigRequest request =
+                new com.takakim.investtracker.service.ai.dto.AiConfigRequest(300);
+        AiStatusDto updatedStatus = new AiStatusDto(true, true, "LM_STUDIO", "http://localhost:1234", "gemma4-12b", List.of("gemma4-12b"), null, 300);
+        when(aiEvaluationService.updateConfig(request)).thenReturn(updatedStatus);
+
+        ResponseEntity<AiStatusDto> response = controller.updateConfig(request);
+
+        assertEquals(200, response.getStatusCode().value());
+        assertNotNull(response.getBody());
+        assertEquals(300, response.getBody().timeoutSeconds());
+        verify(aiEvaluationService).updateConfig(request);
+    }
 }
+

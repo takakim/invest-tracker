@@ -1,9 +1,17 @@
 import { request } from './client';
-import type { AiStatus, HoldingAiEvaluation, PortfolioAiEvaluation } from '../types';
+import type { AiConfigRequest, AiStatus, HoldingAiEvaluation, PortfolioAiEvaluation } from '../types';
 
 export async function getAiStatus(): Promise<AiStatus> {
   return request<AiStatus>('/api/v1/ai/status');
 }
+
+export async function updateAiConfig(config: AiConfigRequest): Promise<AiStatus> {
+  return request<AiStatus>('/api/v1/ai/config', {
+    method: 'PUT',
+    body: JSON.stringify(config),
+  });
+}
+
 
 export async function evaluatePortfolio(portfolioId: string): Promise<PortfolioAiEvaluation> {
   return request<PortfolioAiEvaluation>(`/api/v1/portfolios/${portfolioId}/ai/evaluate`, {

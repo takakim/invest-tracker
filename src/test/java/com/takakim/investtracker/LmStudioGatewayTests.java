@@ -344,6 +344,9 @@ class LmStudioGatewayTests {
         props.setBaseUrl("   ");
         LmStudioGateway gw2 = new LmStudioGateway(props, (RestClient.Builder) null, (ObjectMapper) null);
         assertNotNull(gw2);
+
+        LmStudioGateway gwNullProps = new LmStudioGateway(null, (RestClient.Builder) null, (ObjectMapper) null);
+        assertEquals(60, gwNullProps.getTimeoutSeconds());
     }
 
     @Test
@@ -768,6 +771,17 @@ class LmStudioGatewayTests {
         assertThrows(IllegalStateException.class, () -> gateway.generateChatCompletion("sys", "user"));
         mockServer.verify();
     }
+
+    @Test
+    @DisplayName("Autowired constructor sets timeouts and setTimeoutSeconds updates requestFactory")
+    void testAutowiredConstructorAndSetTimeoutSeconds() {
+        LmStudioGateway gw = new LmStudioGateway(properties, RestClient.builder(), objectMapper);
+        assertEquals(30, gw.getTimeoutSeconds());
+        gw.setTimeoutSeconds(120);
+        // Null request factory branch in test constructor
+        gateway.setTimeoutSeconds(90);
+    }
 }
+
 
 

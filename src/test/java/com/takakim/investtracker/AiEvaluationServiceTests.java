@@ -1839,5 +1839,38 @@ class AiEvaluationServiceTests {
         assertNotNull(result);
         assertTrue(result.topHoldingEvaluations().isEmpty());
     }
+
+    @Test
+    @DisplayName("updateConfig updates timeout on gateway factory and returns status")
+    void testUpdateConfig() {
+        when(gatewayFactory.getActiveGateway()).thenReturn(gateway);
+        when(gateway.checkStatus()).thenReturn(new AiStatusDto(true, true, "LM_STUDIO", "http://localhost:1234", "gemma4-12b", List.of(), null, 120));
+
+        com.takakim.investtracker.service.ai.dto.AiConfigRequest request =
+                new com.takakim.investtracker.service.ai.dto.AiConfigRequest(120);
+        AiStatusDto status = service.updateConfig(request);
+
+        assertNotNull(status);
+        assertEquals(120, status.timeoutSeconds());
+        verify(gatewayFactory).updateTimeout(120);
+    }
+
+    @Test
+    @DisplayName("updateConfig with null request or timeout does not call updateTimeout")
+    void testUpdateConfigNull() {
+        when(gatewayFactory.getActiveGateway()).thenReturn(gateway);
+        when(gateway.checkStatus()).thenReturn(new AiStatusDto(true, true, "LM_STUDIO", "http://localhost:1234", "gemma4-12b", List.of(), null, 60));
+
+        AiStatusDto status1 = service.updateConfig(null);
+        assertNotNull(status1);
+
+        com.takakim.investtracker.service.ai.dto.AiConfigRequest nullTimeoutReq =
+                new com.takakim.investtracker.service.ai.dto.AiConfigRequest(null);
+        AiStatusDto status2 = service.updateConfig(nullTimeoutReq);
+        assertNotNull(status2);
+
+        verify(gatewayFactory, never()).updateTimeout(anyInt());
+    }
 }
+
 

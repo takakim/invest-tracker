@@ -61,4 +61,18 @@ public class AiGatewayFactory {
             }
         };
     }
+
+    /**
+     * Updates the timeout setting across properties and all registered gateways.
+     */
+    public void updateTimeout(int timeoutSeconds) {
+        log.info("Updating AI gateway timeout to {} seconds", timeoutSeconds);
+        properties.setTimeoutSeconds(timeoutSeconds);
+        lmStudioGateway.setTimeoutSeconds(timeoutSeconds);
+        openAiGateway.setTimeoutSeconds(timeoutSeconds);
+        geminiGateway.setTimeoutSeconds(timeoutSeconds);
+        anthropicGateway.setTimeoutSeconds(timeoutSeconds);
+    }
 }
+
+

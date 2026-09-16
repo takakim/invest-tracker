@@ -32,6 +32,7 @@ public class GeminiGateway implements AiGateway {
     private final AiProperties properties;
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
+    private final SimpleClientHttpRequestFactory requestFactory;
 
     @Autowired
     public GeminiGateway(AiProperties properties, RestClient.Builder restClientBuilder, ObjectMapper objectMapper) {
@@ -41,9 +42,9 @@ public class GeminiGateway implements AiGateway {
         int timeout = properties != null && properties.getTimeoutSeconds() > 0
                 ? properties.getTimeoutSeconds() : 60;
 
-        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-        requestFactory.setConnectTimeout(Duration.ofSeconds(Math.min(timeout, 10)));
-        requestFactory.setReadTimeout(Duration.ofSeconds(timeout));
+        this.requestFactory = new SimpleClientHttpRequestFactory();
+        this.requestFactory.setConnectTimeout(Duration.ofSeconds(Math.min(timeout, 10)));
+        this.requestFactory.setReadTimeout(Duration.ofSeconds(timeout));
 
         String baseUrl = (properties != null && properties.getGeminiBaseUrl() != null
                 && !properties.getGeminiBaseUrl().isBlank())
@@ -52,7 +53,7 @@ public class GeminiGateway implements AiGateway {
 
         this.restClient = (restClientBuilder != null ? restClientBuilder : RestClient.builder())
                 .baseUrl(baseUrl)
-                .requestFactory(requestFactory)
+                .requestFactory(this.requestFactory)
                 .build();
     }
 
@@ -60,18 +61,19 @@ public class GeminiGateway implements AiGateway {
         this.properties = properties;
         this.restClient = restClient;
         this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();
+        this.requestFactory = null;
     }
 
     @Override
     public AiStatusDto checkStatus() {
         if (!properties.isEnabled()) {
             return new AiStatusDto(false, false, PROVIDER_NAME, properties.getGeminiBaseUrl(),
-                    properties.getModel(), List.of(), "AI evaluation is disabled in configuration");
+                    properties.getModel(), List.of(), "AI evaluation is disabled in configuration", getTimeoutSeconds());
         }
         String apiKey = properties.getGeminiApiKey();
         if (apiKey == null || apiKey.isBlank()) {
             return new AiStatusDto(true, false, PROVIDER_NAME, properties.getGeminiBaseUrl(),
-                    properties.getModel(), List.of(), "GEMINI_API_KEY is not configured");
+                    properties.getModel(), List.of(), "GEMINI_API_KEY is not configured", getTimeoutSeconds());
         }
 
         List<String> discoveredModels = new ArrayList<>();
@@ -97,11 +99,11 @@ public class GeminiGateway implements AiGateway {
                 }
             }
             return new AiStatusDto(true, true, PROVIDER_NAME, properties.getGeminiBaseUrl(),
-                    properties.getModel(), discoveredModels, null);
+                    properties.getModel(), discoveredModels, null, getTimeoutSeconds());
         } catch (Exception e) {
             log.warn("Failed to connect to Gemini API: {}", e.getMessage());
             return new AiStatusDto(true, false, PROVIDER_NAME, properties.getGeminiBaseUrl(),
-                    properties.getModel(), List.of(), "Cannot connect to Gemini: " + e.getMessage());
+                    properties.getModel(), List.of(), "Cannot connect to Gemini: " + e.getMessage(), getTimeoutSeconds());
         }
     }
 
@@ -183,4 +185,17 @@ public class GeminiGateway implements AiGateway {
     public String getProviderName() {
         return PROVIDER_NAME;
     }
+
+    @Override
+    public void setTimeoutSeconds(int timeoutSeconds) {
+        if (requestFactory != null) {
+            requestFactory.setReadTimeout(Duration.ofSeconds(timeoutSeconds));
+        }
+    }
+
+    @Override
+    public int getTimeoutSeconds() {
+        return properties != null ? properties.getTimeoutSeconds() : 60;
+    }
 }
+
