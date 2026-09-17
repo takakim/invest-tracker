@@ -210,7 +210,7 @@ class CsvImportIntegrationTests {
 
         // 9. InvestEngine Import Flow
         String ieCsv = """
-            Transaction Statement: 01 Feb 2025 - 25 Aug 2026 (Portfolio: DIY 1 / Reference: IP01985296)
+            Transaction Statement: 01 Feb 2025 - 25 Aug 2026 (Portfolio: DIY 1 / Reference: IP00000000)
             Security / ISIN,Transaction Type,Quantity,Share Price,Total Trade Value,Trade Date/Time,Settlement Date,Broker
             Global X NASDAQ 100 Covered Call / ISIN IE00BM8R0J59,Buy,10.000000,£12.5000,£125.00,04/03/25 15:06:44,06/03/25,None
             """;

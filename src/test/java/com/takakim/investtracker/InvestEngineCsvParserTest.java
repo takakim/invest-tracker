@@ -31,7 +31,7 @@ class InvestEngineCsvParserTest {
     @DisplayName("Parses InvestEngine statement CSV with banner title row")
     void parseSampleInvestEngineCsv() {
         String csv = """
-            Transaction Statement: 01 Feb 2025 - 25 Aug 2026 (Portfolio: DIY 1 / Reference: IP01985296)
+            Transaction Statement: 01 Feb 2025 - 25 Aug 2026 (Portfolio: DIY 1 / Reference: IP00000000)
             Security / ISIN,Transaction Type,Quantity,Share Price,Total Trade Value,Trade Date/Time,Settlement Date,Broker
             Global X NASDAQ 100 Covered Call / ISIN IE00BM8R0J59,Buy,18.882175,£13.2400,£250.00,04/03/25 15:06:44,06/03/25,None
             Franklin FTSE India / ISIN IE00BHZRQZ17,Sell,7.296903,£30.7884,£224.66,04/03/25 15:06:44,06/03/25,None
@@ -132,20 +132,5 @@ class InvestEngineCsvParserTest {
         ParsedTransactionRow r3 = rows.get(2);
         assertEquals(TransactionType.DIVIDEND, r3.mappedType());
         assertEquals(new BigDecimal("5.50"), r3.grossAmount());
-    }
-
-    @Test
-    @DisplayName("Parses real InvestEngine export statement from docs directory")
-    void parseRealFiles() throws Exception {
-        java.nio.file.Path dir = java.nio.file.Paths.get("docs/csv/investengine");
-        if (java.nio.file.Files.exists(dir)) {
-            try (var stream = java.nio.file.Files.list(dir)) {
-                for (java.nio.file.Path file : stream.filter(p -> p.toString().endsWith(".csv")).toList()) {
-                    String content = java.nio.file.Files.readString(file);
-                    List<ParsedTransactionRow> rows = parser.parse(content);
-                    assertFalse(rows.isEmpty(), "Rows should not be empty for " + file.getFileName());
-                }
-            }
-        }
     }
 }

@@ -387,7 +387,7 @@ class CsvImportServiceAutoDetectTests {
         when(importBatchRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         String csv = """
-            Transaction Statement: 01 Feb 2025 - 25 Aug 2026 (Portfolio: DIY 1 / Reference: IP01985296)
+            Transaction Statement: 01 Feb 2025 - 25 Aug 2026 (Portfolio: DIY 1 / Reference: IP00000000)
             Security / ISIN,Transaction Type,Quantity,Share Price,Total Trade Value,Trade Date/Time,Settlement Date,Broker
             Invesco S&P 500 / ISIN IE00B3YCGJ38,Buy,0.50,£895.00,£447.50,04/03/25 15:07:07,06/03/25,None
             Unknown Asset,UnknownType,1,10,10,04/03/25 15:07:07,06/03/25,None

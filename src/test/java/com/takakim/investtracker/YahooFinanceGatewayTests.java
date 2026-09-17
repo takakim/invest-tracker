@@ -562,4 +562,93 @@ class YahooFinanceGatewayTests {
         mockServer.verify();
         assertTrue(bars2.isEmpty());
     }
+    @Test
+    @DisplayName("fetchQuoteSummary returns valuation multiples from Yahoo quoteSummary endpoint")
+    void testFetchQuoteSummarySuccess() {
+        String json = """
+            {
+              "quoteSummary": {
+                "result": [
+                  {
+                    "defaultKeyStatistics": {
+                      "forwardPE":  { "raw": 24.1,  "fmt": "24.10" },
+                      "pegRatio":   { "raw": 2.1,   "fmt": "2.10"  },
+                      "priceToBook":{ "raw": 42.3,  "fmt": "42.30" },
+                      "returnOnEquity": { "raw": 1.47, "fmt": "147.00%" }
+                    },
+                    "summaryDetail": {
+                      "trailingPE":    { "raw": 28.5,  "fmt": "28.50" },
+                      "dividendYield": { "raw": 0.005, "fmt": "0.50%" },
+                      "fiftyTwoWeekHigh": { "raw": 199.5, "fmt": "199.50" },
+                      "fiftyTwoWeekLow":  { "raw": 140.0, "fmt": "140.00" },
+                      "marketCap":    { "raw": 2800000000000.0, "fmt": "2.80T" },
+                      "debtToEquity": { "raw": 1.8,   "fmt": "180.00" }
+                    }
+                  }
+                ],
+                "error": null
+              }
+            }
+            """;
+
+        mockServer.expect(requestTo(
+                "https://query1.finance.yahoo.com/v10/finance/quoteSummary/AAPL?modules=defaultKeyStatistics,summaryDetail"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(json, MediaType.APPLICATION_JSON));
+
+        Optional<YahooFinanceDtos.QuoteSummaryResult> result = gateway.fetchQuoteSummary("AAPL");
+        mockServer.verify();
+
+        assertTrue(result.isPresent());
+        YahooFinanceDtos.QuoteSummaryResult qs = result.get();
+        assertEquals(28.5,  qs.summaryDetail().trailingPE().raw(),     0.001);
+        assertEquals(24.1,  qs.defaultKeyStatistics().forwardPE().raw(), 0.001);
+        assertEquals(2.1,   qs.defaultKeyStatistics().pegRatio().raw(),  0.001);
+        assertEquals(42.3,  qs.defaultKeyStatistics().priceToBook().raw(), 0.001);
+        assertEquals(0.005, qs.summaryDetail().dividendYield().raw(),    0.0001);
+        assertEquals(1.8,   qs.summaryDetail().debtToEquity().raw(),     0.001);
+        assertEquals(1.47,  qs.defaultKeyStatistics().returnOnEquity().raw(), 0.001);
+        assertEquals(199.5, qs.summaryDetail().fiftyTwoWeekHigh().raw(), 0.001);
+        assertEquals(140.0, qs.summaryDetail().fiftyTwoWeekLow().raw(),  0.001);
+    }
+
+    @Test
+    @DisplayName("fetchQuoteSummary returns empty when Yahoo quoteSummary returns an error body")
+    void testFetchQuoteSummaryErrorBody() {
+        String json = """
+            {
+              "quoteSummary": {
+                "result": null,
+                "error": {
+                  "code": "Not Found",
+                  "description": "No fundamentals data found for any of the summaryTypes=defaultKeyStatistics"
+                }
+              }
+            }
+            """;
+
+        mockServer.expect(requestTo(
+                "https://query1.finance.yahoo.com/v10/finance/quoteSummary/UNKNOWN?modules=defaultKeyStatistics,summaryDetail"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(json, MediaType.APPLICATION_JSON));
+
+        Optional<YahooFinanceDtos.QuoteSummaryResult> result = gateway.fetchQuoteSummary("UNKNOWN");
+        mockServer.verify();
+
+        assertFalse(result.isPresent());
+    }
+
+    @Test
+    @DisplayName("fetchQuoteSummary returns empty on HTTP 404")
+    void testFetchQuoteSummary404() {
+        mockServer.expect(requestTo(
+                "https://query1.finance.yahoo.com/v10/finance/quoteSummary/DELISTED?modules=defaultKeyStatistics,summaryDetail"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withResourceNotFound());
+
+        Optional<YahooFinanceDtos.QuoteSummaryResult> result = gateway.fetchQuoteSummary("DELISTED");
+        mockServer.verify();
+
+        assertFalse(result.isPresent());
+    }
 }

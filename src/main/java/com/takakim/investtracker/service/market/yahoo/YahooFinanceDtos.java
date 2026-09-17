@@ -8,6 +8,64 @@ public final class YahooFinanceDtos {
 
     private YahooFinanceDtos() {}
 
+    // ── QuoteSummary endpoint DTOs ────────────────────────────────────────────
+
+    /**
+     * Yahoo Finance wraps every numeric value as {"raw": 1.23, "fmt": "1.23"}.
+     * We only need the raw numeric value.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record YahooValue(Double raw) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record QuoteSummaryResponse(QuoteSummaryWrapper quoteSummary) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record QuoteSummaryWrapper(
+            List<QuoteSummaryResult> result,
+            ChartError error
+    ) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record QuoteSummaryResult(
+            DefaultKeyStatistics defaultKeyStatistics,
+            SummaryDetail summaryDetail
+    ) {}
+
+    /**
+     * Populated from Yahoo's {@code defaultKeyStatistics} module.
+     * Key multiples: forwardPE, pegRatio, priceToBook, debtToEquity, returnOnEquity,
+     * fiftyTwoWeekHigh, fiftyTwoWeekLow, enterpriseValue, trailingEps, forwardEps.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record DefaultKeyStatistics(
+            YahooValue forwardPE,
+            YahooValue pegRatio,
+            YahooValue priceToBook,
+            YahooValue returnOnEquity,
+            YahooValue enterpriseValue,
+            YahooValue trailingEps,
+            YahooValue forwardEps,
+            YahooValue enterpriseToRevenue,
+            YahooValue enterpriseToEbitda
+    ) {}
+
+    /**
+     * Populated from Yahoo's {@code summaryDetail} module.
+     * Key multiples: trailingPE, dividendYield, fiftyTwoWeekHigh, fiftyTwoWeekLow,
+     * marketCap, beta, debtToEquity.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record SummaryDetail(
+            YahooValue trailingPE,
+            YahooValue dividendYield,
+            YahooValue fiftyTwoWeekHigh,
+            YahooValue fiftyTwoWeekLow,
+            YahooValue marketCap,
+            YahooValue beta,
+            YahooValue debtToEquity
+    ) {}
+
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record ChartResponse(
             ChartWrapper chart

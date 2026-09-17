@@ -311,7 +311,8 @@ class AiEvaluationServiceTests {
                 null, null, new YahooFinanceDtos.ChartIndicators(List.of(qi)), null
         );
 
-        when(yahooFinanceGateway.fetchChart("AAPL", "1d", "1mo")).thenReturn(Optional.of(entry));
+        when(yahooFinanceGateway.fetchChart("AAPL", "1d", "1y")).thenReturn(Optional.of(entry));
+        when(yahooFinanceGateway.fetchQuoteSummary(anyString())).thenReturn(Optional.empty());
 
         String llmOutput = """
                 {
@@ -330,6 +331,76 @@ class AiEvaluationServiceTests {
         assertEquals(7, result.riskScore());
         assertEquals(199.50, result.fundamentalMetrics().fiftyTwoWeekHigh());
         assertEquals(140.00, result.fundamentalMetrics().fiftyTwoWeekLow());
+    }
+
+    @Test
+    @DisplayName("evaluateHolding populates valuation multiples from Yahoo quoteSummary, overriding AI values")
+    void testEvaluateHoldingYahooValuationMultiples() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(testPortfolio));
+        when(instrumentRepository.findById(instrumentId)).thenReturn(Optional.of(testInstrument));
+        when(positionService.listPortfolioPositionsPerformance(portfolioId, false)).thenReturn(List.of(testPosition));
+        when(analyticsEngine.calculate(eq(portfolioId), any())).thenReturn(testAnalytics);
+
+        // Yahoo chart returns empty (52-week range will be null)
+        when(yahooFinanceGateway.fetchChart(anyString(), anyString(), anyString())).thenReturn(Optional.empty());
+
+        // Yahoo quoteSummary returns real valuation multiples
+        YahooFinanceDtos.SummaryDetail sd = new YahooFinanceDtos.SummaryDetail(
+                new YahooFinanceDtos.YahooValue(28.5),   // trailingPE
+                new YahooFinanceDtos.YahooValue(0.005),  // dividendYield
+                null, null,                              // 52w high/low
+                new YahooFinanceDtos.YahooValue(2.8e12), // marketCap
+                new YahooFinanceDtos.YahooValue(1.2),    // beta
+                new YahooFinanceDtos.YahooValue(1.8)     // debtToEquity
+        );
+        YahooFinanceDtos.DefaultKeyStatistics dks = new YahooFinanceDtos.DefaultKeyStatistics(
+                new YahooFinanceDtos.YahooValue(24.1),   // forwardPE
+                new YahooFinanceDtos.YahooValue(2.1),    // pegRatio
+                new YahooFinanceDtos.YahooValue(42.3),   // priceToBook
+                new YahooFinanceDtos.YahooValue(1.47),   // returnOnEquity
+                null, null, null, null, null
+        );
+        YahooFinanceDtos.QuoteSummaryResult qs = new YahooFinanceDtos.QuoteSummaryResult(dks, sd);
+        when(yahooFinanceGateway.fetchQuoteSummary("AAPL")).thenReturn(Optional.of(qs));
+
+        // AI returns different (incorrect) values for the same fields — Yahoo should win
+        String llmOutput = """
+                {
+                  "stance": "HOLD",
+                  "riskScore": 5,
+                  "riskLevel": "MODERATE",
+                  "executiveSummary": "Stable core holding.",
+                  "strengths": ["Brand loyalty"],
+                  "risks": ["Macro risk"],
+                  "holdingVsSellingTradeoff": "Hold for compounding.",
+                  "fundamentalMetrics": {
+                    "peRatio": 999.0,
+                    "forwardPe": 888.0,
+                    "pegRatio": 777.0,
+                    "dividendYield": 0.999,
+                    "debtToEquity": 99.0,
+                    "returnOnEquity": 9.9,
+                    "expenseRatio": 0.003
+                  }
+                }
+                """;
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(llmOutput);
+
+        HoldingAiEvaluationDto result = service.evaluateHolding(portfolioId, instrumentId);
+
+        assertNotNull(result);
+        // Yahoo values take precedence over AI hallucinations
+        assertEquals(28.5,  result.fundamentalMetrics().peRatio(),     0.001);
+        assertEquals(24.1,  result.fundamentalMetrics().forwardPe(),   0.001);
+        assertEquals(2.1,   result.fundamentalMetrics().pegRatio(),    0.001);
+        assertEquals(42.3,  result.fundamentalMetrics().priceToBook(), 0.001);
+        assertEquals(0.005, result.fundamentalMetrics().dividendYield(), 0.0001);
+        assertEquals(1.8,   result.fundamentalMetrics().debtToEquity(), 0.001);
+        assertEquals(1.47,  result.fundamentalMetrics().returnOnEquity(), 0.001);
+        // expenseRatio is always AI-sourced since Yahoo doesn't expose it
+        assertEquals(0.003, result.fundamentalMetrics().expenseRatio(), 0.0001);
+        // 52-week range is null (chart returned empty)
+        assertNull(result.fundamentalMetrics().fiftyTwoWeekHigh());
     }
 
     @Test
@@ -617,7 +688,8 @@ class AiEvaluationServiceTests {
         );
         YahooFinanceDtos.ChartIndicators ind = new YahooFinanceDtos.ChartIndicators(List.of(qi));
         YahooFinanceDtos.ChartEntry entry = new YahooFinanceDtos.ChartEntry(null, List.of(1000L), ind, null);
-        when(yahooFinanceGateway.fetchChart("AAPL", "1d", "1mo")).thenReturn(Optional.of(entry));
+        when(yahooFinanceGateway.fetchChart("AAPL", "1d", "1y")).thenReturn(Optional.of(entry));
+        when(yahooFinanceGateway.fetchQuoteSummary(anyString())).thenReturn(Optional.empty());
 
         String llmOutput = """
                 {
@@ -683,7 +755,8 @@ class AiEvaluationServiceTests {
         when(instrumentRepository.findById(instrumentId)).thenReturn(Optional.of(testInstrument));
         when(positionService.listPortfolioPositionsPerformance(portfolioId, false)).thenReturn(List.of(testPosition));
         when(analyticsEngine.calculate(eq(portfolioId), any())).thenReturn(testAnalytics);
-        when(yahooFinanceGateway.fetchChart("AAPL", "1d", "1mo")).thenThrow(new RuntimeException("Network timeout"));
+        when(yahooFinanceGateway.fetchChart("AAPL", "1d", "1y")).thenThrow(new RuntimeException("Network timeout"));
+        when(yahooFinanceGateway.fetchQuoteSummary(anyString())).thenReturn(Optional.empty());
 
         when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn("   ");
 
@@ -867,7 +940,8 @@ class AiEvaluationServiceTests {
         YahooFinanceDtos.QuoteIndicator qiNulls = new YahooFinanceDtos.QuoteIndicator(null, null, null, null, null);
         YahooFinanceDtos.ChartIndicators ind = new YahooFinanceDtos.ChartIndicators(List.of(qiNulls));
         YahooFinanceDtos.ChartEntry entry = new YahooFinanceDtos.ChartEntry(null, List.of(1000L), ind, null);
-        when(yahooFinanceGateway.fetchChart("AAPL", "1d", "1mo")).thenReturn(Optional.of(entry));
+        when(yahooFinanceGateway.fetchChart("AAPL", "1d", "1y")).thenReturn(Optional.of(entry));
+        when(yahooFinanceGateway.fetchQuoteSummary(anyString())).thenReturn(Optional.empty());
 
         String json = """
                 {
@@ -1491,7 +1565,8 @@ class AiEvaluationServiceTests {
         YahooFinanceDtos.ChartEntry entryEmptyQuote = new YahooFinanceDtos.ChartEntry(
                 null, null, new YahooFinanceDtos.ChartIndicators(List.of()), null
         );
-        when(yahooFinanceGateway.fetchChart("AAPL", "1d", "1mo")).thenReturn(Optional.of(entryEmptyQuote));
+        when(yahooFinanceGateway.fetchChart("AAPL", "1d", "1y")).thenReturn(Optional.of(entryEmptyQuote));
+        when(yahooFinanceGateway.fetchQuoteSummary(anyString())).thenReturn(Optional.empty());
 
         // JSON missing stance and overallRiskLevel completely
         String jsonNoStance = """

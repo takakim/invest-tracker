@@ -163,6 +163,55 @@ public class YahooFinanceGateway {
         }
     }
 
+    /**
+     * Fetches valuation multiples and fundamental metrics from Yahoo Finance's
+     * {@code /v10/finance/quoteSummary} endpoint using the {@code defaultKeyStatistics}
+     * and {@code summaryDetail} modules.
+     *
+     * <p>Returns the first {@link YahooFinanceDtos.QuoteSummaryResult} or
+     * {@link Optional#empty()} if the ticker is unknown, Yahoo is unavailable,
+     * or the gateway is not configured / rate-limited.
+     */
+    public Optional<YahooFinanceDtos.QuoteSummaryResult> fetchQuoteSummary(String symbol) {
+        if (!isConfigured() || symbol == null || symbol.isBlank()) {
+            return Optional.empty();
+        }
+        if (!acquirePermit()) {
+            return Optional.empty();
+        }
+
+        try {
+            YahooFinanceDtos.QuoteSummaryResponse response = restClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/v10/finance/quoteSummary/{symbol}")
+                            .queryParam("modules", "defaultKeyStatistics,summaryDetail")
+                            .build(symbol))
+                    .retrieve()
+                    .body(YahooFinanceDtos.QuoteSummaryResponse.class);
+
+            if (response != null && response.quoteSummary() != null) {
+                if (response.quoteSummary().error() != null) {
+                    log.warn("Yahoo Finance quoteSummary returned error for symbol '{}': {} - {}",
+                            symbol, response.quoteSummary().error().code(), response.quoteSummary().error().description());
+                    return Optional.empty();
+                }
+                if (response.quoteSummary().result() != null && !response.quoteSummary().result().isEmpty()) {
+                    YahooFinanceDtos.QuoteSummaryResult result = response.quoteSummary().result().get(0);
+                    if (result != null) {
+                        return Optional.of(result);
+                    }
+                }
+            }
+            return Optional.empty();
+        } catch (RestClientResponseException ex) {
+            handleException(ex, "quoteSummary", symbol);
+            return Optional.empty();
+        } catch (Exception ex) {
+            log.warn("Unexpected error requesting Yahoo Finance quoteSummary for symbol '{}': {}", symbol, ex.getMessage());
+            return Optional.empty();
+        }
+    }
+
     public Optional<YahooFinanceDtos.ChartEntry> fetchChartWithEvents(String symbol, String interval, String range) {
         if (!isConfigured() || symbol == null || symbol.isBlank()) {
             return Optional.empty();

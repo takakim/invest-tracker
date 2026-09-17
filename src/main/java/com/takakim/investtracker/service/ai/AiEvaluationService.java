@@ -284,12 +284,21 @@ public class AiEvaluationService {
                 ? totalMarketValue.divide(totalPortfolioVal, 4, RoundingMode.HALF_UP).doubleValue() * 100.0
                 : 0.0;
 
-        // Query Yahoo Finance for quote metadata if available
+        // ── Yahoo Finance: 52-week range (chart) + valuation multiples (quoteSummary) ──────
         Double fiftyTwoWeekHigh = null;
         Double fiftyTwoWeekLow = null;
+        Double yahooTrailingPe = null;
+        Double yahooForwardPe = null;
+        Double yahooPegRatio = null;
+        Double yahooPriceToBook = null;
+        Double yahooDividendYield = null;
+        Double yahooDebtToEquity = null;
+        Double yahooReturnOnEquity = null;
+        Double yahooMarketCap = null;
         if (yahooFinanceGateway != null && instrument.getTicker() != null && !instrument.getTicker().isBlank()) {
             try {
-                Optional<YahooFinanceDtos.ChartEntry> chartOpt = yahooFinanceGateway.fetchChart(instrument.getTicker(), "1d", "1mo");
+                // 52-week high/low from 1y chart
+                Optional<YahooFinanceDtos.ChartEntry> chartOpt = yahooFinanceGateway.fetchChart(instrument.getTicker(), "1d", "1y");
                 if (chartOpt.isPresent()) {
                     YahooFinanceDtos.ChartEntry entry = chartOpt.get();
                     if (entry.indicators() != null && entry.indicators().quote() != null && !entry.indicators().quote().isEmpty()) {
@@ -305,15 +314,46 @@ public class AiEvaluationService {
                     }
                 }
             } catch (Exception e) {
-                log.debug("Could not fetch Yahoo market data for {}: {}", instrument.getTicker(), e.getMessage());
+                log.debug("Could not fetch Yahoo chart data for {}: {}", instrument.getTicker(), e.getMessage());
+            }
+            try {
+                // Valuation multiples from quoteSummary (defaultKeyStatistics + summaryDetail)
+                Optional<YahooFinanceDtos.QuoteSummaryResult> summaryOpt = yahooFinanceGateway.fetchQuoteSummary(instrument.getTicker());
+                if (summaryOpt.isPresent()) {
+                    YahooFinanceDtos.QuoteSummaryResult qs = summaryOpt.get();
+                    YahooFinanceDtos.SummaryDetail sd = qs.summaryDetail();
+                    YahooFinanceDtos.DefaultKeyStatistics dks = qs.defaultKeyStatistics();
+                    if (sd != null) {
+                        yahooTrailingPe = rawDouble(sd.trailingPE());
+                        yahooDividendYield = rawDouble(sd.dividendYield());
+                        // Prefer chart-derived 52w range; use summaryDetail as fallback
+                        if (fiftyTwoWeekHigh == null) fiftyTwoWeekHigh = rawDouble(sd.fiftyTwoWeekHigh());
+                        if (fiftyTwoWeekLow == null) fiftyTwoWeekLow = rawDouble(sd.fiftyTwoWeekLow());
+                        if (yahooMarketCap == null) yahooMarketCap = rawDouble(sd.marketCap());
+                        yahooDebtToEquity = rawDouble(sd.debtToEquity());
+                    }
+                    if (dks != null) {
+                        yahooForwardPe = rawDouble(dks.forwardPE());
+                        yahooPegRatio = rawDouble(dks.pegRatio());
+                        yahooPriceToBook = rawDouble(dks.priceToBook());
+                        yahooReturnOnEquity = rawDouble(dks.returnOnEquity());
+                        if (yahooMarketCap == null) yahooMarketCap = rawDouble(dks.enterpriseValue());
+                    }
+                    log.debug("Yahoo quoteSummary for {}: PE={} fwdPE={} PEG={} PB={} DY={} DE={} ROE={}",
+                            instrument.getTicker(), yahooTrailingPe, yahooForwardPe, yahooPegRatio,
+                            yahooPriceToBook, yahooDividendYield, yahooDebtToEquity, yahooReturnOnEquity);
+                }
+            } catch (Exception e) {
+                log.debug("Could not fetch Yahoo quoteSummary for {}: {}", instrument.getTicker(), e.getMessage());
             }
         }
 
-        // Build prompt for Gemma 4 12B
+        // Build prompt — fundamentalMetrics in JSON schema retained for AI-estimated fields (expenseRatio for ETFs)
         String systemPrompt = """
                 You are a senior portfolio risk manager and financial analyst.
                 Evaluate the provided investment holding using strict financial reasoning, fundamental health metrics, balance sheet solvency, valuation multiples, and portfolio context.
                 Assess the risk of continuing to hold this asset versus selling/trimming it now.
+                Real-time valuation metrics are provided where available in the holding data — use them in your analysis.
                 You must output strictly valid JSON matching this schema:
                 {
                   "stance": "STRONG_BUY" | "ACCUMULATE" | "HOLD" | "TRIM" | "SELL",
@@ -337,6 +377,12 @@ public class AiEvaluationService {
                 Do not include markdown or conversational text outside of the JSON object.
                 """;
 
+        // Build real-time metrics context string for the prompt (grounded facts from Yahoo)
+        String metricsContext = buildMetricsContext(
+                yahooTrailingPe, yahooForwardPe, yahooPegRatio, yahooPriceToBook,
+                yahooDividendYield, yahooDebtToEquity, yahooReturnOnEquity,
+                fiftyTwoWeekLow, fiftyTwoWeekHigh, yahooMarketCap);
+
         String userPrompt = String.format("""
                 Holding Analysis Request:
                 - Asset: %s (%s)
@@ -352,6 +398,7 @@ public class AiEvaluationService {
                 - Portfolio Weight: %.2f%%
                 - Account Wrappers: %s
                 - 52-Week Range: %s to %s
+                %s
 
                 Please evaluate the financial records, current valuation, balance sheet risk, and whether the investor should HOLD, ACCUMULATE, TRIM, or SELL.
                 """,
@@ -369,13 +416,16 @@ public class AiEvaluationService {
                 weightPct,
                 String.join(", ", accountWrappers),
                 fiftyTwoWeekLow != null ? String.format("%.2f", fiftyTwoWeekLow) : "N/A",
-                fiftyTwoWeekHigh != null ? String.format("%.2f", fiftyTwoWeekHigh) : "N/A"
+                fiftyTwoWeekHigh != null ? String.format("%.2f", fiftyTwoWeekHigh) : "N/A",
+                metricsContext
         );
 
         AiGateway gateway = gatewayFactory.getActiveGateway();
         String rawResponse = gateway.generateChatCompletion(systemPrompt, userPrompt);
         HoldingAiEvaluationDto result = parseHoldingResponse(rawResponse, instrument, totalQty, latestPrice, avgCost,
                 totalUnrealizedGain, unrealizedGainPct, weightPct, fiftyTwoWeekHigh, fiftyTwoWeekLow,
+                yahooTrailingPe, yahooForwardPe, yahooPegRatio, yahooPriceToBook,
+                yahooDividendYield, yahooDebtToEquity, yahooReturnOnEquity, yahooMarketCap,
                 portfolio.getBaseCurrency().code(), gateway.getProviderName());
         persistHoldingEvaluation(portfolioId, instrumentId, gateway.getProviderName(), result);
         return result;
@@ -561,12 +611,24 @@ public class AiEvaluationService {
             Double weightPct,
             Double fiftyTwoWeekHigh,
             Double fiftyTwoWeekLow,
+            Double yahooTrailingPe,
+            Double yahooForwardPe,
+            Double yahooPegRatio,
+            Double yahooPriceToBook,
+            Double yahooDividendYield,
+            Double yahooDebtToEquity,
+            Double yahooReturnOnEquity,
+            Double yahooMarketCap,
             String baseCurrency,
             String providerName
     ) {
         String cleanJson = extractJson(rawResponse);
         if (cleanJson.isBlank() || cleanJson.equals("{}")) {
-            return fallbackHoldingEvaluation(instrument, qty, price, avgCost, unrealizedGain, unrealizedGainPct, weightPct, fiftyTwoWeekHigh, fiftyTwoWeekLow, baseCurrency, rawResponse, providerName);
+            return fallbackHoldingEvaluation(instrument, qty, price, avgCost, unrealizedGain, unrealizedGainPct, weightPct,
+                    fiftyTwoWeekHigh, fiftyTwoWeekLow,
+                    yahooTrailingPe, yahooForwardPe, yahooPegRatio, yahooPriceToBook,
+                    yahooDividendYield, yahooDebtToEquity, yahooReturnOnEquity, yahooMarketCap,
+                    baseCurrency, rawResponse, providerName);
         }
         try {
             JsonNode root = objectMapper.readTree(cleanJson);
@@ -582,7 +644,11 @@ public class AiEvaluationService {
             String tradeoff = root.path("holdingVsSellingTradeoff").asText("Hold vs sell trade-off analysis based on valuation and balance sheet quality.");
 
             JsonNode metricsNode = root.get("fundamentalMetrics");
-            HoldingFinancialMetricsDto metrics = parseMetrics(metricsNode, instrument, fiftyTwoWeekHigh, fiftyTwoWeekLow, baseCurrency);
+            HoldingFinancialMetricsDto metrics = parseMetrics(metricsNode, instrument,
+                    fiftyTwoWeekHigh, fiftyTwoWeekLow,
+                    yahooTrailingPe, yahooForwardPe, yahooPegRatio, yahooPriceToBook,
+                    yahooDividendYield, yahooDebtToEquity, yahooReturnOnEquity, yahooMarketCap,
+                    baseCurrency);
 
             return new HoldingAiEvaluationDto(
                     instrument.getId(),
@@ -608,7 +674,11 @@ public class AiEvaluationService {
             );
         } catch (Exception e) {
             log.warn("Failed to parse JSON response from AI provider: {}. Falling back to default holding evaluation.", e.getMessage());
-            return fallbackHoldingEvaluation(instrument, qty, price, avgCost, unrealizedGain, unrealizedGainPct, weightPct, fiftyTwoWeekHigh, fiftyTwoWeekLow, baseCurrency, rawResponse, providerName);
+            return fallbackHoldingEvaluation(instrument, qty, price, avgCost, unrealizedGain, unrealizedGainPct, weightPct,
+                    fiftyTwoWeekHigh, fiftyTwoWeekLow,
+                    yahooTrailingPe, yahooForwardPe, yahooPegRatio, yahooPriceToBook,
+                    yahooDividendYield, yahooDebtToEquity, yahooReturnOnEquity, yahooMarketCap,
+                    baseCurrency, rawResponse, providerName);
         }
     }
 
@@ -750,20 +820,48 @@ public class AiEvaluationService {
         return list;
     }
 
-    private HoldingFinancialMetricsDto parseMetrics(JsonNode node, Instrument instrument, Double high52, Double low52, String curr) {
-        if (node == null || node.isNull()) {
-            return new HoldingFinancialMetricsDto(null, null, null, null, null, null, null, high52, low52, null, null, instrument.getAssetClass().name(), curr);
-        }
-        Double pe = node.has("peRatio") && !node.get("peRatio").isNull() ? node.get("peRatio").asDouble() : null;
-        Double fwdPe = node.has("forwardPe") && !node.get("forwardPe").isNull() ? node.get("forwardPe").asDouble() : null;
-        Double peg = node.has("pegRatio") && !node.get("pegRatio").isNull() ? node.get("pegRatio").asDouble() : null;
-        Double pb = node.has("priceToBook") && !node.get("priceToBook").isNull() ? node.get("priceToBook").asDouble() : null;
-        Double div = node.has("dividendYield") && !node.get("dividendYield").isNull() ? node.get("dividendYield").asDouble() : null;
-        Double de = node.has("debtToEquity") && !node.get("debtToEquity").isNull() ? node.get("debtToEquity").asDouble() : null;
-        Double roe = node.has("returnOnEquity") && !node.get("returnOnEquity").isNull() ? node.get("returnOnEquity").asDouble() : null;
-        Double exp = node.has("expenseRatio") && !node.get("expenseRatio").isNull() ? node.get("expenseRatio").asDouble() : null;
+    /**
+     * Builds a {@link HoldingFinancialMetricsDto} by preferring Yahoo Finance-sourced values
+     * over any values returned by the AI model. AI-provided values are used only as a fallback
+     * when Yahoo returned {@code null} for a given field (e.g. niche tickers, ETF-specific metrics).
+     * The {@code expenseRatio} is always sourced from the AI since Yahoo doesn’t expose it.
+     */
+    private HoldingFinancialMetricsDto parseMetrics(
+            JsonNode node,
+            Instrument instrument,
+            Double high52, Double low52,
+            Double yahooTrailingPe, Double yahooForwardPe,
+            Double yahooPegRatio, Double yahooPriceToBook,
+            Double yahooDividendYield, Double yahooDebtToEquity,
+            Double yahooReturnOnEquity, Double yahooMarketCap,
+            String curr) {
 
-        return new HoldingFinancialMetricsDto(pe, fwdPe, peg, pb, div, de, roe, high52, low52, null, exp, instrument.getAssetClass().name(), curr);
+        // Extract AI-provided values (used only when Yahoo has no data for the field)
+        Double aiPe = null, aiFwdPe = null, aiPeg = null, aiPb = null;
+        Double aiDiv = null, aiDe = null, aiRoe = null, aiExp = null;
+        if (node != null && !node.isNull()) {
+            aiPe  = node.has("peRatio")        && !node.get("peRatio").isNull()        ? node.get("peRatio").asDouble()        : null;
+            aiFwdPe = node.has("forwardPe")    && !node.get("forwardPe").isNull()      ? node.get("forwardPe").asDouble()      : null;
+            aiPeg = node.has("pegRatio")        && !node.get("pegRatio").isNull()       ? node.get("pegRatio").asDouble()       : null;
+            aiPb  = node.has("priceToBook")    && !node.get("priceToBook").isNull()    ? node.get("priceToBook").asDouble()    : null;
+            aiDiv = node.has("dividendYield")   && !node.get("dividendYield").isNull()  ? node.get("dividendYield").asDouble()  : null;
+            aiDe  = node.has("debtToEquity")   && !node.get("debtToEquity").isNull()   ? node.get("debtToEquity").asDouble()   : null;
+            aiRoe = node.has("returnOnEquity")  && !node.get("returnOnEquity").isNull() ? node.get("returnOnEquity").asDouble() : null;
+            aiExp = node.has("expenseRatio")    && !node.get("expenseRatio").isNull()   ? node.get("expenseRatio").asDouble()   : null;
+        }
+
+        // Yahoo values take precedence; AI values fill in gaps
+        Double pe     = yahooTrailingPe    != null ? yahooTrailingPe    : aiPe;
+        Double fwdPe  = yahooForwardPe     != null ? yahooForwardPe     : aiFwdPe;
+        Double peg    = yahooPegRatio      != null ? yahooPegRatio      : aiPeg;
+        Double pb     = yahooPriceToBook   != null ? yahooPriceToBook   : aiPb;
+        Double div    = yahooDividendYield  != null ? yahooDividendYield  : aiDiv;
+        Double de     = yahooDebtToEquity  != null ? yahooDebtToEquity  : aiDe;
+        Double roe    = yahooReturnOnEquity != null ? yahooReturnOnEquity : aiRoe;
+        // expenseRatio is always AI-sourced (Yahoo doesn’t expose it)
+        Double exp    = aiExp;
+
+        return new HoldingFinancialMetricsDto(pe, fwdPe, peg, pb, div, de, roe, high52, low52, yahooMarketCap, exp, instrument.getAssetClass().name(), curr);
     }
 
     private HoldingAiEvaluationDto fallbackHoldingEvaluation(
@@ -776,6 +874,14 @@ public class AiEvaluationService {
             Double weightPct,
             Double high52,
             Double low52,
+            Double yahooTrailingPe,
+            Double yahooForwardPe,
+            Double yahooPegRatio,
+            Double yahooPriceToBook,
+            Double yahooDividendYield,
+            Double yahooDebtToEquity,
+            Double yahooReturnOnEquity,
+            Double yahooMarketCap,
             String baseCurrency,
             String rawText,
             String providerName
@@ -798,10 +904,48 @@ public class AiEvaluationService {
                 List.of("Established position within portfolio structure"),
                 List.of("Subject to standard market and sector volatility"),
                 "Evaluate position weight against target rebalancing plan before selling.",
-                new HoldingFinancialMetricsDto(null, null, null, null, null, null, null, high52, low52, null, null, instrument.getAssetClass().name(), baseCurrency),
+                new HoldingFinancialMetricsDto(
+                        yahooTrailingPe, yahooForwardPe, yahooPegRatio, yahooPriceToBook,
+                        yahooDividendYield, yahooDebtToEquity, yahooReturnOnEquity,
+                        high52, low52, yahooMarketCap, null,
+                        instrument.getAssetClass().name(), baseCurrency),
                 providerName,
                 Instant.now()
         );
+    }
+
+    /**
+     * Safely extracts the {@code raw} numeric value from a Yahoo Finance {@link YahooFinanceDtos.YahooValue} wrapper.
+     * Returns {@code null} if the wrapper is null, or the raw value is missing / zero (which Yahoo sometimes uses
+     * as a sentinel for "not applicable").
+     */
+    private Double rawDouble(YahooFinanceDtos.YahooValue value) {
+        if (value == null || value.raw() == null) return null;
+        // Yahoo uses 0.0 as a sentinel for "not available" in some fields (e.g. dividendYield for non-dividend stocks).
+        // We intentionally allow 0.0 for dividendYield (a stock can genuinely have a 0% yield).
+        return value.raw();
+    }
+
+    /**
+     * Builds a formatted string of real-time valuation metrics to inject into the AI prompt.
+     * Only non-null values are included so the prompt stays concise.
+     */
+    private String buildMetricsContext(
+            Double trailingPe, Double forwardPe, Double pegRatio, Double priceToBook,
+            Double dividendYield, Double debtToEquity, Double returnOnEquity,
+            Double low52, Double high52, Double marketCap) {
+
+        StringBuilder sb = new StringBuilder();
+        if (trailingPe != null)   sb.append(String.format("- P/E (TTM): %.2f%n",        trailingPe));
+        if (forwardPe != null)    sb.append(String.format("- Forward P/E: %.2f%n",       forwardPe));
+        if (pegRatio != null)     sb.append(String.format("- PEG Ratio: %.2f%n",          pegRatio));
+        if (priceToBook != null)  sb.append(String.format("- Price / Book: %.2f%n",       priceToBook));
+        if (dividendYield != null) sb.append(String.format("- Dividend Yield: %.2f%%%n",  dividendYield * 100));
+        if (debtToEquity != null) sb.append(String.format("- Debt / Equity: %.2f%n",      debtToEquity));
+        if (returnOnEquity != null) sb.append(String.format("- ROE: %.2f%%%n",            returnOnEquity * 100));
+        if (marketCap != null)    sb.append(String.format("- Market Cap: %.0f%n",         marketCap));
+        if (sb.isEmpty()) return "";
+        return "\nReal-Time Financial Metrics (sourced from market data):\n" + sb;
     }
 
     private String extractJson(String text) {

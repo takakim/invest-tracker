@@ -62,7 +62,7 @@ python3 scripts/audit_csv_ledger.py path/to/activity-feed-export.csv --target-ca
 ---
 
 ### 5. `scan_instruments.py`
-Scans CSV files under `docs/csv/` or `docs/` to discover unique financial instruments, ISINs, tickers, native currencies, and initial price references.
+Scans CSV files under `docs/` or current workspace to discover unique financial instruments, ISINs, tickers, native currencies, and initial price references.
 
 ```bash
 python3 scripts/scan_instruments.py
