@@ -42,7 +42,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 @Transactional(readOnly = true)
@@ -60,8 +64,8 @@ public class AiEvaluationService {
     private final ObjectMapper objectMapper;
     private final PortfolioAiEvaluationRepository portfolioAiEvaluationRepository;
     private final HoldingAiEvaluationRepository holdingAiEvaluationRepository;
+    private final TransactionTemplate transactionTemplate;
 
-    @Autowired
     public AiEvaluationService(
             AiGatewayFactory gatewayFactory,
             PortfolioRepository portfolioRepository,
@@ -74,6 +78,25 @@ public class AiEvaluationService {
             PortfolioAiEvaluationRepository portfolioAiEvaluationRepository,
             HoldingAiEvaluationRepository holdingAiEvaluationRepository
     ) {
+        this(gatewayFactory, portfolioRepository, accountRepository, instrumentRepository, positionService,
+                analyticsEngine, yahooFinanceGateway, objectMapper, portfolioAiEvaluationRepository,
+                holdingAiEvaluationRepository, null);
+    }
+
+    @Autowired
+    public AiEvaluationService(
+            AiGatewayFactory gatewayFactory,
+            PortfolioRepository portfolioRepository,
+            AccountRepository accountRepository,
+            InstrumentRepository instrumentRepository,
+            PositionService positionService,
+            AnalyticsEngine analyticsEngine,
+            @Autowired(required = false) YahooFinanceGateway yahooFinanceGateway,
+            ObjectMapper objectMapper,
+            PortfolioAiEvaluationRepository portfolioAiEvaluationRepository,
+            HoldingAiEvaluationRepository holdingAiEvaluationRepository,
+            @Autowired(required = false) PlatformTransactionManager transactionManager
+    ) {
         this.gatewayFactory = gatewayFactory;
         this.portfolioRepository = portfolioRepository;
         this.accountRepository = accountRepository;
@@ -84,10 +107,35 @@ public class AiEvaluationService {
         this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();
         this.portfolioAiEvaluationRepository = portfolioAiEvaluationRepository;
         this.holdingAiEvaluationRepository = holdingAiEvaluationRepository;
+        if (transactionManager != null) {
+            this.transactionTemplate = new TransactionTemplate(transactionManager);
+            this.transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        } else {
+            this.transactionTemplate = null;
+        }
+    }
+
+    private void executeInTransaction(Runnable action) {
+        if (transactionTemplate != null) {
+            transactionTemplate.executeWithoutResult(status -> action.run());
+        } else {
+            action.run();
+        }
     }
 
     public AiStatusDto getStatus() {
-        return gatewayFactory.getActiveGateway().checkStatus();
+        AiStatusDto raw = gatewayFactory.getActiveGateway().checkStatus();
+        return new AiStatusDto(
+                raw.enabled(),
+                raw.connected(),
+                raw.provider(),
+                raw.baseUrl(),
+                raw.configuredModel(),
+                raw.availableModels(),
+                raw.errorMessage(),
+                raw.timeoutSeconds(),
+                gatewayFactory.getAvailableProviders()
+        );
     }
 
     @Transactional
@@ -184,6 +232,7 @@ public class AiEvaluationService {
         }
     }
 
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public HoldingAiEvaluationDto evaluateHolding(UUID portfolioId, UUID instrumentId) {
         Portfolio portfolio = portfolioRepository.findById(portfolioId)
                 .orElseThrow(() -> new ResourceNotFoundException("Portfolio not found: " + portfolioId));
@@ -332,6 +381,7 @@ public class AiEvaluationService {
         return result;
     }
 
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public PortfolioAiEvaluationDto evaluatePortfolio(UUID portfolioId) {
         Portfolio portfolio = portfolioRepository.findById(portfolioId)
                 .orElseThrow(() -> new ResourceNotFoundException("Portfolio not found: " + portfolioId));
@@ -423,62 +473,81 @@ public class AiEvaluationService {
         return result;
     }
 
-    @Transactional
     public void persistPortfolioEvaluation(UUID portfolioId, String providerName, PortfolioAiEvaluationDto dto) {
-        try {
-            String json = objectMapper.writeValueAsString(dto);
-            Optional<PortfolioAiEvaluation> existing = portfolioAiEvaluationRepository.findByPortfolioId(portfolioId);
-            if (existing.isPresent()) {
-                PortfolioAiEvaluation entity = existing.get();
-                entity.setProvider(providerName);
-                entity.setModelUsed(dto.modelUsed() != null ? dto.modelUsed() : providerName);
-                entity.setOverallRiskScore(dto.overallRiskScore());
-                entity.setOverallRiskLevel(dto.overallRiskLevel().name());
-                entity.setExecutiveSummary(dto.executiveSummary());
-                entity.setResultJson(json);
-                entity.setEvaluatedAt(dto.evaluatedAt());
-                portfolioAiEvaluationRepository.save(entity);
-            } else {
-                PortfolioAiEvaluation entity = new PortfolioAiEvaluation(
-                        portfolioId, providerName,
-                        dto.modelUsed() != null ? dto.modelUsed() : providerName,
-                        dto.overallRiskScore(), dto.overallRiskLevel().name(),
-                        dto.executiveSummary(), json, dto.evaluatedAt());
-                portfolioAiEvaluationRepository.save(entity);
-            }
-        } catch (Exception e) {
-            log.error("Failed to persist portfolio AI evaluation for {}: {}", portfolioId, e.getMessage());
+        if (dto == null) {
+            return;
         }
+        executeInTransaction(() -> {
+            try {
+                String json = objectMapper.writeValueAsString(dto);
+                Instant evaluatedAt = dto.evaluatedAt() != null ? dto.evaluatedAt() : Instant.now();
+                int riskScore = dto.overallRiskScore();
+                String riskLevel = dto.overallRiskLevel() != null ? dto.overallRiskLevel().name() : AiRiskLevel.MODERATE.name();
+                String summary = dto.executiveSummary() != null ? dto.executiveSummary() : "Portfolio evaluation";
+                String model = dto.modelUsed() != null ? dto.modelUsed() : providerName;
+
+                Optional<PortfolioAiEvaluation> existing = portfolioAiEvaluationRepository.findByPortfolioId(portfolioId);
+                PortfolioAiEvaluation entity;
+                if (existing.isPresent()) {
+                    entity = existing.get();
+                    entity.setProvider(providerName);
+                    entity.setModelUsed(model);
+                    entity.setOverallRiskScore(riskScore);
+                    entity.setOverallRiskLevel(riskLevel);
+                    entity.setExecutiveSummary(summary);
+                    entity.setResultJson(json);
+                    entity.setEvaluatedAt(evaluatedAt);
+                } else {
+                    entity = new PortfolioAiEvaluation(
+                            portfolioId, providerName, model,
+                            riskScore, riskLevel, summary, json, evaluatedAt);
+                }
+                portfolioAiEvaluationRepository.saveAndFlush(entity);
+                log.info("Persisted portfolio AI evaluation for portfolio {} with provider {}", portfolioId, providerName);
+            } catch (Exception e) {
+                log.error("Failed to persist portfolio AI evaluation for {}: {}", portfolioId, e.getMessage(), e);
+            }
+        });
     }
 
-    @Transactional
     public void persistHoldingEvaluation(UUID portfolioId, UUID instrumentId, String providerName, HoldingAiEvaluationDto dto) {
-        try {
-            String json = objectMapper.writeValueAsString(dto);
-            Optional<HoldingAiEvaluation> existing = holdingAiEvaluationRepository
-                    .findByPortfolioIdAndInstrumentId(portfolioId, instrumentId);
-            if (existing.isPresent()) {
-                HoldingAiEvaluation entity = existing.get();
-                entity.setProvider(providerName);
-                entity.setModelUsed(dto.modelUsed() != null ? dto.modelUsed() : providerName);
-                entity.setStance(dto.stance().name());
-                entity.setRiskScore(dto.riskScore());
-                entity.setRiskLevel(dto.riskLevel().name());
-                entity.setExecutiveSummary(dto.executiveSummary());
-                entity.setResultJson(json);
-                entity.setEvaluatedAt(dto.evaluatedAt());
-                holdingAiEvaluationRepository.save(entity);
-            } else {
-                HoldingAiEvaluation entity = new HoldingAiEvaluation(
-                        portfolioId, instrumentId, providerName,
-                        dto.modelUsed() != null ? dto.modelUsed() : providerName,
-                        dto.stance().name(), dto.riskScore(), dto.riskLevel().name(),
-                        dto.executiveSummary(), json, dto.evaluatedAt());
-                holdingAiEvaluationRepository.save(entity);
-            }
-        } catch (Exception e) {
-            log.error("Failed to persist holding AI evaluation for {}/{}: {}", portfolioId, instrumentId, e.getMessage());
+        if (dto == null) {
+            return;
         }
+        executeInTransaction(() -> {
+            try {
+                String json = objectMapper.writeValueAsString(dto);
+                Instant evaluatedAt = dto.evaluatedAt() != null ? dto.evaluatedAt() : Instant.now();
+                int riskScore = dto.riskScore();
+                String riskLevel = dto.riskLevel() != null ? dto.riskLevel().name() : AiRiskLevel.MODERATE.name();
+                String stance = dto.stance() != null ? dto.stance().name() : AiStance.HOLD.name();
+                String summary = dto.executiveSummary() != null ? dto.executiveSummary() : "Holding evaluation";
+                String model = dto.modelUsed() != null ? dto.modelUsed() : providerName;
+
+                Optional<HoldingAiEvaluation> existing = holdingAiEvaluationRepository
+                        .findByPortfolioIdAndInstrumentId(portfolioId, instrumentId);
+                HoldingAiEvaluation entity;
+                if (existing.isPresent()) {
+                    entity = existing.get();
+                    entity.setProvider(providerName);
+                    entity.setModelUsed(model);
+                    entity.setStance(stance);
+                    entity.setRiskScore(riskScore);
+                    entity.setRiskLevel(riskLevel);
+                    entity.setExecutiveSummary(summary);
+                    entity.setResultJson(json);
+                    entity.setEvaluatedAt(evaluatedAt);
+                } else {
+                    entity = new HoldingAiEvaluation(
+                            portfolioId, instrumentId, providerName,
+                            model, stance, riskScore, riskLevel, summary, json, evaluatedAt);
+                }
+                holdingAiEvaluationRepository.saveAndFlush(entity);
+                log.info("Persisted holding AI evaluation for portfolio {} / instrument {} with provider {}", portfolioId, instrumentId, providerName);
+            } catch (Exception e) {
+                log.error("Failed to persist holding AI evaluation for {}/{}: {}", portfolioId, instrumentId, e.getMessage(), e);
+            }
+        });
     }
 
     private HoldingAiEvaluationDto parseHoldingResponse(

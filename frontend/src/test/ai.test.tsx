@@ -43,6 +43,7 @@ const mockAiStatusConnected: AiStatus = {
   configuredModel: 'gemma4-12b',
   availableModels: ['gemma4-12b', 'qwen2.5-7b'],
   timeoutSeconds: 60,
+  availableProviders: ['LM_STUDIO', 'OPENAI', 'GEMINI', 'ANTHROPIC'],
 };
 
 const mockAiStatusOffline: AiStatus = {
@@ -634,6 +635,43 @@ describe('AI Intelligence Feature Suite', () => {
       await waitFor(() => {
         expect(screen.getByText(/Timeout must be between 5 and 3600 seconds/i)).toBeInTheDocument();
         expect(screen.getByTestId('ai-save-settings-btn')).toBeDisabled();
+      });
+    });
+
+    it('hides third-party providers when their API keys are not configured', async () => {
+      vi.spyOn(aiApi, 'getAiStatus').mockResolvedValue({
+        ...mockAiStatusConnected,
+        availableProviders: ['LM_STUDIO', 'GEMINI'],
+      });
+
+      renderWithProviders(<AiSettingsModal open={true} onClose={vi.fn()} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('ai-provider-chip-AUTO')).toBeInTheDocument();
+        expect(screen.getByTestId('ai-provider-chip-LM_STUDIO')).toBeInTheDocument();
+        expect(screen.getByTestId('ai-provider-chip-GEMINI')).toBeInTheDocument();
+        expect(screen.queryByTestId('ai-provider-chip-OPENAI')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('ai-provider-chip-ANTHROPIC')).not.toBeInTheDocument();
+      });
+    });
+
+    it('displays Gemini models when Gemini provider is selected', async () => {
+      vi.spyOn(aiApi, 'getAiStatus').mockResolvedValue({
+        ...mockAiStatusConnected,
+        availableProviders: ['LM_STUDIO', 'GEMINI'],
+      });
+
+      renderWithProviders(<AiSettingsModal open={true} onClose={vi.fn()} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('ai-provider-chip-GEMINI')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId('ai-provider-chip-GEMINI'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('ai-model-chip-gemini-2.5-flash')).toBeInTheDocument();
+        expect(screen.getByTestId('ai-model-chip-gemini-2.5-pro')).toBeInTheDocument();
       });
     });
   });

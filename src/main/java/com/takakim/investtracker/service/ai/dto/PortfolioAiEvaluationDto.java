@@ -9,7 +9,7 @@ public record PortfolioAiEvaluationDto(
         UUID portfolioId,
         String portfolioName,
         String baseCurrency,
-        int overallRiskScore,
+        Integer overallRiskScore,
         AiRiskLevel overallRiskLevel,
         String executiveSummary,
         String diversificationAssessment,
@@ -21,6 +21,12 @@ public record PortfolioAiEvaluationDto(
         String modelUsed,
         Instant evaluatedAt
 ) {
+    public PortfolioAiEvaluationDto {
+        if (overallRiskScore == null) {
+            overallRiskScore = 5;
+        }
+    }
+
     public boolean isStale() {
         return evaluatedAt != null && evaluatedAt.isBefore(Instant.now().minus(7, ChronoUnit.DAYS));
     }
