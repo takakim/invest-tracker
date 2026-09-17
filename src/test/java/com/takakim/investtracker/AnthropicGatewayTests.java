@@ -59,6 +59,32 @@ class AnthropicGatewayTests {
     }
 
     @Test
+    @DisplayName("checkStatus and generateChatCompletion handle null API key")
+    void testNullApiKey() {
+        properties.setAnthropicApiKey(null);
+        AiStatusDto status = gateway.checkStatus();
+        assertFalse(status.connected());
+
+        assertThrows(IllegalStateException.class, () -> gateway.generateChatCompletion("sys", "usr"));
+    }
+
+    @Test
+    @DisplayName("resolveActiveModel handles auto, null, blank and explicit model")
+    void testResolveActiveModel() {
+        properties.setModel("auto");
+        assertEquals("claude-3-5-haiku-latest", gateway.resolveActiveModel());
+
+        properties.setModel(null);
+        assertEquals("claude-3-5-haiku-latest", gateway.resolveActiveModel());
+
+        properties.setModel("   ");
+        assertEquals("claude-3-5-haiku-latest", gateway.resolveActiveModel());
+
+        properties.setModel("claude-3-5-sonnet-20241022");
+        assertEquals("claude-3-5-sonnet-20241022", gateway.resolveActiveModel());
+    }
+
+    @Test
     @DisplayName("checkStatus returns offline when AI is disabled")
     void testCheckStatus_disabled() {
         properties.setEnabled(false);

@@ -781,6 +781,261 @@ class LmStudioGatewayTests {
         // Null request factory branch in test constructor
         gateway.setTimeoutSeconds(90);
     }
+
+    @Test
+    @DisplayName("checkStatus auto-selects loaded instance and filters embedding models")
+    void testCheckStatusAutoSelectsLoadedInstanceAndFiltersEmbeddings() {
+        properties.setModel("auto");
+        String json = """
+                {
+                  "models": [
+                    {
+                      "type": "llm",
+                      "key": "google/gemma-4-e4b",
+                      "display_name": "Gemma 4 E4B",
+                      "loaded_instances": [
+                        { "id": "google/gemma-4-e4b" }
+                      ]
+                    },
+                    {
+                      "type": "llm",
+                      "key": "google/gemma-4-12b",
+                      "display_name": "Gemma 4 12B",
+                      "loaded_instances": []
+                    },
+                    {
+                      "type": "embedding",
+                      "key": "text-embedding-nomic-embed-text-v1.5",
+                      "display_name": "Nomic Embed Text v1.5",
+                      "loaded_instances": []
+                    }
+                  ]
+                }
+                """;
+
+        mockServer.expect(requestTo("http://localhost:1234/api/v1/models"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(json, MediaType.APPLICATION_JSON));
+
+        AiStatusDto status = gateway.checkStatus();
+        mockServer.verify();
+
+        assertTrue(status.connected());
+        assertEquals("google/gemma-4-e4b", status.configuredModel());
+        assertTrue(status.availableModels().contains("google/gemma-4-e4b"));
+        assertTrue(status.availableModels().contains("google/gemma-4-12b"));
+    }
+
+    @Test
+    @DisplayName("generateChatCompletion extracts reasoning_content for thinking models")
+    void testGenerateChatCompletionReasoningContent() {
+        String nativeJson = """
+                { "output": [] }
+                """;
+
+        String openAiReasoningResponse = """
+                {
+                  "choices": [
+                    {
+                      "message": {
+                        "role": "assistant",
+                        "content": "",
+                        "reasoning_content": "{\\"stance\\": \\"BUY\\"}"
+                      }
+                    }
+                  ]
+                }
+                """;
+
+        mockServer.expect(requestTo("http://localhost:1234/api/v1/chat"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess(nativeJson, MediaType.APPLICATION_JSON));
+
+        mockServer.expect(requestTo("http://localhost:1234/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess(openAiReasoningResponse, MediaType.APPLICATION_JSON));
+
+        String result = gateway.generateChatCompletion("Sys", "User");
+        mockServer.verify();
+
+        assertNotNull(result);
+        assertTrue(result.contains("BUY"));
+    }
+
+    @Test
+    @DisplayName("resolveActiveModelFrom prioritizes loaded model over default")
+    void testResolveActiveModelFromPrioritizesLoaded() {
+        LmStudioGateway.DiscoveredModelsResult models = new LmStudioGateway.DiscoveredModelsResult(
+                java.util.List.of("google/gemma-4-e4b"),
+                java.util.List.of("google/gemma-4-e4b", "google/gemma-4-12b"),
+                java.util.List.of("google/gemma-4-e4b", "google/gemma-4-12b")
+        );
+
+        properties.setModel("auto");
+        assertEquals("google/gemma-4-e4b", gateway.resolveActiveModelFrom(models));
+
+        properties.setModel("google/gemma-4-12b");
+        // Configured model is available
+        assertEquals("google/gemma-4-12b", gateway.resolveActiveModelFrom(models));
+
+        properties.setModel("non-existent-model");
+        // Non-existent falls back to loaded model
+        assertEquals("google/gemma-4-e4b", gateway.resolveActiveModelFrom(models));
+    }
+
+    @Test
+    @DisplayName("resolveActiveModel fallback and auto handling")
+    void testResolveActiveModelBranches() {
+        properties.setModel("custom-model");
+        assertEquals("custom-model", gateway.resolveActiveModel());
+
+        properties.setModel("default");
+        assertEquals("google/gemma-4-e4b", gateway.resolveActiveModel());
+
+        properties.setModel("  ");
+        assertEquals("google/gemma-4-e4b", gateway.resolveActiveModel());
+
+        properties.setModel(null);
+        assertEquals("google/gemma-4-e4b", gateway.resolveActiveModel());
+    }
+
+    @Test
+    @DisplayName("resolveActiveModelFrom covers LLM first, all models first, and null models")
+    void testResolveActiveModelFromBranches() {
+        // null models
+        properties.setModel("auto");
+        assertEquals("google/gemma-4-e4b", gateway.resolveActiveModelFrom(null));
+
+        properties.setModel("explicit-model");
+        assertEquals("explicit-model", gateway.resolveActiveModelFrom(null));
+
+        // loaded is empty, but availableLlmModelIds has item
+        LmStudioGateway.DiscoveredModelsResult modelsWithLlm = new LmStudioGateway.DiscoveredModelsResult(
+                java.util.List.of(),
+                java.util.List.of("mistral-7b", "llama-3-8b"),
+                java.util.List.of("mistral-7b", "llama-3-8b")
+        );
+        properties.setModel("auto");
+        assertEquals("mistral-7b", gateway.resolveActiveModelFrom(modelsWithLlm));
+
+        // loaded is empty, LLMs empty, all models has item (e.g. all were filtered)
+        LmStudioGateway.DiscoveredModelsResult modelsOnlyAll = new LmStudioGateway.DiscoveredModelsResult(
+                java.util.List.of(),
+                java.util.List.of(),
+                java.util.List.of("fallback-model")
+        );
+        assertEquals("fallback-model", gateway.resolveActiveModelFrom(modelsOnlyAll));
+
+        // completely empty discovered models
+        LmStudioGateway.DiscoveredModelsResult emptyModels = new LmStudioGateway.DiscoveredModelsResult(
+                java.util.List.of(),
+                java.util.List.of(),
+                java.util.List.of()
+        );
+        assertEquals("google/gemma-4-e4b", gateway.resolveActiveModelFrom(emptyModels));
+
+        properties.setModel("custom-fallback");
+        assertEquals("custom-fallback", gateway.resolveActiveModelFrom(emptyModels));
+    }
+
+    @Test
+    @DisplayName("extractContentFromOpenAiResponse handles choice text, empty choices and invalid JSON")
+    void testExtractContentFromOpenAiResponseBranches() {
+        // Choice with text
+        String choiceTextJson = """
+                {
+                  "choices": [
+                    { "text": "Completion style response text" }
+                  ]
+                }
+                """;
+        var res1 = gateway.extractContentFromOpenAiResponse(choiceTextJson);
+        assertTrue(res1.isPresent());
+        assertEquals("Completion style response text", res1.get());
+
+        // Choice with empty text
+        String emptyTextJson = """
+                {
+                  "choices": [
+                    { "text": "   " }
+                  ]
+                }
+                """;
+        var resEmpty = gateway.extractContentFromOpenAiResponse(emptyTextJson);
+        assertTrue(resEmpty.isEmpty());
+
+        // Choice with message having empty content and empty reasoning
+        String blankMsgJson = """
+                {
+                  "choices": [
+                    { "message": { "content": "", "reasoning_content": "" } }
+                  ]
+                }
+                """;
+        var resBlank = gateway.extractContentFromOpenAiResponse(blankMsgJson);
+        assertTrue(resBlank.isEmpty());
+
+        // Empty choices array
+        String emptyChoicesJson = """
+                { "choices": [] }
+                """;
+        var res2 = gateway.extractContentFromOpenAiResponse(emptyChoicesJson);
+        assertTrue(res2.isEmpty());
+
+        // Null or blank response body
+        assertTrue(gateway.extractContentFromOpenAiResponse(null).isEmpty());
+        assertTrue(gateway.extractContentFromOpenAiResponse("  ").isEmpty());
+
+        // Malformed JSON
+        assertTrue(gateway.extractContentFromOpenAiResponse("{ not valid json").isEmpty());
+    }
+
+    @Test
+    @DisplayName("extractContentFromNativeResponse handles output items, empty text and invalid JSON")
+    void testExtractContentFromNativeResponseBranches() {
+        // Valid output item
+        String validJson = """
+                {
+                  "output": [
+                    { "content": "Native content response" }
+                  ]
+                }
+                """;
+        var res1 = gateway.extractContentFromNativeResponse(validJson);
+        assertTrue(res1.isPresent());
+        assertEquals("Native content response", res1.get());
+
+        // Output item with empty or missing content
+        String emptyJson = """
+                {
+                  "output": [
+                    { "type": "info" },
+                    { "content": "   " }
+                  ]
+                }
+                """;
+        var res2 = gateway.extractContentFromNativeResponse(emptyJson);
+        assertTrue(res2.isEmpty());
+
+        // Empty output array
+        var res3 = gateway.extractContentFromNativeResponse("{ \"output\": [] }");
+        assertTrue(res3.isEmpty());
+
+        // Null or blank body
+        assertTrue(gateway.extractContentFromNativeResponse(null).isEmpty());
+        assertTrue(gateway.extractContentFromNativeResponse("").isEmpty());
+
+        // Malformed JSON
+        assertTrue(gateway.extractContentFromNativeResponse("invalid json").isEmpty());
+    }
+
+    @Test
+    @DisplayName("setTimeoutSeconds and getTimeoutSeconds operations")
+    void testTimeoutOperations() {
+        gateway.setTimeoutSeconds(120);
+        assertEquals(30, gateway.getTimeoutSeconds());
+        assertEquals("LM_STUDIO", gateway.getProviderName());
+    }
 }
 
 

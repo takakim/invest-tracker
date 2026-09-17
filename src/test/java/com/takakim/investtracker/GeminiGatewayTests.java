@@ -169,11 +169,11 @@ class GeminiGatewayTests {
     }
 
     @Test
-    @DisplayName("generateChatCompletion falls back to default model when model is null")
+    @DisplayName("generateChatCompletion falls back to default model when model is null or auto")
     void testGenerate_defaultModel() {
         properties.setModel(null);
         String responseBody = "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Default model response\"}]}}]}";
-        mockServer.expect(requestTo("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=gemini-test-key"))
+        mockServer.expect(requestTo("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=gemini-test-key"))
                 .andExpect(method(HttpMethod.POST))
                 .andRespond(withSuccess(responseBody, MediaType.APPLICATION_JSON));
 
@@ -198,7 +198,7 @@ class GeminiGatewayTests {
     @Test
     @DisplayName("checkStatus handles models without name or models/ prefix")
     void testCheckStatus_noPrefixAndMissingName() {
-        String json = "{\"models\":[{\"name\":\"custom-model\"}, {\"noName\":\"val\"}]}";
+        String json = "{\"models\":[{\"name\":\"gemini-custom\"}, {\"noName\":\"val\"}]}";
         mockServer.expect(requestTo("https://generativelanguage.googleapis.com/v1beta/models?key=gemini-test-key"))
                 .andExpect(method(HttpMethod.GET))
                 .andRespond(withSuccess(json, MediaType.APPLICATION_JSON));
@@ -207,7 +207,81 @@ class GeminiGatewayTests {
         mockServer.verify();
         assertTrue(status.connected());
         assertEquals(1, status.availableModels().size());
-        assertTrue(status.availableModels().contains("custom-model"));
+        assertTrue(status.availableModels().contains("gemini-custom"));
+    }
+
+    @Test
+    @DisplayName("checkStatus filters out specialized models and sorts chat models by priority")
+    void testCheckStatus_filtersSpecializedModelsAndSorts() {
+        String json = """
+                {
+                  "models": [
+                    {"name": "models/gemini-embedding-001", "supportedGenerationMethods": ["embedContent"]},
+                    {"name": "models/veo-3.1", "supportedGenerationMethods": ["generateContent"]},
+                    {"name": "models/gemini-2.5-flash-tts", "supportedGenerationMethods": ["generateContent"]},
+                    {"name": "models/gemini-2.5-computer-use", "supportedGenerationMethods": ["generateContent"]},
+                    {"name": "models/gemini-transcribe-v1", "supportedGenerationMethods": ["generateContent"]},
+                    {"name": "models/gemini-audio-v1", "supportedGenerationMethods": ["generateContent"]},
+                    {"name": "models/gemini-image-v1", "supportedGenerationMethods": ["generateContent"]},
+                    {"name": "models/gemini-robotics-er", "supportedGenerationMethods": ["generateContent"]},
+                    {"name": "models/gemini-customtools-preview", "supportedGenerationMethods": ["generateContent"]},
+                    {"name": "models/gemini-veo-hybrid", "supportedGenerationMethods": ["generateContent"]},
+                    {"name": "models/gemini-lyria-audio", "supportedGenerationMethods": ["generateContent"]},
+                    {"name": "models/gemini-aqa-qa", "supportedGenerationMethods": ["generateContent"]},
+                    {"name": "models/gemini-flash-latest", "supportedGenerationMethods": ["generateContent"]},
+                    {"name": "models/gemini-pro-latest", "supportedGenerationMethods": ["generateContent"]},
+                    {"name": "models/gemini-1.5-flash", "supportedGenerationMethods": ["generateContent"]},
+                    {"name": "models/gemini-1.5-pro", "supportedGenerationMethods": ["generateContent"]},
+                    {"name": "models/gemini-2.5-pro", "supportedGenerationMethods": ["generateContent"]},
+                    {"name": "models/gemini-2.5-flash", "supportedGenerationMethods": ["generateContent"]},
+                    {"name": "models/gemini-2.0-flash", "supportedGenerationMethods": ["generateContent"]},
+                    {"name": "models/gemini-2.0-flash-lite", "supportedGenerationMethods": ["generateContent"]},
+                    {"name": "models/gemini-custom-generation", "supportedGenerationMethods": ["generateContent"]}
+                  ]
+                }
+                """;
+        mockServer.expect(requestTo("https://generativelanguage.googleapis.com/v1beta/models?key=gemini-test-key"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(json, MediaType.APPLICATION_JSON));
+
+        AiStatusDto status = gateway.checkStatus();
+        mockServer.verify();
+        assertTrue(status.connected());
+        assertEquals(9, status.availableModels().size());
+        // Verify priority sorting:
+        assertEquals("gemini-2.5-flash", status.availableModels().get(0));
+        assertEquals("gemini-2.5-pro", status.availableModels().get(1));
+        assertEquals("gemini-2.0-flash", status.availableModels().get(2));
+        assertEquals("gemini-2.0-flash-lite", status.availableModels().get(3));
+        assertEquals("gemini-flash-latest", status.availableModels().get(4));
+        assertEquals("gemini-pro-latest", status.availableModels().get(5));
+        assertEquals("gemini-1.5-flash", status.availableModels().get(6));
+        assertEquals("gemini-1.5-pro", status.availableModels().get(7));
+        assertEquals("gemini-custom-generation", status.availableModels().get(8));
+    }
+
+    @Test
+    @DisplayName("checkStatus and generateChatCompletion handle null API key")
+    void testNullApiKey() {
+        properties.setGeminiApiKey(null);
+        AiStatusDto status = gateway.checkStatus();
+        assertFalse(status.connected());
+
+        assertThrows(IllegalStateException.class, () -> gateway.generateChatCompletion("sys", "usr"));
+    }
+
+    @Test
+    @DisplayName("resolveActiveModel handles auto, null, blank and explicit model")
+    void testResolveActiveModel() {
+        properties.setModel("auto");
+        assertEquals("gemini-2.5-flash", gateway.resolveActiveModel());
+        assertEquals("gemini-2.5-pro", gateway.resolveActiveModel(java.util.List.of("gemini-2.5-pro")));
+
+        properties.setModel("   ");
+        assertEquals("gemini-2.5-flash", gateway.resolveActiveModel());
+
+        properties.setModel("gemini-custom-model");
+        assertEquals("gemini-custom-model", gateway.resolveActiveModel());
     }
 
     @Test

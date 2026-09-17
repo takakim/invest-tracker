@@ -79,10 +79,10 @@ public class AnthropicGateway implements AiGateway {
         // Anthropic has no public /models endpoint that accepts no body;
         // we perform a lightweight probe via a minimal /v1/messages request.
         // A 400 (invalid request but reachable) still counts as "connected".
+        String activeModel = resolveActiveModel();
         try {
             Map<String, Object> probePayload = Map.of(
-                    "model", (properties.getModel() != null && !properties.getModel().isBlank())
-                            ? properties.getModel() : DEFAULT_MODEL,
+                    "model", activeModel,
                     "max_tokens", 1,
                     "messages", List.of(Map.of("role", "user", "content", "ping"))
             );
@@ -95,22 +95,29 @@ public class AnthropicGateway implements AiGateway {
                     .retrieve()
                     .body(String.class);
             return new AiStatusDto(true, true, PROVIDER_NAME, properties.getAnthropicBaseUrl(),
-                    properties.getModel(), List.of(properties.getModel() != null ? properties.getModel() : DEFAULT_MODEL), null, getTimeoutSeconds());
+                    activeModel, List.of(activeModel), null, getTimeoutSeconds());
         } catch (RestClientResponseException e) {
             // 4xx means we reached Anthropic but the request was rejected (e.g. invalid model) — still "connected"
             if (e.getStatusCode().is4xxClientError()) {
-                String configuredModel = properties.getModel() != null ? properties.getModel() : DEFAULT_MODEL;
                 return new AiStatusDto(true, true, PROVIDER_NAME, properties.getAnthropicBaseUrl(),
-                        configuredModel, List.of(configuredModel), null, getTimeoutSeconds());
+                        activeModel, List.of(activeModel), null, getTimeoutSeconds());
             }
             log.warn("Failed to connect to Anthropic API: {}", e.getMessage());
             return new AiStatusDto(true, false, PROVIDER_NAME, properties.getAnthropicBaseUrl(),
-                    properties.getModel(), List.of(), "Cannot connect to Anthropic: " + e.getMessage(), getTimeoutSeconds());
+                    activeModel, List.of(), "Cannot connect to Anthropic: " + e.getMessage(), getTimeoutSeconds());
         } catch (Exception e) {
             log.warn("Failed to connect to Anthropic API: {}", e.getMessage());
             return new AiStatusDto(true, false, PROVIDER_NAME, properties.getAnthropicBaseUrl(),
-                    properties.getModel(), List.of(), "Cannot connect to Anthropic: " + e.getMessage(), getTimeoutSeconds());
+                    activeModel, List.of(), "Cannot connect to Anthropic: " + e.getMessage(), getTimeoutSeconds());
         }
+    }
+
+    public String resolveActiveModel() {
+        String configured = properties.getModel();
+        if (configured != null && !configured.isBlank() && !"auto".equalsIgnoreCase(configured.trim())) {
+            return configured.trim();
+        }
+        return DEFAULT_MODEL;
     }
 
     @Override
@@ -122,8 +129,7 @@ public class AnthropicGateway implements AiGateway {
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException("ANTHROPIC_API_KEY is not configured");
         }
-        String targetModel = (properties.getModel() != null && !properties.getModel().isBlank())
-                ? properties.getModel() : DEFAULT_MODEL;
+        String targetModel = resolveActiveModel();
 
         Map<String, Object> payload = Map.of(
                 "model", targetModel,

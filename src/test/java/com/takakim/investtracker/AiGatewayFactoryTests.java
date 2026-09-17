@@ -89,15 +89,153 @@ class AiGatewayFactoryTests {
     }
 
     @Test
+    @DisplayName("AUTO provider selects LmStudioGateway when local is connected")
+    void testAutoSelectsLmStudioWhenConnected() {
+        when(properties.getProvider()).thenReturn("AUTO");
+        com.takakim.investtracker.service.ai.dto.AiStatusDto connectedStatus =
+                new com.takakim.investtracker.service.ai.dto.AiStatusDto(true, true, "LM_STUDIO", "http://localhost:1234", "auto", java.util.List.of(), null, 60);
+        when(lmStudioGateway.checkStatus()).thenReturn(connectedStatus);
+
+        assertSame(lmStudioGateway, factory.getActiveGateway());
+    }
+
+    @Test
+    @DisplayName("AUTO provider falls back to OpenAI when local is offline and OpenAI key is configured")
+    void testAutoFallsBackToOpenAi() {
+        when(properties.getProvider()).thenReturn("AUTO");
+        com.takakim.investtracker.service.ai.dto.AiStatusDto offlineStatus =
+                new com.takakim.investtracker.service.ai.dto.AiStatusDto(true, false, "LM_STUDIO", "http://localhost:1234", "auto", java.util.List.of(), "offline", 60);
+        when(lmStudioGateway.checkStatus()).thenReturn(offlineStatus);
+        when(properties.getOpenaiApiKey()).thenReturn("sk-test");
+
+        assertSame(openAiGateway, factory.getActiveGateway());
+    }
+
+    @Test
+    @DisplayName("AUTO provider falls back to Gemini when local is offline, OpenAI unset, Gemini key configured")
+    void testAutoFallsBackToGemini() {
+        when(properties.getProvider()).thenReturn("AUTO");
+        com.takakim.investtracker.service.ai.dto.AiStatusDto offlineStatus =
+                new com.takakim.investtracker.service.ai.dto.AiStatusDto(true, false, "LM_STUDIO", "http://localhost:1234", "auto", java.util.List.of(), "offline", 60);
+        when(lmStudioGateway.checkStatus()).thenReturn(offlineStatus);
+        when(properties.getOpenaiApiKey()).thenReturn("");
+        when(properties.getGeminiApiKey()).thenReturn("gemini-test");
+
+        assertSame(geminiGateway, factory.getActiveGateway());
+    }
+
+    @Test
+    @DisplayName("AUTO provider falls back to Anthropic when local is offline, OpenAI & Gemini unset, Anthropic key configured")
+    void testAutoFallsBackToAnthropic() {
+        when(properties.getProvider()).thenReturn("AUTO");
+        com.takakim.investtracker.service.ai.dto.AiStatusDto offlineStatus =
+                new com.takakim.investtracker.service.ai.dto.AiStatusDto(true, false, "LM_STUDIO", "http://localhost:1234", "auto", java.util.List.of(), "offline", 60);
+        when(lmStudioGateway.checkStatus()).thenReturn(offlineStatus);
+        when(properties.getOpenaiApiKey()).thenReturn(null);
+        when(properties.getGeminiApiKey()).thenReturn("");
+        when(properties.getAnthropicApiKey()).thenReturn("sk-ant-test");
+
+        assertSame(anthropicGateway, factory.getActiveGateway());
+    }
+
+    @Test
+    @DisplayName("AUTO provider handles LmStudioGateway exception gracefully")
+    void testAutoHandlesLmStudioException() {
+        when(properties.getProvider()).thenReturn("AUTO");
+        when(lmStudioGateway.checkStatus()).thenThrow(new RuntimeException("Connection refused"));
+        when(properties.getOpenaiApiKey()).thenReturn("sk-test");
+
+        assertSame(openAiGateway, factory.getActiveGateway());
+    }
+
+    @Test
+    @DisplayName("updateProvider updates properties when provider is valid and configured")
+    void testUpdateProvider() {
+        when(properties.getOpenaiApiKey()).thenReturn("sk-openai");
+        when(properties.getGeminiApiKey()).thenReturn("gemini-key");
+
+        factory.updateProvider("OPENAI");
+        verify(properties).setProvider("OPENAI");
+
+        factory.updateProvider("  gemini  ");
+        verify(properties).setProvider("GEMINI");
+
+        factory.updateProvider("LM_STUDIO");
+        verify(properties).setProvider("LM_STUDIO");
+
+        factory.updateProvider("AUTO");
+        verify(properties).setProvider("AUTO");
+
+        factory.updateProvider(null);
+        factory.updateProvider("   ");
+    }
+
+    @Test
+    @DisplayName("updateProvider throws IllegalArgumentException when third-party API key is not configured")
+    void testUpdateProviderThrowsWhenApiKeyMissing() {
+        when(properties.getOpenaiApiKey()).thenReturn("");
+        assertThrows(IllegalArgumentException.class, () -> factory.updateProvider("OPENAI"));
+
+        when(properties.getAnthropicApiKey()).thenReturn(null);
+        assertThrows(IllegalArgumentException.class, () -> factory.updateProvider("ANTHROPIC"));
+    }
+
+    @Test
+    @DisplayName("updateModel updates properties")
+    void testUpdateModel() {
+        factory.updateModel("google/gemma-4-e4b");
+        verify(properties).setModel("google/gemma-4-e4b");
+
+        factory.updateModel(null);
+        factory.updateModel("   ");
+    }
+
+    @Test
+    @DisplayName("getAvailableProviders filters providers based on configured API keys")
+    void testGetAvailableProviders() {
+        // Initially no third-party keys configured
+        when(properties.getOpenaiApiKey()).thenReturn(null);
+        when(properties.getGeminiApiKey()).thenReturn("");
+        when(properties.getAnthropicApiKey()).thenReturn(null);
+
+        java.util.List<String> providersOnlyLocal = factory.getAvailableProviders();
+        assertEquals(java.util.List.of("LM_STUDIO"), providersOnlyLocal);
+
+        // When Gemini key configured
+        when(properties.getGeminiApiKey()).thenReturn("test-gemini-key");
+        java.util.List<String> providersWithGemini = factory.getAvailableProviders();
+        assertEquals(java.util.List.of("LM_STUDIO", "GEMINI"), providersWithGemini);
+
+        // When all third-party keys configured
+        when(properties.getOpenaiApiKey()).thenReturn("sk-test");
+        when(properties.getAnthropicApiKey()).thenReturn("ant-test");
+        java.util.List<String> providersAll = factory.getAvailableProviders();
+        assertTrue(providersAll.containsAll(java.util.List.of("LM_STUDIO", "OPENAI", "GEMINI", "ANTHROPIC")));
+    }
+
+    @Test
     @DisplayName("updateTimeout updates properties and all gateways")
     void testUpdateTimeout() {
-        factory.updateTimeout(120);
+        factory.updateTimeout(45);
+        verify(properties).setTimeoutSeconds(45);
+        verify(lmStudioGateway).setTimeoutSeconds(45);
+        verify(openAiGateway).setTimeoutSeconds(45);
+        verify(geminiGateway).setTimeoutSeconds(45);
+        verify(anthropicGateway).setTimeoutSeconds(45);
+    }
 
-        verify(properties).setTimeoutSeconds(120);
-        verify(lmStudioGateway).setTimeoutSeconds(120);
-        verify(openAiGateway).setTimeoutSeconds(120);
-        verify(geminiGateway).setTimeoutSeconds(120);
-        verify(anthropicGateway).setTimeoutSeconds(120);
+    @Test
+    @DisplayName("AUTO provider defaults to LM Studio when local is offline and no third party keys configured")
+    void testAutoFallsBackToLmStudioDefault() {
+        when(properties.getProvider()).thenReturn("AUTO");
+        com.takakim.investtracker.service.ai.dto.AiStatusDto offlineStatus =
+                new com.takakim.investtracker.service.ai.dto.AiStatusDto(true, false, "LM_STUDIO", "http://localhost:1234", "auto", java.util.List.of(), "offline", 60);
+        when(lmStudioGateway.checkStatus()).thenReturn(offlineStatus);
+        when(properties.getOpenaiApiKey()).thenReturn(null);
+        when(properties.getGeminiApiKey()).thenReturn(null);
+        when(properties.getAnthropicApiKey()).thenReturn(null);
+
+        assertSame(lmStudioGateway, factory.getActiveGateway());
     }
 }
 

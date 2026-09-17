@@ -90,17 +90,31 @@ public class OpenAiGateway implements AiGateway {
                 JsonNode data = root.get("data");
                 if (data != null && data.isArray()) {
                     for (JsonNode m : data) {
-                        if (m.has("id")) discoveredModels.add(m.get("id").asText());
+                        if (m.has("id")) {
+                            String modelId = m.get("id").asText();
+                            String lower = modelId.toLowerCase();
+                            if (lower.startsWith("gpt-") || lower.startsWith("o1") || lower.startsWith("o3") || lower.startsWith("chatgpt-")) {
+                                discoveredModels.add(modelId);
+                            }
+                        }
                     }
                 }
             }
             return new AiStatusDto(true, true, PROVIDER_NAME, properties.getOpenaiBaseUrl(),
-                    properties.getModel(), discoveredModels, null, getTimeoutSeconds());
+                    resolveActiveModel(), discoveredModels, null, getTimeoutSeconds());
         } catch (Exception e) {
             log.warn("Failed to connect to OpenAI at {}: {}", properties.getOpenaiBaseUrl(), e.getMessage());
             return new AiStatusDto(true, false, PROVIDER_NAME, properties.getOpenaiBaseUrl(),
-                    properties.getModel(), List.of(), "Cannot connect to OpenAI: " + e.getMessage(), getTimeoutSeconds());
+                    resolveActiveModel(), List.of(), "Cannot connect to OpenAI: " + e.getMessage(), getTimeoutSeconds());
         }
+    }
+
+    public String resolveActiveModel() {
+        String configured = properties.getModel();
+        if (configured != null && !configured.isBlank() && !"auto".equalsIgnoreCase(configured.trim())) {
+            return configured.trim();
+        }
+        return "gpt-4o-mini";
     }
 
     @Override
@@ -112,8 +126,7 @@ public class OpenAiGateway implements AiGateway {
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException("OPENAI_API_KEY is not configured");
         }
-        String targetModel = (properties.getModel() != null && !properties.getModel().isBlank())
-                ? properties.getModel() : "gpt-4o-mini";
+        String targetModel = resolveActiveModel();
 
         Map<String, Object> payload = Map.of(
                 "model", targetModel,
