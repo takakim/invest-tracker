@@ -41,13 +41,13 @@ const PROVIDER_OPTIONS = [
   { id: 'AUTO', label: 'Auto (Favour Local)', hint: 'Prefers local LM Studio if available' },
   { id: 'LM_STUDIO', label: 'Local (LM Studio)', hint: 'Zero cost & full privacy' },
   { id: 'OPENAI', label: 'OpenAI', hint: 'Cloud GPT-4o / o3-mini' },
-  { id: 'GEMINI', label: 'Google Gemini', hint: 'Gemini 1.5 Pro / Flash' },
+  { id: 'GEMINI', label: 'Google Gemini', hint: 'Gemini 2.5 Flash / Pro' },
   { id: 'ANTHROPIC', label: 'Anthropic Claude', hint: 'Claude 3.5 Sonnet' },
 ];
 
 const COMMON_MODELS_BY_PROVIDER: Record<string, string[]> = {
   OPENAI: ['gpt-4o', 'gpt-4o-mini', 'o3-mini'],
-  GEMINI: ['gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash'],
+  GEMINI: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'],
   ANTHROPIC: ['claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229'],
 };
 
@@ -66,6 +66,12 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({ open, onClose 
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [hasUserEdited, setHasUserEdited] = useState<boolean>(false);
 
+  const availableProviders = status?.availableProviders ?? ['LM_STUDIO'];
+  const visibleProviderOptions = PROVIDER_OPTIONS.filter((opt) => {
+    if (opt.id === 'AUTO' || opt.id === 'LM_STUDIO') return true;
+    return availableProviders.includes(opt.id);
+  });
+
   useEffect(() => {
     if (open) {
       setValidationError(null);
@@ -77,7 +83,9 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({ open, onClose 
   useEffect(() => {
     if (open && status && !hasUserEdited) {
       setTimeoutValue(status.timeoutSeconds ?? 60);
-      setSelectedProvider(status.provider ?? 'AUTO');
+      const initialProvider = status.provider ?? 'AUTO';
+      const isAllowed = initialProvider === 'AUTO' || initialProvider === 'LM_STUDIO' || (status.availableProviders ?? []).includes(initialProvider);
+      setSelectedProvider(isAllowed ? initialProvider : 'AUTO');
       setSelectedModel(status.configuredModel ?? 'auto');
     }
   }, [open, status, hasUserEdited]);
@@ -96,6 +104,7 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({ open, onClose 
   const handleProviderSelect = (providerId: string) => {
     setHasUserEdited(true);
     setSelectedProvider(providerId);
+    setSelectedModel('auto');
     setSuccessMessage(null);
   };
 
@@ -194,7 +203,7 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({ open, onClose 
             </Typography>
 
             <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
-              {PROVIDER_OPTIONS.map((opt) => {
+              {visibleProviderOptions.map((opt) => {
                 const isSelected = selectedProvider.toUpperCase() === opt.id;
                 return (
                   <Chip
@@ -240,9 +249,11 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({ open, onClose 
                 sx={{ fontWeight: selectedModel.toLowerCase() === 'auto' ? 600 : 400 }}
               />
 
-              {/* Local discovered models */}
-              {(selectedProvider === 'LM_STUDIO' || selectedProvider === 'AUTO') &&
-                status?.availableModels?.map((modelName) => {
+              {/* Show live discovered models if active provider matches selected (or in AUTO mode) */}
+              {((selectedProvider === 'AUTO' || status?.provider === selectedProvider) &&
+                status?.availableModels &&
+                status.availableModels.length > 0) ? (
+                status.availableModels.map((modelName) => {
                   const isSelected = selectedModel === modelName;
                   return (
                     <Chip
@@ -257,25 +268,25 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({ open, onClose 
                       sx={{ fontWeight: isSelected ? 600 : 400 }}
                     />
                   );
-                })}
-
-              {/* Third-party common models */}
-              {COMMON_MODELS_BY_PROVIDER[selectedProvider.toUpperCase()]?.map((modelName) => {
-                const isSelected = selectedModel === modelName;
-                return (
-                  <Chip
-                    key={modelName}
-                    label={modelName}
-                    onClick={() => handleModelSelect(modelName)}
-                    color={isSelected ? 'primary' : 'default'}
-                    variant={isSelected ? 'filled' : 'outlined'}
-                    clickable
-                    size="small"
-                    data-testid={`ai-model-chip-${modelName}`}
-                    sx={{ fontWeight: isSelected ? 600 : 400 }}
-                  />
-                );
-              })}
+                })
+              ) : (
+                COMMON_MODELS_BY_PROVIDER[selectedProvider.toUpperCase()]?.map((modelName) => {
+                  const isSelected = selectedModel === modelName;
+                  return (
+                    <Chip
+                      key={modelName}
+                      label={modelName}
+                      onClick={() => handleModelSelect(modelName)}
+                      color={isSelected ? 'primary' : 'default'}
+                      variant={isSelected ? 'filled' : 'outlined'}
+                      clickable
+                      size="small"
+                      data-testid={`ai-model-chip-${modelName}`}
+                      sx={{ fontWeight: isSelected ? 600 : 400 }}
+                    />
+                  );
+                })
+              )}
             </Stack>
 
             <TextField

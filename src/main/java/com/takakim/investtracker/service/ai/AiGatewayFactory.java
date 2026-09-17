@@ -118,6 +118,11 @@ public class AiGatewayFactory {
     public void updateProvider(String provider) {
         if (provider != null && !provider.isBlank()) {
             String sanitized = provider.trim().toUpperCase();
+            if (!"AUTO".equals(sanitized) && !"LM_STUDIO".equals(sanitized)) {
+                if (!getAvailableProviders().contains(sanitized)) {
+                    throw new IllegalArgumentException("Provider " + sanitized + " is not available because its API key is not configured.");
+                }
+            }
             log.info("Updating active AI provider to {}", sanitized);
             properties.setProvider(sanitized);
         }
@@ -134,8 +139,24 @@ public class AiGatewayFactory {
         }
     }
 
+    /**
+     * Returns the list of available AI providers.
+     * LM_STUDIO (local) is always available. Third-party providers (OPENAI, GEMINI, ANTHROPIC)
+     * are only included when their respective API key is configured.
+     */
     public List<String> getAvailableProviders() {
-        return AiStatusDto.DEFAULT_PROVIDERS;
+        List<String> providers = new java.util.ArrayList<>();
+        providers.add("LM_STUDIO");
+        if (properties.getOpenaiApiKey() != null && !properties.getOpenaiApiKey().isBlank()) {
+            providers.add("OPENAI");
+        }
+        if (properties.getGeminiApiKey() != null && !properties.getGeminiApiKey().isBlank()) {
+            providers.add("GEMINI");
+        }
+        if (properties.getAnthropicApiKey() != null && !properties.getAnthropicApiKey().isBlank()) {
+            providers.add("ANTHROPIC");
+        }
+        return List.copyOf(providers);
     }
 }
 

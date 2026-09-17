@@ -149,17 +149,35 @@ class AiGatewayFactoryTests {
     }
 
     @Test
-    @DisplayName("updateProvider updates properties")
+    @DisplayName("updateProvider updates properties when provider is valid and configured")
     void testUpdateProvider() {
+        when(properties.getOpenaiApiKey()).thenReturn("sk-openai");
+        when(properties.getGeminiApiKey()).thenReturn("gemini-key");
+
         factory.updateProvider("OPENAI");
         verify(properties).setProvider("OPENAI");
 
         factory.updateProvider("  gemini  ");
         verify(properties).setProvider("GEMINI");
 
+        factory.updateProvider("LM_STUDIO");
+        verify(properties).setProvider("LM_STUDIO");
+
+        factory.updateProvider("AUTO");
+        verify(properties).setProvider("AUTO");
+
         factory.updateProvider(null);
         factory.updateProvider("   ");
-        verifyNoMoreInteractions(properties);
+    }
+
+    @Test
+    @DisplayName("updateProvider throws IllegalArgumentException when third-party API key is not configured")
+    void testUpdateProviderThrowsWhenApiKeyMissing() {
+        when(properties.getOpenaiApiKey()).thenReturn("");
+        assertThrows(IllegalArgumentException.class, () -> factory.updateProvider("OPENAI"));
+
+        when(properties.getAnthropicApiKey()).thenReturn(null);
+        assertThrows(IllegalArgumentException.class, () -> factory.updateProvider("ANTHROPIC"));
     }
 
     @Test
@@ -173,14 +191,26 @@ class AiGatewayFactoryTests {
     }
 
     @Test
-    @DisplayName("getAvailableProviders returns supported providers")
+    @DisplayName("getAvailableProviders filters providers based on configured API keys")
     void testGetAvailableProviders() {
-        java.util.List<String> providers = factory.getAvailableProviders();
-        assertNotNull(providers);
-        assertTrue(providers.contains("LM_STUDIO"));
-        assertTrue(providers.contains("OPENAI"));
-        assertTrue(providers.contains("GEMINI"));
-        assertTrue(providers.contains("ANTHROPIC"));
+        // Initially no third-party keys configured
+        when(properties.getOpenaiApiKey()).thenReturn(null);
+        when(properties.getGeminiApiKey()).thenReturn("");
+        when(properties.getAnthropicApiKey()).thenReturn(null);
+
+        java.util.List<String> providersOnlyLocal = factory.getAvailableProviders();
+        assertEquals(java.util.List.of("LM_STUDIO"), providersOnlyLocal);
+
+        // When Gemini key configured
+        when(properties.getGeminiApiKey()).thenReturn("test-gemini-key");
+        java.util.List<String> providersWithGemini = factory.getAvailableProviders();
+        assertEquals(java.util.List.of("LM_STUDIO", "GEMINI"), providersWithGemini);
+
+        // When all third-party keys configured
+        when(properties.getOpenaiApiKey()).thenReturn("sk-test");
+        when(properties.getAnthropicApiKey()).thenReturn("ant-test");
+        java.util.List<String> providersAll = factory.getAvailableProviders();
+        assertTrue(providersAll.containsAll(java.util.List.of("LM_STUDIO", "OPENAI", "GEMINI", "ANTHROPIC")));
     }
 
     @Test

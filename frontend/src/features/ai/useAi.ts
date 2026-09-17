@@ -56,13 +56,22 @@ export function useEvaluatePortfolio(portfolioId: string) {
     onSuccess: (data) => {
       queryClient.setQueryData(AI_QUERY_KEYS.portfolioEvaluation(portfolioId), data);
       // Also cache any included topHoldingEvaluations
-      if (data.topHoldingEvaluations) {
+      if (data.topHoldingEvaluations && data.topHoldingEvaluations.length > 0) {
         data.topHoldingEvaluations.forEach((holding) => {
           queryClient.setQueryData(
             AI_QUERY_KEYS.holdingEvaluation(portfolioId, holding.instrumentId),
             holding
           );
         });
+        queryClient.setQueryData<HoldingAiEvaluation[]>(
+          AI_QUERY_KEYS.holdingEvaluations(portfolioId),
+          (old = []) => {
+            const map = new Map<string, HoldingAiEvaluation>();
+            old.forEach((h) => map.set(h.instrumentId, h));
+            data.topHoldingEvaluations.forEach((h) => map.set(h.instrumentId, h));
+            return Array.from(map.values());
+          }
+        );
         queryClient.invalidateQueries({
           queryKey: AI_QUERY_KEYS.holdingEvaluations(portfolioId),
         });
@@ -108,8 +117,19 @@ export function useEvaluateHolding(portfolioId: string) {
   return useMutation<HoldingAiEvaluation, Error, string>({
     mutationFn: (instrumentId: string) => evaluateHolding(portfolioId, instrumentId),
     onSuccess: (data, instrumentId) => {
+      // 1. Immediately cache the evaluation for this specific holding
       queryClient.setQueryData(AI_QUERY_KEYS.holdingEvaluation(portfolioId, instrumentId), data);
-      // Invalidate the portfolio-wide evaluations list so it refreshes
+
+      // 2. Immediately update the portfolio-wide holding evaluations list in cache
+      queryClient.setQueryData<HoldingAiEvaluation[]>(
+        AI_QUERY_KEYS.holdingEvaluations(portfolioId),
+        (old = []) => {
+          const filtered = old.filter((h) => h.instrumentId !== instrumentId);
+          return [...filtered, data];
+        }
+      );
+
+      // 3. Invalidate holding evaluations list to ensure synchronization with DB
       queryClient.invalidateQueries({
         queryKey: AI_QUERY_KEYS.holdingEvaluations(portfolioId),
       });

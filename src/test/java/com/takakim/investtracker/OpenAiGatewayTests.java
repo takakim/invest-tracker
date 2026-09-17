@@ -67,9 +67,21 @@ class OpenAiGatewayTests {
     }
 
     @Test
-    @DisplayName("checkStatus returns connected when /v1/models responds with model list")
+    @DisplayName("checkStatus returns connected and filters to chat models")
     void testCheckStatus_connected() {
-        String modelsJson = "{\"data\":[{\"id\":\"gpt-4o-mini\"},{\"id\":\"gpt-4o\"}]}";
+        String modelsJson = """
+                {
+                  "data": [
+                    {"id": "gpt-4o-mini"},
+                    {"id": "gpt-4o"},
+                    {"id": "o1-preview"},
+                    {"id": "o3-mini"},
+                    {"id": "chatgpt-4o-latest"},
+                    {"id": "whisper-1"},
+                    {"id": "text-embedding-3-small"}
+                  ]
+                }
+                """;
         mockServer.expect(requestTo("https://api.openai.com/v1/models"))
                 .andExpect(method(HttpMethod.GET))
                 .andExpect(header("Authorization", "Bearer sk-test-key"))
@@ -80,7 +92,39 @@ class OpenAiGatewayTests {
 
         assertTrue(status.connected());
         assertEquals("OPENAI", status.provider());
+        assertEquals(5, status.availableModels().size());
         assertTrue(status.availableModels().contains("gpt-4o-mini"));
+        assertTrue(status.availableModels().contains("o1-preview"));
+        assertTrue(status.availableModels().contains("o3-mini"));
+        assertTrue(status.availableModels().contains("chatgpt-4o-latest"));
+        assertFalse(status.availableModels().contains("whisper-1"));
+        assertFalse(status.availableModels().contains("text-embedding-3-small"));
+    }
+
+    @Test
+    @DisplayName("resolveActiveModel handles auto, null, and explicit configuration")
+    void testResolveActiveModel() {
+        properties.setModel("auto");
+        assertEquals("gpt-4o-mini", gateway.resolveActiveModel());
+
+        properties.setModel(null);
+        assertEquals("gpt-4o-mini", gateway.resolveActiveModel());
+
+        properties.setModel("   ");
+        assertEquals("gpt-4o-mini", gateway.resolveActiveModel());
+
+        properties.setModel("o3-mini");
+        assertEquals("o3-mini", gateway.resolveActiveModel());
+    }
+
+    @Test
+    @DisplayName("checkStatus and generateChatCompletion handle null API key")
+    void testNullApiKey() {
+        properties.setOpenaiApiKey(null);
+        AiStatusDto status = gateway.checkStatus();
+        assertFalse(status.connected());
+
+        assertThrows(IllegalStateException.class, () -> gateway.generateChatCompletion("sys", "usr"));
     }
 
     @Test

@@ -18,7 +18,7 @@ public record HoldingAiEvaluationDto(
         Double unrealizedGainLossPercentage,
         Double portfolioWeightPercentage,
         AiStance stance,
-        int riskScore,
+        Integer riskScore,
         AiRiskLevel riskLevel,
         String executiveSummary,
         List<String> strengths,
@@ -28,6 +28,12 @@ public record HoldingAiEvaluationDto(
         String modelUsed,
         Instant evaluatedAt
 ) {
+    public HoldingAiEvaluationDto {
+        if (riskScore == null) {
+            riskScore = 5;
+        }
+    }
+
     public boolean isStale() {
         return evaluatedAt != null && evaluatedAt.isBefore(Instant.now().minus(7, ChronoUnit.DAYS));
     }
