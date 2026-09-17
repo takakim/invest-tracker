@@ -384,7 +384,9 @@ describe('Feature Pages', () => {
       expect(screen.getByText('Interactive Brokers')).toBeInTheDocument();
       expect(screen.getByText('Portfolio Valuation & Unrealized P&L')).toBeInTheDocument();
       expect(screen.getByText('Asset Allocation & Exposure Breakdown')).toBeInTheDocument();
-      expect(screen.getByText('Portfolio Performance')).toBeInTheDocument();
+      expect(screen.getAllByText('Portfolio Performance').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('AI Portfolio Intelligence').length).toBeGreaterThan(0);
+      expect(screen.getByText(/Portfolio risk assessment, asset concentration, and macro stress tests powered by/)).toBeInTheDocument();
     });
 
     const exportBtn = screen.getByRole('button', { name: 'Export Statements' });

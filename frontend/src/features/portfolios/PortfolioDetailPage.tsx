@@ -72,7 +72,12 @@ import { usePortfolioAnalytics } from '../analytics/useAnalytics';
 import { TargetAllocationCard, RebalancingCalculatorCard } from '../rebalancing';
 import { StickyHeroBar } from './StickyHeroBar';
 import { CorporateActionsBanner } from '../corporate-actions/CorporateActionsBanner';
-import { PortfolioAiEvaluationCard, AiStatusIndicator } from '../ai';
+import {
+  PortfolioAiEvaluationCard,
+  AiStatusIndicator,
+  useAiStatus,
+  useLatestPortfolioEvaluation,
+} from '../ai';
 import { CollapsibleSection, ConfirmDialog, EmptyState, ErrorAlert, LoadingState } from '../../components';
 import type { Account, AccountCreateInput, PortfolioCreateInput } from '../../types';
 
@@ -137,6 +142,58 @@ export function PortfolioDetailPage() {
   const [activeSection, setActiveSection] = useState<SectionKey>('valuation');
 
   const { data: analytics } = usePortfolioAnalytics(portfolioId);
+  const { data: aiStatus } = useAiStatus();
+  const { data: latestAiEvaluation } = useLatestPortfolioEvaluation(portfolioId);
+
+  const aiSubtitle = React.useMemo(() => {
+    const formatProvider = (p: string) => {
+      const upper = p.toUpperCase().trim();
+      if (upper === 'LM_STUDIO') return 'LM Studio';
+      if (upper === 'OPENAI') return 'OpenAI';
+      if (upper === 'GEMINI') return 'Google Gemini';
+      if (upper === 'ANTHROPIC') return 'Anthropic Claude';
+      if (upper === 'AUTO') return 'Auto';
+      return p.replace(/_/g, ' ');
+    };
+
+    let serviceModel = 'AI';
+    const evalModel = latestAiEvaluation?.modelUsed?.trim();
+
+    if (evalModel) {
+      if (evalModel.includes(':')) {
+        const [prov, ...rest] = evalModel.split(':');
+        const m = rest.join(':').trim();
+        serviceModel = `${formatProvider(prov)} (${m})`;
+      } else {
+        const upper = evalModel.toUpperCase();
+        if (['LM_STUDIO', 'OPENAI', 'GEMINI', 'ANTHROPIC', 'AUTO'].includes(upper)) {
+          if (
+            aiStatus?.configuredModel &&
+            aiStatus.configuredModel.toLowerCase() !== 'auto' &&
+            aiStatus.configuredModel.toLowerCase() !== 'n/a'
+          ) {
+            serviceModel = `${formatProvider(upper)} (${aiStatus.configuredModel})`;
+          } else {
+            serviceModel = formatProvider(upper);
+          }
+        } else if (aiStatus?.provider) {
+          serviceModel = `${formatProvider(aiStatus.provider)} (${evalModel})`;
+        } else {
+          serviceModel = evalModel;
+        }
+      }
+    } else if (aiStatus?.provider) {
+      const provider = formatProvider(aiStatus.provider);
+      const model = aiStatus.configuredModel?.trim();
+      if (model && model.toLowerCase() !== 'auto' && model.toLowerCase() !== 'n/a') {
+        serviceModel = `${provider} (${model})`;
+      } else {
+        serviceModel = provider;
+      }
+    }
+
+    return `Portfolio risk assessment, asset concentration, and macro stress tests powered by ${serviceModel}`;
+  }, [latestAiEvaluation?.modelUsed, aiStatus?.provider, aiStatus?.configuredModel]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -460,7 +517,7 @@ export function PortfolioDetailPage() {
       <CollapsibleSection
         id="section-aiIntelligence"
         title="AI Portfolio Intelligence"
-        subtitle="Portfolio risk assessment, asset concentration, and macro stress tests powered by Gemma 4 12B"
+        subtitle={aiSubtitle}
         icon={<AutoAwesomeIcon />}
         expanded={expandedSections.aiIntelligence}
         onToggle={(expanded) => toggleSection('aiIntelligence', expanded)}
