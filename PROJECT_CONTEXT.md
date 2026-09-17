@@ -656,6 +656,11 @@ Before changing the repository:
   - Multi-Provider Gateway Abstraction: `AiGateway` interface implemented by `LmStudioGateway`, `OpenAiGateway`, `GeminiGateway`, and `AnthropicGateway`, dynamically selected via `AiGatewayFactory` according to `AI_PROVIDER`.
   - REST API: `GET /api/v1/portfolios/{id}/ai/evaluation`, `GET /api/v1/portfolios/{id}/holdings/{instId}/ai/evaluation`, and `GET /api/v1/portfolios/{id}/holdings/ai/evaluations` (`AiController`).
   - Frontend: Cached evaluation retrieval on mount in `useAi.ts`, `PortfolioAiEvaluationCard.tsx`, and `HoldingAiEvaluationModal.tsx` displaying provider badge and relative timestamp (`1h ago`) with instant loading and on-demand `Re-evaluate` button; provider badge in `AiStatusIndicator.tsx`.
-  - Verification: All unit, persistence, Testcontainers integration, and Vitest frontend tests passing with 0 vulnerabilities.
-
-
+- Local Model Auto-Discovery, AUTO Provider Mode & Runtime Model Selection merged to main (PR #70):
+  - Model auto-discovery in `LmStudioGateway`: queries `/api/v1/models` and detects loaded models in VRAM/RAM (`loaded_instances`), filtering out embedding models and extracting reasoning content from thinking LLMs.
+  - `AUTO` provider mode in `AiGatewayFactory`: favours local LM Studio when reachable, seamlessly falling back to configured cloud providers (`GEMINI`, `OPENAI`, `ANTHROPIC`) if offline.
+  - Auto model resolution: when `AI_MODEL=auto`, LM Studio binds to whichever chat model is loaded into memory; cloud providers auto-resolve to their primary models (e.g. `gemini-2.5-flash`, `gpt-4o-mini`, `claude-3-5-haiku-latest`).
+  - Gated provider switching: restricts active and available providers to local LM Studio and cloud providers with non-blank API keys.
+  - Reliable transaction persistence: decoupled evaluation persistence using `TransactionTemplate` (`PROPAGATION_REQUIRES_NEW`) and `saveAndFlush`.
+  - Frontend UI: `AiSettingsModal.tsx` allowing users to inspect discovered models, switch providers, choose models at runtime, and view connection status; provider/model status in `AiStatusIndicator.tsx`.
+  - Verification: 100% test pass rate with >=90.0% JaCoCo branch coverage (90.29%), 0 OWASP CVEs, and 0 npm vulnerabilities.

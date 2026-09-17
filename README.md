@@ -130,54 +130,66 @@ Invest Tracker features an AI intelligence engine that generates structured fina
   - **Hold vs. Sell Trade-Off Analysis**: Evaluates valuation multiple compression risks vs. dividend/buyback compounding.
   - **Fundamental Ratios**: P/E, Forward P/E, PEG, Debt-to-Equity, ROE, enriched with live 52-week price ranges from Yahoo Finance.
   - Accessible directly on each row of the positions table via the sparkle action icon.
+- **Auto Model & Provider Detection**:
+  - Automatically discovers whichever LLM chat model is currently loaded in memory (RAM/VRAM) in LM Studio.
+  - In `AUTO` mode, prioritizes local inference if LM Studio is running, and seamlessly falls back to configured cloud providers if offline.
+  - Automatically filters out non-chat models (such as embeddings) and extracts reasoning content from thinking/reasoning models.
+  - Interactive AI Settings modal in the web UI allows switching active providers and selecting from discovered models at runtime.
 
 ### Supported AI Providers
 
-Select your provider via the `AI_PROVIDER` environment variable:
+Select your provider via the `AI_PROVIDER` environment variable (defaults to `AUTO`):
 
-| Provider | `AI_PROVIDER` | Default Model | Required Credentials |
-| :--- | :--- | :--- | :--- |
-| **LM Studio** (local, default) | `LM_STUDIO` | `google/gemma-4-12b` | None (runs locally) |
-| **OpenAI** | `OPENAI` | `gpt-4o-mini` | `OPENAI_API_KEY` |
-| **Google Gemini** | `GEMINI` | `gemini-2.0-flash` | `GEMINI_API_KEY` |
-| **Anthropic Claude** | `ANTHROPIC` | `claude-3-5-haiku-latest` | `ANTHROPIC_API_KEY` |
+| Provider | `AI_PROVIDER` | Default Model | Required Credentials | Notes |
+| :--- | :--- | :--- | :--- | :--- |
+| **Auto** (default) | `AUTO` | `auto` | None (or cloud key for fallback) | Prioritizes local LM Studio if running; falls back to configured cloud providers if offline. |
+| **LM Studio** (local) | `LM_STUDIO` | `auto` | None (runs locally) | Automatically detects whichever model is loaded in LM Studio. |
+| **Google Gemini** | `GEMINI` | `auto` (`gemini-2.5-flash`) | `GEMINI_API_KEY` | Fast cloud inference via Google Gemini. |
+| **OpenAI** | `OPENAI` | `auto` (`gpt-4o-mini`) | `OPENAI_API_KEY` | Cloud inference via OpenAI. |
+| **Anthropic Claude** | `ANTHROPIC` | `auto` (`claude-3-5-haiku-latest`) | `ANTHROPIC_API_KEY` | Cloud inference via Anthropic. |
 
 #### 1. LM Studio (Local Inference, Free & Private)
 1. Open LM Studio and navigate to the **Local Server** tab.
-2. Load **Gemma 4 12B** (`google/gemma-4-12b`) or your preferred model.
+2. Load any LLM chat model of your choice into memory (RAM/VRAM).
 3. Start the server on port `1234`.
-4. Set in `.env`:
-   ```env
-   AI_PROVIDER=LM_STUDIO
-   AI_ENABLED=true
-   AI_BASE_URL=http://host.docker.internal:1234
-   AI_MODEL=google/gemma-4-12b
-   AI_TIMEOUT_SECONDS=1200
-   ```
+4. Launch Invest Tracker. With default settings (`AI_PROVIDER=AUTO` and `AI_MODEL=auto`), Invest Tracker automatically detects LM Studio, identifies your loaded model, and connects — no manual model configuration required!
 
-#### 2. OpenAI
+Optional explicit `.env` configuration:
 ```env
-AI_PROVIDER=OPENAI
+AI_PROVIDER=AUTO
 AI_ENABLED=true
-AI_MODEL=gpt-4o-mini
-OPENAI_API_KEY=sk-proj-...
+AI_BASE_URL=http://host.docker.internal:1234
+AI_MODEL=auto
+AI_TIMEOUT_SECONDS=1200
 ```
+> **Tip:** You can keep `AI_MODEL=auto` to dynamically use whatever model is loaded in LM Studio, or set `AI_MODEL` to a specific model ID if preferred.
 
-#### 3. Google Gemini
+#### 2. Google Gemini
 ```env
 AI_PROVIDER=GEMINI
 AI_ENABLED=true
-AI_MODEL=gemini-2.0-flash
+AI_MODEL=auto
 GEMINI_API_KEY=AIzaSy...
+```
+
+#### 3. OpenAI
+```env
+AI_PROVIDER=OPENAI
+AI_ENABLED=true
+AI_MODEL=auto
+OPENAI_API_KEY=sk-proj-...
 ```
 
 #### 4. Anthropic Claude
 ```env
 AI_PROVIDER=ANTHROPIC
 AI_ENABLED=true
-AI_MODEL=claude-3-5-haiku-latest
+AI_MODEL=auto
 ANTHROPIC_API_KEY=sk-ant-...
 ```
+
+### Runtime Provider & Model Selection
+You can inspect the currently connected provider and model, test connectivity, and switch active providers or models at runtime directly in the web application by clicking the AI status badge in the top navigation bar.
 
 ### Inference Timeouts
 Complex prompts evaluated by local LLMs can take several minutes. The stack is preconfigured with a 20-minute timeout (`1200s`) across:
