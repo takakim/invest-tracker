@@ -86,9 +86,16 @@ export const HoldingAiEvaluationModal: React.FC<HoldingAiEvaluationModalProps> =
   const cachedQuery = useLatestHoldingEvaluation(portfolioId, instrumentId);
   const evaluateMutation = useEvaluateHolding(portfolioId);
 
-  // Prefer fresh mutation result, fall back to prop, then DB cache
-  const evaluation: HoldingAiEvaluation | null =
-    evaluateMutation.data ?? initialData ?? cachedQuery.data ?? null;
+  // Prefer fresh mutation result, then compare timestamps between DB cache and initial prop
+  const evaluation: HoldingAiEvaluation | null = (() => {
+    if (evaluateMutation.data) return evaluateMutation.data;
+    if (cachedQuery.data && initialData) {
+      const cachedTime = new Date(cachedQuery.data.evaluatedAt).getTime();
+      const initialTime = new Date(initialData.evaluatedAt).getTime();
+      return cachedTime >= initialTime ? cachedQuery.data : initialData;
+    }
+    return cachedQuery.data ?? initialData ?? null;
+  })();
 
   const handleRefresh = () => {
     evaluateMutation.mutate(instrumentId);

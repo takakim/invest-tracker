@@ -62,12 +62,86 @@ public class LmStudioGateway implements AiGateway {
     }
 
 
+    public record DiscoveredModelsResult(
+            List<String> loadedModelIds,
+            List<String> availableLlmModelIds,
+            List<String> allModelIds
+    ) {}
+
+    private static final List<String> EMBEDDING_KEYWORDS = List.of(
+            "embed", "nomic", "bge", "minilm", "sentence-transformers", "embedding"
+    );
+
+    private boolean isEmbeddingModel(String name) {
+        if (name == null) return false;
+        String lower = name.toLowerCase();
+        for (String kw : EMBEDDING_KEYWORDS) {
+            if (lower.contains(kw)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private volatile String cachedActiveModel;
+
+    public String resolveActiveModel() {
+        if (properties.getModel() != null && !properties.getModel().isBlank()
+                && !"auto".equalsIgnoreCase(properties.getModel().trim())
+                && !"default".equalsIgnoreCase(properties.getModel().trim())) {
+            return properties.getModel().trim();
+        }
+        if (cachedActiveModel != null && !cachedActiveModel.isBlank()) {
+            return cachedActiveModel;
+        }
+        return "google/gemma-4-e4b";
+    }
+
+    public String resolveActiveModelFrom(DiscoveredModelsResult models) {
+        String configured = properties.getModel();
+        boolean isAutoOrEmpty = configured == null || configured.isBlank()
+                || "auto".equalsIgnoreCase(configured.trim())
+                || "default".equalsIgnoreCase(configured.trim());
+
+        if (models != null) {
+            // 1. If explicit configured model exists in discovered models, respect user's choice
+            if (!isAutoOrEmpty && models.allModelIds().contains(configured.trim())) {
+                return configured.trim();
+            }
+
+            // 2. If any model is currently loaded into RAM/VRAM, prioritize it
+            if (!models.loadedModelIds().isEmpty()) {
+                log.info("Auto-selected actively loaded local model: {}", models.loadedModelIds().get(0));
+                return models.loadedModelIds().get(0);
+            }
+
+            // 3. Pick the first available local LLM
+            if (!models.availableLlmModelIds().isEmpty()) {
+                String firstLlm = models.availableLlmModelIds().get(0);
+                log.info("Auto-selected first available local LLM: {}", firstLlm);
+                return firstLlm;
+            }
+
+            // 4. Any discovered model
+            if (!models.allModelIds().isEmpty()) {
+                return models.allModelIds().get(0);
+            }
+        }
+
+        // 5. Fallback
+        return (!isAutoOrEmpty) ? configured.trim() : "google/gemma-4-e4b";
+    }
+
+    @Override
     public AiStatusDto checkStatus() {
         if (!properties.isEnabled()) {
             return new AiStatusDto(false, false, "LM_STUDIO", properties.getBaseUrl(), properties.getModel(), List.of(), "AI evaluation is disabled in configuration", getTimeoutSeconds());
         }
 
         List<String> discoveredModels = new ArrayList<>();
+        List<String> loadedModels = new ArrayList<>();
+        List<String> availableLlms = new ArrayList<>();
+
         // Try native LM Studio v1 models endpoint first
         try {
             String json = restClient.get()
@@ -77,33 +151,12 @@ public class LmStudioGateway implements AiGateway {
                     .body(String.class);
 
             if (json != null) {
-                JsonNode root = objectMapper.readTree(json);
-                JsonNode modelsNode = root.has("models") ? root.get("models") : root.get("data");
-                if (modelsNode != null && modelsNode.isArray()) {
-                    for (JsonNode m : modelsNode) {
-                        if (m.has("id")) {
-                            discoveredModels.add(m.get("id").asText());
-                        } else if (m.has("key")) {
-                            discoveredModels.add(m.get("key").asText());
-                        } else if (m.has("name")) {
-                            discoveredModels.add(m.get("name").asText());
-                        } else if (m.has("display_name")) {
-                            discoveredModels.add(m.get("display_name").asText());
-                        }
-                        if (m.has("loaded_instances") && m.get("loaded_instances").isArray()) {
-                            for (JsonNode inst : m.get("loaded_instances")) {
-                                if (inst.has("id")) {
-                                    String instId = inst.get("id").asText();
-                                    if (!discoveredModels.contains(instId)) {
-                                        discoveredModels.add(instId);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                parseNativeModelsJson(json, discoveredModels, loadedModels, availableLlms);
+                DiscoveredModelsResult result = new DiscoveredModelsResult(loadedModels, availableLlms, discoveredModels);
+                String activeModel = resolveActiveModelFrom(result);
+                this.cachedActiveModel = activeModel;
+                return new AiStatusDto(true, true, "LM_STUDIO", properties.getBaseUrl(), activeModel, discoveredModels, null, getTimeoutSeconds());
             }
-            return new AiStatusDto(true, true, "LM_STUDIO", properties.getBaseUrl(), properties.getModel(), discoveredModels, null, getTimeoutSeconds());
         } catch (Exception e) {
             log.debug("LM Studio /api/v1/models check failed, attempting /v1/models fallback: {}", e.getMessage());
         }
@@ -117,32 +170,111 @@ public class LmStudioGateway implements AiGateway {
                     .body(String.class);
 
             if (json != null) {
-                JsonNode root = objectMapper.readTree(json);
-                JsonNode dataNode = root.get("data");
-                if (dataNode != null && dataNode.isArray()) {
-                    for (JsonNode m : dataNode) {
-                        if (m.has("id")) {
-                            discoveredModels.add(m.get("id").asText());
-                        }
-                    }
-                }
+                parseOpenAiModelsJson(json, discoveredModels, availableLlms);
+                DiscoveredModelsResult result = new DiscoveredModelsResult(loadedModels, availableLlms, discoveredModels);
+                String activeModel = resolveActiveModelFrom(result);
+                this.cachedActiveModel = activeModel;
+                return new AiStatusDto(true, true, "LM_STUDIO", properties.getBaseUrl(), activeModel, discoveredModels, null, getTimeoutSeconds());
             }
-            return new AiStatusDto(true, true, "LM_STUDIO", properties.getBaseUrl(), properties.getModel(), discoveredModels, null, getTimeoutSeconds());
         } catch (Exception e) {
             log.warn("Failed to connect to LM Studio at {}: {}", properties.getBaseUrl(), e.getMessage());
             return new AiStatusDto(true, false, "LM_STUDIO", properties.getBaseUrl(), properties.getModel(), List.of(), "Cannot connect to LM Studio: " + e.getMessage(), getTimeoutSeconds());
         }
+
+        return new AiStatusDto(true, false, "LM_STUDIO", properties.getBaseUrl(), properties.getModel(), List.of(), "Cannot connect to LM Studio", getTimeoutSeconds());
     }
 
+    private void parseNativeModelsJson(String json, List<String> discoveredModels, List<String> loadedModels, List<String> availableLlms) {
+        try {
+            JsonNode root = objectMapper.readTree(json);
+            JsonNode modelsNode = root.has("models") ? root.get("models") : root.get("data");
+            if (modelsNode != null && modelsNode.isArray()) {
+                for (JsonNode m : modelsNode) {
+                    String modelId = null;
+                    if (m.has("id")) {
+                        modelId = m.get("id").asText();
+                    } else if (m.has("key")) {
+                        modelId = m.get("key").asText();
+                    } else if (m.has("name")) {
+                        modelId = m.get("name").asText();
+                    } else if (m.has("display_name")) {
+                        modelId = m.get("display_name").asText();
+                    }
+
+                    if (modelId != null && !discoveredModels.contains(modelId)) {
+                        discoveredModels.add(modelId);
+                    }
+
+                    boolean isEmbedding = (m.has("type") && "embedding".equalsIgnoreCase(m.get("type").asText()))
+                            || isEmbeddingModel(modelId);
+
+                    if (!isEmbedding && modelId != null && !availableLlms.contains(modelId)) {
+                        availableLlms.add(modelId);
+                    }
+
+                    if (m.has("loaded_instances") && m.get("loaded_instances").isArray() && !m.get("loaded_instances").isEmpty()) {
+                        for (JsonNode inst : m.get("loaded_instances")) {
+                            String instId = inst.has("id") ? inst.get("id").asText() : modelId;
+                            if (instId != null && !loadedModels.contains(instId)) {
+                                loadedModels.add(instId);
+                            }
+                            if (instId != null && !discoveredModels.contains(instId)) {
+                                discoveredModels.add(instId);
+                            }
+                            if (!isEmbedding && instId != null && !availableLlms.contains(instId)) {
+                                availableLlms.add(instId);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Error parsing native models JSON: {}", e.getMessage());
+        }
+    }
+
+    private void parseOpenAiModelsJson(String json, List<String> discoveredModels, List<String> availableLlms) {
+        try {
+            JsonNode root = objectMapper.readTree(json);
+            JsonNode dataNode = root.get("data");
+            if (dataNode != null && dataNode.isArray()) {
+                for (JsonNode m : dataNode) {
+                    if (m.has("id")) {
+                        String modelId = m.get("id").asText();
+                        if (!discoveredModels.contains(modelId)) {
+                            discoveredModels.add(modelId);
+                        }
+                        if (!isEmbeddingModel(modelId) && !availableLlms.contains(modelId)) {
+                            availableLlms.add(modelId);
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Error parsing OpenAI models JSON: {}", e.getMessage());
+        }
+    }
+
+    @Override
     public String generateChatCompletion(String systemPrompt, String userPrompt) {
         if (!properties.isEnabled()) {
             throw new IllegalStateException("AI features are currently disabled in configuration");
         }
 
-        String targetModel = (properties.getModel() != null && !properties.getModel().isBlank())
-                ? properties.getModel()
-                : "google/gemma-4-12b";
+        String targetModel = resolveActiveModel();
+        try {
+            return executeChatCompletion(targetModel, systemPrompt, userPrompt);
+        } catch (RestClientResponseException e) {
+            log.error("LM Studio HTTP error {}: {}", e.getStatusCode(), e.getResponseBodyAsString());
+            throw new IllegalStateException("LM Studio API error: " + e.getStatusCode() + " - " + e.getResponseBodyAsString(), e);
+        } catch (Exception e) {
+            log.error("Error communicating with LM Studio at {}: {}", properties.getBaseUrl(), e.getMessage());
+            throw new IllegalStateException("Failed to communicate with LM Studio: " + e.getMessage(), e);
+        }
+    }
 
+
+    private String executeChatCompletion(String targetModel, String systemPrompt, String userPrompt) {
         // Try native LM Studio /api/v1/chat endpoint first
         try {
             Map<String, Object> payload = Map.of(
@@ -172,46 +304,32 @@ public class LmStudioGateway implements AiGateway {
         }
 
         // Fallback to OpenAI-compatible /v1/chat/completions (universally supported by LM Studio)
-        try {
-            Map<String, Object> payload = Map.of(
-                    "model", targetModel,
-                    "messages", List.of(
-                            Map.of("role", "system", "content", systemPrompt),
-                            Map.of("role", "user", "content", userPrompt)
-                    ),
-                    "temperature", properties.getTemperature(),
-                    "max_tokens", properties.getMaxTokens()
-            );
+        Map<String, Object> payload = Map.of(
+                "model", targetModel,
+                "messages", List.of(
+                        Map.of("role", "system", "content", systemPrompt),
+                        Map.of("role", "user", "content", userPrompt)
+                ),
+                "temperature", properties.getTemperature(),
+                "max_tokens", properties.getMaxTokens()
+        );
 
-            String responseBody = restClient.post()
-                    .uri("/v1/chat/completions")
-                    .headers(this::applyAuthHeaders)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(payload)
-                    .retrieve()
-                    .body(String.class);
+        String responseBody = restClient.post()
+                .uri("/v1/chat/completions")
+                .headers(this::applyAuthHeaders)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(payload)
+                .retrieve()
+                .body(String.class);
 
-            Optional<String> content = extractContentFromOpenAiResponse(responseBody);
-            if (content.isPresent()) {
-                return content.get();
-            }
-            throw new IllegalStateException("LM Studio returned an empty chat completion response");
-        } catch (RestClientResponseException e) {
-            log.error("LM Studio HTTP error {}: {}", e.getStatusCode(), e.getResponseBodyAsString());
-            throw new IllegalStateException("LM Studio API error: " + e.getStatusCode() + " - " + e.getResponseBodyAsString(), e);
-        } catch (Exception e) {
-            log.error("Error communicating with LM Studio at {}: {}", properties.getBaseUrl(), e.getMessage());
-            throw new IllegalStateException("Failed to communicate with LM Studio: " + e.getMessage(), e);
+        Optional<String> content = extractContentFromOpenAiResponse(responseBody);
+        if (content.isPresent()) {
+            return content.get();
         }
+        throw new IllegalStateException("LM Studio returned an empty chat completion response");
     }
 
-    private void applyAuthHeaders(HttpHeaders headers) {
-        if (properties.getApiKey() != null && !properties.getApiKey().isBlank()) {
-            headers.setBearerAuth(properties.getApiKey().trim());
-        }
-    }
-
-    private Optional<String> extractContentFromNativeResponse(String responseBody) {
+    public Optional<String> extractContentFromNativeResponse(String responseBody) {
         if (responseBody == null || responseBody.isBlank()) {
             return Optional.empty();
         }
@@ -234,7 +352,13 @@ public class LmStudioGateway implements AiGateway {
         return Optional.empty();
     }
 
-    private Optional<String> extractContentFromOpenAiResponse(String responseBody) {
+    private void applyAuthHeaders(HttpHeaders headers) {
+        if (properties.getApiKey() != null && !properties.getApiKey().isBlank()) {
+            headers.setBearerAuth(properties.getApiKey().trim());
+        }
+    }
+
+    public Optional<String> extractContentFromOpenAiResponse(String responseBody) {
         if (responseBody == null || responseBody.isBlank()) {
             return Optional.empty();
         }
@@ -242,9 +366,24 @@ public class LmStudioGateway implements AiGateway {
             JsonNode root = objectMapper.readTree(responseBody);
             JsonNode choices = root.get("choices");
             if (choices != null && choices.isArray() && !choices.isEmpty()) {
-                JsonNode message = choices.get(0).get("message");
-                if (message != null && message.has("content")) {
-                    String text = message.get("content").asText();
+                JsonNode choice0 = choices.get(0);
+                JsonNode message = choice0.get("message");
+                if (message != null) {
+                    if (message.has("content")) {
+                        String text = message.get("content").asText();
+                        if (text != null && !text.isBlank()) {
+                            return Optional.of(text);
+                        }
+                    }
+                    if (message.has("reasoning_content")) {
+                        String reasoning = message.get("reasoning_content").asText();
+                        if (reasoning != null && !reasoning.isBlank()) {
+                            return Optional.of(reasoning);
+                        }
+                    }
+                }
+                if (choice0.has("text")) {
+                    String text = choice0.get("text").asText();
                     if (text != null && !text.isBlank()) {
                         return Optional.of(text);
                     }
@@ -255,6 +394,7 @@ public class LmStudioGateway implements AiGateway {
         }
         return Optional.empty();
     }
+
 
     @Override
     public String getProviderName() {

@@ -27,12 +27,13 @@ public class GeminiGateway implements AiGateway {
 
     private static final Logger log = LoggerFactory.getLogger(GeminiGateway.class);
     private static final String PROVIDER_NAME = "GEMINI";
-    private static final String DEFAULT_MODEL = "gemini-2.0-flash";
+    private static final String DEFAULT_MODEL = "gemini-2.5-flash";
 
     private final AiProperties properties;
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
     private final SimpleClientHttpRequestFactory requestFactory;
+    private final List<String> lastDiscoveredModels = new java.util.concurrent.CopyOnWriteArrayList<>();
 
     @Autowired
     public GeminiGateway(AiProperties properties, RestClient.Builder restClientBuilder, ObjectMapper objectMapper) {
@@ -46,9 +47,9 @@ public class GeminiGateway implements AiGateway {
         this.requestFactory.setConnectTimeout(Duration.ofSeconds(Math.min(timeout, 10)));
         this.requestFactory.setReadTimeout(Duration.ofSeconds(timeout));
 
-        String baseUrl = (properties != null && properties.getGeminiBaseUrl() != null
-                && !properties.getGeminiBaseUrl().isBlank())
-                ? properties.getGeminiBaseUrl().replaceAll("/+$", "")
+        String rawBaseUrl = properties != null ? properties.getGeminiBaseUrl() : null;
+        String baseUrl = (rawBaseUrl != null && !rawBaseUrl.isBlank())
+                ? rawBaseUrl.replaceAll("/v1beta.*$", "").replaceAll("/v1.*$", "").replaceAll("/+$", "")
                 : "https://generativelanguage.googleapis.com";
 
         this.restClient = (restClientBuilder != null ? restClientBuilder : RestClient.builder())
@@ -90,21 +91,93 @@ public class GeminiGateway implements AiGateway {
                 JsonNode models = root.get("models");
                 if (models != null && models.isArray()) {
                     for (JsonNode m : models) {
-                        if (m.has("name")) {
-                            String name = m.get("name").asText();
-                            // Strip "models/" prefix for cleaner display
-                            discoveredModels.add(name.startsWith("models/") ? name.substring(7) : name);
+                        if (!m.has("name")) continue;
+                        String fullName = m.get("name").asText();
+                        String modelName = fullName.startsWith("models/") ? fullName.substring(7) : fullName;
+
+                        // Verify it supports generateContent
+                        boolean supportsGenerateContent = false;
+                        JsonNode methods = m.get("supportedGenerationMethods");
+                        if (methods != null && methods.isArray()) {
+                            for (JsonNode method : methods) {
+                                if ("generateContent".equalsIgnoreCase(method.asText())) {
+                                    supportsGenerateContent = true;
+                                    break;
+                                }
+                            }
+                        } else {
+                            supportsGenerateContent = true;
+                        }
+
+                        // Filter for chat/completion LLMs only (exclude specialized modalities and experimental tools)
+                        String lower = modelName.toLowerCase();
+                        if (supportsGenerateContent
+                                && lower.startsWith("gemini-")
+                                && !lower.contains("embedding")
+                                && !lower.contains("tts")
+                                && !lower.contains("transcribe")
+                                && !lower.contains("audio")
+                                && !lower.contains("image")
+                                && !lower.contains("robotics")
+                                && !lower.contains("computer-use")
+                                && !lower.contains("customtools")
+                                && !lower.contains("veo")
+                                && !lower.contains("lyria")
+                                && !lower.contains("aqa")) {
+                            discoveredModels.add(modelName);
                         }
                     }
+
+                    discoveredModels.sort((a, b) -> {
+                        int scoreA = getModelPriorityScore(a);
+                        int scoreB = getModelPriorityScore(b);
+                        if (scoreA != scoreB) {
+                            return Integer.compare(scoreB, scoreA);
+                        }
+                        return a.compareToIgnoreCase(b);
+                    });
                 }
             }
+            lastDiscoveredModels.clear();
+            lastDiscoveredModels.addAll(discoveredModels);
+
+            String activeModel = resolveActiveModel(discoveredModels);
             return new AiStatusDto(true, true, PROVIDER_NAME, properties.getGeminiBaseUrl(),
-                    properties.getModel(), discoveredModels, null, getTimeoutSeconds());
+                    activeModel, discoveredModels, null, getTimeoutSeconds());
         } catch (Exception e) {
             log.warn("Failed to connect to Gemini API: {}", e.getMessage());
             return new AiStatusDto(true, false, PROVIDER_NAME, properties.getGeminiBaseUrl(),
-                    properties.getModel(), List.of(), "Cannot connect to Gemini: " + e.getMessage(), getTimeoutSeconds());
+                    resolveActiveModel(lastDiscoveredModels.isEmpty() ? null : lastDiscoveredModels),
+                    List.of(), "Cannot connect to Gemini: " + e.getMessage(), getTimeoutSeconds());
         }
+    }
+
+    public String resolveActiveModel() {
+        return resolveActiveModel(lastDiscoveredModels.isEmpty() ? null : lastDiscoveredModels);
+    }
+
+    public String resolveActiveModel(List<String> discoveredModels) {
+        String configured = properties.getModel();
+        if (configured != null && !configured.isBlank() && !"auto".equalsIgnoreCase(configured.trim())) {
+            return configured.trim();
+        }
+        if (discoveredModels != null && !discoveredModels.isEmpty()) {
+            return discoveredModels.get(0);
+        }
+        return DEFAULT_MODEL;
+    }
+
+    private int getModelPriorityScore(String model) {
+        String lower = model.toLowerCase();
+        if (lower.startsWith("gemini-2.5-flash")) return 100;
+        if (lower.startsWith("gemini-2.5-pro")) return 95;
+        if (lower.startsWith("gemini-2.0-flash")) return 90;
+        if (lower.startsWith("gemini-2.0-flash-lite")) return 85;
+        if (lower.startsWith("gemini-flash-latest")) return 80;
+        if (lower.startsWith("gemini-pro-latest")) return 75;
+        if (lower.startsWith("gemini-1.5-flash")) return 70;
+        if (lower.startsWith("gemini-1.5-pro")) return 65;
+        return 10;
     }
 
     @Override
@@ -116,8 +189,7 @@ public class GeminiGateway implements AiGateway {
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException("GEMINI_API_KEY is not configured");
         }
-        String targetModel = (properties.getModel() != null && !properties.getModel().isBlank())
-                ? properties.getModel() : DEFAULT_MODEL;
+        String targetModel = resolveActiveModel();
 
         // Gemini uses system_instruction + user contents
         Map<String, Object> payload = Map.of(

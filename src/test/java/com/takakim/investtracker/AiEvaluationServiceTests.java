@@ -155,13 +155,17 @@ class AiEvaluationServiceTests {
     }
 
     @Test
-    @DisplayName("getStatus delegates to LmStudioGateway")
+    @DisplayName("getStatus delegates to active gateway and enriches availableProviders")
     void testGetStatus() {
-        AiStatusDto expected = new AiStatusDto(true, true, "LM_STUDIO", "http://localhost:1234", "gemma4-12b", List.of("gemma4-12b"), null);
-        when(gateway.checkStatus()).thenReturn(expected);
+        AiStatusDto raw = new AiStatusDto(true, true, "LM_STUDIO", "http://localhost:1234", "gemma4-12b", List.of("gemma4-12b"), null);
+        when(gateway.checkStatus()).thenReturn(raw);
+        when(gatewayFactory.getAvailableProviders()).thenReturn(List.of("LM_STUDIO", "GEMINI"));
 
         AiStatusDto actual = service.getStatus();
-        assertSame(expected, actual);
+        assertTrue(actual.connected());
+        assertEquals("LM_STUDIO", actual.provider());
+        assertEquals("gemma4-12b", actual.configuredModel());
+        assertEquals(List.of("LM_STUDIO", "GEMINI"), actual.availableProviders());
         verify(gateway).checkStatus();
     }
 
@@ -1224,7 +1228,7 @@ class AiEvaluationServiceTests {
         PortfolioAiEvaluationDto result = service.evaluatePortfolio(portfolioId);
         assertNotNull(result);
         assertEquals(3, result.overallRiskScore());
-        verify(portfolioAiEvaluationRepository).save(existing);
+        verify(portfolioAiEvaluationRepository).saveAndFlush(existing);
         assertEquals(3, existing.getOverallRiskScore());
         assertEquals("LM_STUDIO", existing.getProvider());
     }
@@ -1255,7 +1259,7 @@ class AiEvaluationServiceTests {
         HoldingAiEvaluationDto result = service.evaluateHolding(portfolioId, instrumentId);
         assertNotNull(result);
         assertEquals(AiStance.STRONG_BUY, result.stance());
-        verify(holdingAiEvaluationRepository).save(existing);
+        verify(holdingAiEvaluationRepository).saveAndFlush(existing);
         assertEquals(2, existing.getRiskScore());
         assertEquals("STRONG_BUY", existing.getStance());
     }
@@ -1268,7 +1272,7 @@ class AiEvaluationServiceTests {
         when(analyticsEngine.calculate(eq(portfolioId), any())).thenReturn(testAnalytics);
         when(accountRepository.findAllByPortfolioIdAndStatusOrderByNameAsc(portfolioId, AccountStatus.ACTIVE)).thenReturn(List.of());
 
-        doThrow(new RuntimeException("Database offline")).when(portfolioAiEvaluationRepository).save(any());
+        doThrow(new RuntimeException("Database offline")).when(portfolioAiEvaluationRepository).saveAndFlush(any());
 
         String json = """
                 {
@@ -1292,7 +1296,7 @@ class AiEvaluationServiceTests {
         when(positionService.listPortfolioPositionsPerformance(portfolioId, false)).thenReturn(List.of(testPosition));
         when(analyticsEngine.calculate(eq(portfolioId), any())).thenReturn(testAnalytics);
 
-        doThrow(new RuntimeException("Database offline")).when(holdingAiEvaluationRepository).save(any());
+        doThrow(new RuntimeException("Database offline")).when(holdingAiEvaluationRepository).saveAndFlush(any());
 
         String json = """
                 {
@@ -1365,7 +1369,7 @@ class AiEvaluationServiceTests {
         // When existing entity is absent
         when(portfolioAiEvaluationRepository.findByPortfolioId(portfolioId)).thenReturn(Optional.empty());
         service.persistPortfolioEvaluation(portfolioId, "TEST_PROVIDER", dto);
-        verify(portfolioAiEvaluationRepository).save(argThat(entity -> "TEST_PROVIDER".equals(entity.getModelUsed())));
+        verify(portfolioAiEvaluationRepository).saveAndFlush(argThat(entity -> "TEST_PROVIDER".equals(entity.getModelUsed())));
 
         // When existing entity is present
         PortfolioAiEvaluation existing = new PortfolioAiEvaluation(
@@ -1390,7 +1394,7 @@ class AiEvaluationServiceTests {
         // When existing entity is absent
         when(holdingAiEvaluationRepository.findByPortfolioIdAndInstrumentId(portfolioId, instrumentId)).thenReturn(Optional.empty());
         service.persistHoldingEvaluation(portfolioId, instrumentId, "TEST_PROVIDER", dto);
-        verify(holdingAiEvaluationRepository).save(argThat(entity -> "TEST_PROVIDER".equals(entity.getModelUsed())));
+        verify(holdingAiEvaluationRepository).saveAndFlush(argThat(entity -> "TEST_PROVIDER".equals(entity.getModelUsed())));
 
         // When existing entity is present
         HoldingAiEvaluation existing = new HoldingAiEvaluation(
@@ -1399,6 +1403,43 @@ class AiEvaluationServiceTests {
         when(holdingAiEvaluationRepository.findByPortfolioIdAndInstrumentId(portfolioId, instrumentId)).thenReturn(Optional.of(existing));
         service.persistHoldingEvaluation(portfolioId, instrumentId, "NEW_PROVIDER", dto);
         assertEquals("NEW_PROVIDER", existing.getModelUsed());
+    }
+
+    @Test
+    @DisplayName("persist methods handle null dto and transactionManager correctly")
+    void testPersistWithTransactionManagerAndNullDto() {
+        org.springframework.transaction.PlatformTransactionManager txManager = mock(org.springframework.transaction.PlatformTransactionManager.class);
+        org.springframework.transaction.TransactionStatus txStatus = mock(org.springframework.transaction.TransactionStatus.class);
+        when(txManager.getTransaction(any())).thenReturn(txStatus);
+
+        AiEvaluationService txService = new AiEvaluationService(
+                gatewayFactory,
+                portfolioRepository,
+                accountRepository,
+                instrumentRepository,
+                positionService,
+                analyticsEngine,
+                yahooFinanceGateway,
+                objectMapper,
+                portfolioAiEvaluationRepository,
+                holdingAiEvaluationRepository,
+                txManager
+        );
+
+        // Null DTO branches
+        txService.persistPortfolioEvaluation(portfolioId, "TEST", null);
+        txService.persistHoldingEvaluation(portfolioId, instrumentId, "TEST", null);
+
+        // Valid DTO execution through TransactionTemplate
+        HoldingAiEvaluationDto hDto = new HoldingAiEvaluationDto(
+                instrumentId, "AAPL", "Apple Inc.", "STOCK",
+                BigDecimal.ONE, BigDecimal.TEN, BigDecimal.ONE, BigDecimal.ZERO,
+                0.0, 10.0, null, 5, null,
+                null, List.of(), List.of(), "Tradeoff", null,
+                "test-model", null
+        );
+        txService.persistHoldingEvaluation(portfolioId, instrumentId, "TEST", hDto);
+        verify(txManager).commit(txStatus);
     }
 
     @Test
@@ -1583,7 +1624,7 @@ class AiEvaluationServiceTests {
         assertEquals(AiRiskLevel.LOW, topHolding.riskLevel());
 
         // Verify holding evaluation was persisted
-        verify(holdingAiEvaluationRepository, atLeastOnce()).save(any(HoldingAiEvaluation.class));
+        verify(holdingAiEvaluationRepository, atLeastOnce()).saveAndFlush(any(HoldingAiEvaluation.class));
     }
 
     @Test
@@ -1870,6 +1911,23 @@ class AiEvaluationServiceTests {
         assertNotNull(status2);
 
         verify(gatewayFactory, never()).updateTimeout(anyInt());
+    }
+
+    @Test
+    @DisplayName("updateConfig updates provider and model on gateway factory")
+    void testUpdateConfigWithProviderAndModel() {
+        when(gatewayFactory.getActiveGateway()).thenReturn(gateway);
+        when(gateway.checkStatus()).thenReturn(new AiStatusDto(true, true, "OPENAI", "https://api.openai.com", "gpt-4o", List.of(), null, 90));
+
+        com.takakim.investtracker.service.ai.dto.AiConfigRequest request =
+                new com.takakim.investtracker.service.ai.dto.AiConfigRequest(90, "OPENAI", "gpt-4o");
+        AiStatusDto status = service.updateConfig(request);
+
+        assertNotNull(status);
+        assertEquals("OPENAI", status.provider());
+        verify(gatewayFactory).updateTimeout(90);
+        verify(gatewayFactory).updateProvider("OPENAI");
+        verify(gatewayFactory).updateModel("gpt-4o");
     }
 }
 
