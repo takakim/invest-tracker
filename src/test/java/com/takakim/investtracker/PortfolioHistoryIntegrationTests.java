@@ -94,5 +94,14 @@ class PortfolioHistoryIntegrationTests {
                 .andExpect(jsonPath("$.dataPoints", not(empty())))
                 .andExpect(jsonPath("$.summary.startingValue", notNullValue()))
                 .andExpect(jsonPath("$.summary.endingValue", notNullValue()));
+
+        // 6. Test POST /api/v1/portfolios/{id}/history/backfill
+        mockMvc.perform(post("/api/v1/portfolios/{portfolioId}/history/backfill", portfolioId)
+                        .param("range", "1Y"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.portfolioId", is(portfolioId)))
+                .andExpect(jsonPath("$.instrumentsProcessed", notNullValue()))
+                .andExpect(jsonPath("$.totalObservationsSynced", notNullValue()))
+                .andExpect(jsonPath("$.details", notNullValue()));
     }
 }

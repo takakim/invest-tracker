@@ -12,8 +12,11 @@ import com.takakim.investtracker.domain.Position;
 import com.takakim.investtracker.domain.PositionStatus;
 import com.takakim.investtracker.domain.Transaction;
 import com.takakim.investtracker.domain.TransactionType;
+import com.takakim.investtracker.domain.AssetClass;
+import com.takakim.investtracker.domain.Currency;
 import com.takakim.investtracker.repository.AccountRepository;
 import com.takakim.investtracker.repository.CorporateActionRepository;
+import com.takakim.investtracker.repository.InstrumentRepository;
 import com.takakim.investtracker.repository.PortfolioRepository;
 import com.takakim.investtracker.repository.PositionRepository;
 import com.takakim.investtracker.repository.TransactionRepository;
@@ -47,8 +50,41 @@ public class CorporateActionService {
     private final PositionRepository positionRepository;
     private final TransactionRepository transactionRepository;
     private final CorporateActionRepository corporateActionRepository;
+    private final InstrumentRepository instrumentRepository;
     private final TransactionService transactionService;
     private final YahooFinanceGateway yahooFinanceGateway;
+
+    public record KnownCorporateAction(
+            String sourceTicker,
+            String resultingTicker,
+            String resultingName,
+            String resultingIsin,
+            String resultingExchange,
+            String resultingCurrency,
+            CorporateActionType actionType,
+            Instant exDate,
+            BigDecimal ratioFrom,
+            BigDecimal ratioTo,
+            String description,
+            String externalId
+    ) {}
+
+    public static final List<KnownCorporateAction> KNOWN_ACTIONS_CATALOG = List.of(
+            new KnownCorporateAction(
+                    "HON",
+                    "HONA",
+                    "Honeywell Aerospace Inc.",
+                    "US43849R1059",
+                    "NASDAQ",
+                    "USD",
+                    CorporateActionType.STOCK_SPLIT,
+                    Instant.parse("2026-06-29T13:30:00Z"),
+                    new BigDecimal("2"),
+                    new BigDecimal("1"),
+                    "Honeywell Aerospace (HONA) spin-off split — 1 HONA per 2 HON",
+                    "CATALOG-HON-HONA-SPINOFF-20260629"
+            )
+    );
 
     public CorporateActionService(
             PortfolioRepository portfolioRepository,
@@ -56,6 +92,7 @@ public class CorporateActionService {
             PositionRepository positionRepository,
             TransactionRepository transactionRepository,
             CorporateActionRepository corporateActionRepository,
+            InstrumentRepository instrumentRepository,
             TransactionService transactionService,
             YahooFinanceGateway yahooFinanceGateway) {
         this.portfolioRepository = portfolioRepository;
@@ -63,6 +100,7 @@ public class CorporateActionService {
         this.positionRepository = positionRepository;
         this.transactionRepository = transactionRepository;
         this.corporateActionRepository = corporateActionRepository;
+        this.instrumentRepository = instrumentRepository;
         this.transactionService = transactionService;
         this.yahooFinanceGateway = yahooFinanceGateway;
     }
@@ -80,6 +118,9 @@ public class CorporateActionService {
                 .distinct()
                 .filter(i -> i.getTicker() != null && !i.getTicker().isBlank())
                 .toList();
+
+        List<Account> accounts = accountRepository.findAllByPortfolioIdAndStatusOrderByNameAsc(
+                portfolioId, com.takakim.investtracker.domain.AccountStatus.ACTIVE);
 
         int scanned = 0;
         int discovered = 0;
@@ -130,12 +171,18 @@ public class CorporateActionService {
                     action.markApplied(matchingTx.get(), matchingTx.get().getAccount());
                     messages.add("Auto-linked existing transaction for " + ticker + " (" + disc.actionType() + ")");
                 } else {
-                    newPending++;
+                    boolean heldAtExDate = accounts.stream().anyMatch(acc ->
+                            calculateHeldQuantityUpTo(inst.getId(), acc.getId(), disc.exDate()).compareTo(BigDecimal.ZERO) > 0);
+                    if (heldAtExDate) {
+                        newPending++;
+                    }
                 }
 
                 corporateActionRepository.save(action);
             }
         }
+
+        newPending += ensureCatalogActions(portfolioId, instruments, accounts, messages);
 
         log.info("Portfolio {} corporate action scan complete: {} instruments scanned, {} actions discovered, {} new pending.",
                 portfolioId, scanned, discovered, newPending);
@@ -143,11 +190,103 @@ public class CorporateActionService {
         return new ScanCorporateActionsResponse(portfolioId, scanned, discovered, newPending, messages);
     }
 
-    @Transactional(readOnly = true)
+    private int ensureCatalogActions(UUID portfolioId, List<Instrument> instruments, List<Account> accounts, List<String> messages) {
+        int newPending = 0;
+        for (KnownCorporateAction known : KNOWN_ACTIONS_CATALOG) {
+            Optional<Instrument> sourceInstOpt = instruments.stream()
+                    .filter(i -> known.sourceTicker().equalsIgnoreCase(i.getTicker()))
+                    .findFirst();
+
+            if (sourceInstOpt.isEmpty()) {
+                continue;
+            }
+
+            Instrument sourceInst = sourceInstOpt.get();
+
+            Optional<CorporateAction> existing = corporateActionRepository
+                    .findBySourceAndExternalId("SYSTEM_CATALOG", known.externalId());
+
+            if (existing.isPresent()) {
+                continue;
+            }
+
+            Optional<CorporateAction> existingByDate = corporateActionRepository
+                    .findByInstrumentIdAndActionTypeAndExDate(sourceInst.getId(), known.actionType(), known.exDate());
+            if (existingByDate.isPresent()) {
+                continue;
+            }
+
+            Instrument resultingInst = instrumentRepository.findByTicker(known.resultingTicker())
+                    .or(() -> instrumentRepository.findByIsin(known.resultingIsin()))
+                    .orElseGet(() -> {
+                        Instrument newInst = new Instrument(
+                                known.resultingName(),
+                                AssetClass.STOCK,
+                                known.resultingTicker(),
+                                known.resultingIsin(),
+                                known.resultingExchange(),
+                                new Currency(known.resultingCurrency()),
+                                false
+                        );
+                        return instrumentRepository.save(newInst);
+                    });
+
+            CorporateAction action = new CorporateAction(
+                    sourceInst,
+                    resultingInst,
+                    known.actionType(),
+                    known.exDate(),
+                    null,
+                    null,
+                    known.ratioFrom(),
+                    known.ratioTo(),
+                    null,
+                    known.resultingCurrency(),
+                    known.description(),
+                    "SYSTEM_CATALOG",
+                    known.externalId()
+            );
+
+            Optional<Transaction> matchingTx = findMatchingLedgerTransaction(resultingInst.getId(), TransactionType.STOCK_SPLIT, known.exDate());
+            if (matchingTx.isPresent()) {
+                action.markApplied(matchingTx.get(), matchingTx.get().getAccount());
+                if (messages != null) {
+                    messages.add("Auto-linked existing transaction for " + known.sourceTicker() + " -> " + known.resultingTicker() + " (" + known.actionType() + ")");
+                }
+            } else {
+                boolean heldAtExDate = accounts.stream().anyMatch(acc ->
+                        calculateHeldQuantityUpTo(sourceInst.getId(), acc.getId(), known.exDate()).compareTo(BigDecimal.ZERO) > 0);
+                if (heldAtExDate) {
+                    newPending++;
+                }
+            }
+
+            corporateActionRepository.save(action);
+            if (messages != null) {
+                messages.add("Discovered corporate action: " + known.description());
+            }
+        }
+        return newPending;
+    }
+
     public List<CorporateActionResponse> getPortfolioCorporateActions(UUID portfolioId, CorporateActionStatus statusFilter) {
         if (!portfolioRepository.existsById(portfolioId)) {
             throw new ResourceNotFoundException("Portfolio not found: " + portfolioId);
         }
+
+        List<Position> activePositions = positionRepository
+                .findByAccountPortfolioIdAndStatus(portfolioId, PositionStatus.ACTIVE);
+
+        List<Instrument> instruments = activePositions.stream()
+                .map(Position::getInstrument)
+                .distinct()
+                .filter(i -> i.getTicker() != null && !i.getTicker().isBlank())
+                .toList();
+
+        List<Account> accounts = accountRepository.findAllByPortfolioIdAndStatusOrderByNameAsc(
+                portfolioId, com.takakim.investtracker.domain.AccountStatus.ACTIVE);
+
+        ensureCatalogActions(portfolioId, instruments, accounts, null);
 
         List<CorporateAction> actions = statusFilter != null
                 ? corporateActionRepository.findActivePortfolioCorporateActionsByStatus(portfolioId, statusFilter)
@@ -155,7 +294,12 @@ public class CorporateActionService {
 
         List<CorporateActionResponse> responses = new ArrayList<>();
         for (CorporateAction action : actions) {
-            responses.add(mapToResponse(action, portfolioId));
+            CorporateActionResponse resp = mapToResponse(action, portfolioId);
+            boolean isAppliedToPortfolio = action.getAccount() != null
+                    && action.getAccount().getPortfolio().getId().equals(portfolioId);
+            if (isAppliedToPortfolio || (resp.heldQuantityAtExDate() != null && resp.heldQuantityAtExDate().compareTo(BigDecimal.ZERO) > 0)) {
+                responses.add(resp);
+            }
         }
 
         responses.sort(Comparator.comparing(CorporateActionResponse::exDate).reversed());
@@ -182,6 +326,7 @@ public class CorporateActionService {
         }
 
         Instrument inst = action.getInstrument();
+        Instrument targetInst = action.getResultingInstrument() != null ? action.getResultingInstrument() : inst;
         Transaction recordedTx;
 
         if (action.getActionType() == CorporateActionType.STOCK_SPLIT || action.getActionType() == CorporateActionType.REVERSE_STOCK_SPLIT) {
@@ -199,12 +344,12 @@ public class CorporateActionService {
             }
 
             String notes = request.notes() != null ? request.notes() : action.getDescription();
-            String currency = inst.getCurrency() != null ? inst.getCurrency().code() : account.getAccountCurrency().code();
+            String currency = targetInst.getCurrency() != null ? targetInst.getCurrency().code() : account.getAccountCurrency().code();
 
             recordedTx = transactionService.recordTransaction(
                     portfolioId,
                     account.getId(),
-                    inst.getId(),
+                    targetInst.getId(),
                     txType,
                     action.getExDate(),
                     action.getPaymentDate() != null ? action.getPaymentDate() : action.getExDate(),
@@ -291,6 +436,7 @@ public class CorporateActionService {
 
     private CorporateActionResponse mapToResponse(CorporateAction action, UUID portfolioId) {
         Instrument inst = action.getInstrument();
+        Instrument resultingInst = action.getResultingInstrument();
         Account targetAccount = action.getAccount();
         BigDecimal heldQty = BigDecimal.ZERO;
 
@@ -315,7 +461,10 @@ public class CorporateActionService {
         BigDecimal proposedAmount = null;
 
         if (heldQty.compareTo(BigDecimal.ZERO) > 0) {
-            if (action.getActionType() == CorporateActionType.STOCK_SPLIT && action.getRatioFrom() != null && action.getRatioTo() != null) {
+            if (action.getResultingInstrument() != null && action.getRatioFrom() != null && action.getRatioTo() != null) {
+                BigDecimal ratio = action.getRatioTo().divide(action.getRatioFrom(), 8, ROUNDING);
+                proposedQty = heldQty.multiply(ratio).setScale(QUANTITY_SCALE, ROUNDING);
+            } else if (action.getActionType() == CorporateActionType.STOCK_SPLIT && action.getRatioFrom() != null && action.getRatioTo() != null) {
                 BigDecimal ratio = action.getRatioTo().divide(action.getRatioFrom(), 8, ROUNDING);
                 proposedQty = heldQty.multiply(ratio.subtract(BigDecimal.ONE)).setScale(QUANTITY_SCALE, ROUNDING);
             } else if (action.getActionType() == CorporateActionType.REVERSE_STOCK_SPLIT && action.getRatioFrom() != null && action.getRatioTo() != null) {
@@ -333,6 +482,9 @@ public class CorporateActionService {
                 inst.getTicker(),
                 inst.getIsin(),
                 inst.getAssetClass().name(),
+                resultingInst != null ? resultingInst.getId() : null,
+                resultingInst != null ? resultingInst.getTicker() : null,
+                resultingInst != null ? resultingInst.getName() : null,
                 action.getActionType().name(),
                 action.getStatus().name(),
                 action.getExDate(),
@@ -381,6 +533,11 @@ public class CorporateActionService {
         BigDecimal held = calculateHeldQuantityUpTo(action.getInstrument().getId(), accountId, exDate);
         if (held.compareTo(BigDecimal.ZERO) <= 0 || action.getRatioFrom() == null || action.getRatioTo() == null) {
             return BigDecimal.ZERO;
+        }
+
+        if (action.getResultingInstrument() != null) {
+            BigDecimal ratio = action.getRatioTo().divide(action.getRatioFrom(), 8, ROUNDING);
+            return held.multiply(ratio).setScale(QUANTITY_SCALE, ROUNDING);
         }
 
         if (action.getActionType() == CorporateActionType.STOCK_SPLIT) {

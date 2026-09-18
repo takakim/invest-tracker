@@ -493,6 +493,38 @@ class PortfolioHistoryServiceTests {
         when(transactionRepository.findByAccountPortfolioIdOrderByTradeDateDesc(portfolioId))
                 .thenReturn(List.of(buyTx));
 
+        when(marketDataService.hasSufficientHistoricalCoverage(eq(vusa.getId()), any(Instant.class), any(Instant.class), anyInt())).thenReturn(false);
+
+        PortfolioAnalytics mockAnalytics = new PortfolioAnalytics(
+                portfolioId, Instant.now(), "GBP",
+                new BigDecimal("500.00"), new BigDecimal("500.00"),
+                BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO,
+                List.of(), List.of(), List.of(), List.of(), List.of()
+        );
+        when(analyticsEngine.calculate(eq(portfolioId), any(Instant.class))).thenReturn(mockAnalytics);
+
+        PortfolioHistoryResponse response = service.generateHistory(portfolioId, "1M", "DAILY", null);
+        assertNotNull(response);
+
+        verify(marketDataService).backfillHistoricalPrices(eq(vusa.getId()), any(Instant.class), any(Instant.class));
+    }
+
+    @Test
+    void generateHistory_sufficientCoverageButMissingInitialObservation_triggersBackfill() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(portfolio));
+
+        Instant tradeDate = Instant.now().minus(100, ChronoUnit.DAYS);
+        Transaction buyTx = new Transaction(
+                account, vusa, TransactionType.BUY, tradeDate, tradeDate,
+                new BigDecimal("10.00"), new BigDecimal("50.00"), new BigDecimal("500.00"),
+                BigDecimal.ZERO, BigDecimal.ZERO, "GBP", null, null, null, null
+        );
+
+        when(transactionRepository.findByAccountPortfolioIdOrderByTradeDateDesc(portfolioId))
+                .thenReturn(List.of(buyTx));
+
+        when(marketDataService.hasSufficientHistoricalCoverage(eq(vusa.getId()), any(Instant.class), any(Instant.class), anyInt())).thenReturn(true);
         when(marketDataService.hasHistoricalObservationBefore(eq(vusa.getId()), any(Instant.class))).thenReturn(false);
 
         PortfolioAnalytics mockAnalytics = new PortfolioAnalytics(
@@ -511,6 +543,37 @@ class PortfolioHistoryServiceTests {
     }
 
     @Test
+    void generateHistory_backfillThrowsException_continuesGracefully() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(portfolio));
+
+        Instant tradeDate = Instant.now().minus(100, ChronoUnit.DAYS);
+        Transaction buyTx = new Transaction(
+                account, vusa, TransactionType.BUY, tradeDate, tradeDate,
+                new BigDecimal("10.00"), new BigDecimal("50.00"), new BigDecimal("500.00"),
+                BigDecimal.ZERO, BigDecimal.ZERO, "GBP", null, null, null, null
+        );
+
+        when(transactionRepository.findByAccountPortfolioIdOrderByTradeDateDesc(portfolioId))
+                .thenReturn(List.of(buyTx));
+
+        when(marketDataService.hasSufficientHistoricalCoverage(eq(vusa.getId()), any(Instant.class), any(Instant.class), anyInt())).thenReturn(false);
+        doThrow(new RuntimeException("Simulated provider timeout"))
+                .when(marketDataService).backfillHistoricalPrices(eq(vusa.getId()), any(Instant.class), any(Instant.class));
+
+        PortfolioAnalytics mockAnalytics = new PortfolioAnalytics(
+                portfolioId, Instant.now(), "GBP",
+                new BigDecimal("500.00"), new BigDecimal("500.00"),
+                BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO,
+                List.of(), List.of(), List.of(), List.of(), List.of()
+        );
+        when(analyticsEngine.calculate(eq(portfolioId), any(Instant.class))).thenReturn(mockAnalytics);
+
+        PortfolioHistoryResponse response = service.generateHistory(portfolioId, "1M", "DAILY", null);
+        assertNotNull(response);
+    }
+
+    @Test
     void generateHistory_heldInstrumentsWithExistingHistoricalCoverage_skipsBackfill() {
         when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(portfolio));
 
@@ -524,6 +587,7 @@ class PortfolioHistoryServiceTests {
         when(transactionRepository.findByAccountPortfolioIdOrderByTradeDateDesc(portfolioId))
                 .thenReturn(List.of(buyTx));
 
+        when(marketDataService.hasSufficientHistoricalCoverage(eq(vusa.getId()), any(Instant.class), any(Instant.class), anyInt())).thenReturn(true);
         when(marketDataService.hasHistoricalObservationBefore(eq(vusa.getId()), any(Instant.class))).thenReturn(true);
 
         PortfolioAnalytics mockAnalytics = new PortfolioAnalytics(
@@ -539,5 +603,41 @@ class PortfolioHistoryServiceTests {
         assertNotNull(response);
 
         verify(marketDataService, never()).backfillHistoricalPrices(eq(vusa.getId()), any(Instant.class), any(Instant.class));
+    }
+
+    @Test
+    void syncPortfolioHistory_portfolioNotFound_throwsResourceNotFound() {
+        when(portfolioRepository.existsById(portfolioId)).thenReturn(false);
+
+        assertThrows(ResourceNotFoundException.class, () -> service.syncPortfolioHistory(portfolioId, "1Y"));
+    }
+
+    @Test
+    void syncPortfolioHistory_success_delegatesToMarketDataServiceWithCalculatedRange() {
+        when(portfolioRepository.existsById(portfolioId)).thenReturn(true);
+        MarketDataService.PortfolioBackfillResult expectedResult = new MarketDataService.PortfolioBackfillResult(
+                portfolioId, 2, 250, List.of(
+                        new MarketDataService.BackfillInstrumentSummary(UUID.randomUUID(), "AAPL", "Apple Inc", 150, "SUCCESS"),
+                        new MarketDataService.BackfillInstrumentSummary(UUID.randomUUID(), "MSFT", "Microsoft Corp", 100, "SUCCESS")
+                )
+        );
+        when(marketDataService.backfillPortfolioInstrumentsHistory(eq(portfolioId), any(Instant.class), any(Instant.class)))
+                .thenReturn(expectedResult);
+
+        var result1Y = service.syncPortfolioHistory(portfolioId, "1Y");
+        assertNotNull(result1Y);
+        assertEquals(2, result1Y.instrumentsProcessed());
+        assertEquals(250, result1Y.totalObservationsSynced());
+        assertEquals(2, result1Y.details().size());
+
+        // Also test "5Y", "6M", "3M", "1M", and default ranges to verify all branch coverage
+        service.syncPortfolioHistory(portfolioId, "5Y");
+        service.syncPortfolioHistory(portfolioId, "6M");
+        service.syncPortfolioHistory(portfolioId, "3M");
+        service.syncPortfolioHistory(portfolioId, "1M");
+        service.syncPortfolioHistory(portfolioId, null);
+        service.syncPortfolioHistory(portfolioId, "2Y");
+
+        verify(marketDataService, times(7)).backfillPortfolioInstrumentsHistory(eq(portfolioId), any(Instant.class), any(Instant.class));
     }
 }

@@ -1,5 +1,5 @@
 import { request } from './client';
-import type { PortfolioAnalytics, DividendAnalytics, PortfolioHistory, CashFlowAnalytics } from '../types';
+import type { PortfolioAnalytics, DividendAnalytics, PortfolioHistory, PortfolioBackfillResponse, CashFlowAnalytics } from '../types';
 
 export const analyticsApi = {
   getPortfolioAnalytics: (portfolioId: string, asOf?: string): Promise<PortfolioAnalytics> => {
@@ -20,6 +20,15 @@ export const analyticsApi = {
     if (params?.benchmarkId) query.append('benchmarkId', params.benchmarkId);
     const queryString = query.toString() ? `?${query.toString()}` : '';
     return request<PortfolioHistory>(`/api/v1/portfolios/${portfolioId}/history${queryString}`);
+  },
+  backfillPortfolioHistory: (
+    portfolioId: string,
+    range?: string
+  ): Promise<PortfolioBackfillResponse> => {
+    const params = range ? `?range=${encodeURIComponent(range)}` : '';
+    return request<PortfolioBackfillResponse>(`/api/v1/portfolios/${portfolioId}/history/backfill${params}`, {
+      method: 'POST',
+    });
   },
   getCashFlowAnalytics: (
     portfolioId: string,

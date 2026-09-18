@@ -22,6 +22,7 @@ import com.takakim.investtracker.domain.Transaction;
 import com.takakim.investtracker.domain.TransactionType;
 import com.takakim.investtracker.repository.AccountRepository;
 import com.takakim.investtracker.repository.CorporateActionRepository;
+import com.takakim.investtracker.repository.InstrumentRepository;
 import com.takakim.investtracker.repository.PortfolioRepository;
 import com.takakim.investtracker.repository.PositionRepository;
 import com.takakim.investtracker.repository.TransactionRepository;
@@ -60,6 +61,8 @@ class CorporateActionServiceTests {
     @Mock
     private CorporateActionRepository corporateActionRepository;
     @Mock
+    private InstrumentRepository instrumentRepository;
+    @Mock
     private TransactionService transactionService;
     @Mock
     private YahooFinanceGateway yahooFinanceGateway;
@@ -80,9 +83,13 @@ class CorporateActionServiceTests {
                 positionRepository,
                 transactionRepository,
                 corporateActionRepository,
+                instrumentRepository,
                 transactionService,
                 yahooFinanceGateway
         );
+
+        lenient().when(positionRepository.findByAccountPortfolioIdAndStatus(any(), any())).thenReturn(List.of());
+        lenient().when(accountRepository.findAllByPortfolioIdAndStatusOrderByNameAsc(any(), any())).thenReturn(List.of());
 
         portfolio = new Portfolio("Tech Portfolio", new Currency("USD"), CostBasisMethod.FIFO, ReturnMethod.TWR);
         portfolioId = portfolio.getId();
@@ -105,10 +112,20 @@ class CorporateActionServiceTests {
         Position pos = new Position(account, apple, new Quantity(new BigDecimal("10.00")), new Money(new BigDecimal("1500.00"), new Currency("USD")));
         when(positionRepository.findByAccountPortfolioIdAndStatus(portfolioId, PositionStatus.ACTIVE))
                 .thenReturn(List.of(pos));
+        when(accountRepository.findAllByPortfolioIdAndStatusOrderByNameAsc(portfolioId, AccountStatus.ACTIVE))
+                .thenReturn(List.of(account));
 
         Instant exDateSplit = Instant.now().minusSeconds(86400 * 20);
         Instant exDateDiv = Instant.now().minusSeconds(86400 * 5);
         Instant exDateRev = Instant.now().minusSeconds(86400 * 15);
+
+        Transaction buyTx = new Transaction(
+                account, apple, TransactionType.BUY, exDateSplit.minusSeconds(86400 * 5), null,
+                new BigDecimal("10.00"), new BigDecimal("100.00"), new BigDecimal("1000.00"),
+                BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null
+        );
+        when(transactionRepository.findByAccountIdAndInstrumentIdOrderByTradeDateAsc(account.getId(), apple.getId()))
+                .thenReturn(List.of(buyTx));
 
         DiscoveredCorporateAction split = new DiscoveredCorporateAction(
                 CorporateActionType.STOCK_SPLIT, exDateSplit, BigDecimal.ONE, new BigDecimal("4"),
@@ -669,5 +686,481 @@ class CorporateActionServiceTests {
         assertEquals(new BigDecimal("100.00000000"), responses.get(0).heldQuantityAtExDate());
         // 2:1 split impact on 100 shares = 100.00000000 additional shares
         assertEquals(new BigDecimal("100.00000000"), responses.get(0).proposedImpactQuantity());
+    }
+
+    @Test
+    void getPortfolioCorporateActions_filtersOutActionsPriorToAcquisition() {
+        when(portfolioRepository.existsById(portfolioId)).thenReturn(true);
+
+        Instant exDate = Instant.now().minusSeconds(86400 * 30);
+        CorporateAction split = new CorporateAction(
+                apple, CorporateActionType.STOCK_SPLIT, exDate, null, null,
+                BigDecimal.ONE, new BigDecimal("2"), null, null, "2:1", "YAHOO", "EXT-OLD"
+        );
+
+        when(corporateActionRepository.findActivePortfolioCorporateActions(portfolioId))
+                .thenReturn(List.of(split));
+        when(accountRepository.findAllByPortfolioIdAndStatusOrderByNameAsc(portfolioId, AccountStatus.ACTIVE))
+                .thenReturn(List.of(account));
+
+        // Acquired 10 days after ex-date: 0 held at exDate
+        Transaction buyTx = new Transaction(
+                account, apple, TransactionType.BUY, exDate.plusSeconds(86400 * 10), null,
+                new BigDecimal("50.00"), new BigDecimal("150.00"), new BigDecimal("7500.00"),
+                BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null
+        );
+        when(transactionRepository.findByAccountIdAndInstrumentIdOrderByTradeDateAsc(account.getId(), apple.getId()))
+                .thenReturn(List.of(buyTx));
+
+        List<CorporateActionResponse> responses = service.getPortfolioCorporateActions(portfolioId, null);
+        assertTrue(responses.isEmpty(), "Corporate actions where portfolio held 0 shares at exDate should be filtered out");
+    }
+
+    @Test
+    void scanPortfolio_discoversKnownCatalogActionForHon() {
+        when(portfolioRepository.existsById(portfolioId)).thenReturn(true);
+
+        Instrument hon = new Instrument("Honeywell", AssetClass.STOCK, "HON", "US4385162056", "NASDAQ", new Currency("USD"));
+        Instrument hona = new Instrument("Honeywell Aerospace Inc.", AssetClass.STOCK, "HONA", "US43849R1059", "NASDAQ", new Currency("USD"));
+
+        Position pos = new Position(account, hon, new Quantity(new BigDecimal("5.00000000")), new Money(new BigDecimal("1000.00"), new Currency("USD")));
+        when(positionRepository.findByAccountPortfolioIdAndStatus(portfolioId, PositionStatus.ACTIVE))
+                .thenReturn(List.of(pos));
+        when(accountRepository.findAllByPortfolioIdAndStatusOrderByNameAsc(portfolioId, AccountStatus.ACTIVE))
+                .thenReturn(List.of(account));
+
+        when(yahooFinanceGateway.fetchCorporateActions("HON", "1y")).thenReturn(List.of());
+        when(corporateActionRepository.findBySourceAndExternalId(eq("SYSTEM_CATALOG"), any())).thenReturn(Optional.empty());
+        when(corporateActionRepository.findByInstrumentIdAndActionTypeAndExDate(any(), any(), any())).thenReturn(Optional.empty());
+        when(instrumentRepository.findByTicker("HONA")).thenReturn(Optional.of(hona));
+
+        Instant exDate = Instant.parse("2026-06-29T13:30:00Z");
+        Transaction buyTx = new Transaction(
+                account, hon, TransactionType.BUY, exDate.minusSeconds(86400 * 10), null,
+                new BigDecimal("5.00"), new BigDecimal("200.00"), new BigDecimal("1000.00"),
+                BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null
+        );
+        when(transactionRepository.findByAccountIdAndInstrumentIdOrderByTradeDateAsc(account.getId(), hon.getId()))
+                .thenReturn(List.of(buyTx));
+
+        ScanCorporateActionsResponse response = service.scanPortfolio(portfolioId);
+
+        assertNotNull(response);
+        assertEquals(1, response.newPendingActionsCount());
+        verify(corporateActionRepository).save(argThat(ca ->
+                ca.getInstrument().equals(hon)
+                        && ca.getResultingInstrument() != null
+                        && ca.getResultingInstrument().getTicker().equals("HONA")
+                        && ca.getActionType() == CorporateActionType.STOCK_SPLIT
+                        && ca.getStatus() == CorporateActionStatus.PENDING
+        ));
+    }
+
+    @Test
+    void applyAction_withResultingInstrument_allotsSharesInResultingInstrument() {
+        when(portfolioRepository.existsById(portfolioId)).thenReturn(true);
+
+        Instrument hon = new Instrument("Honeywell", AssetClass.STOCK, "HON", "US4385162056", "NASDAQ", new Currency("USD"));
+        Instrument hona = new Instrument("Honeywell Aerospace Inc.", AssetClass.STOCK, "HONA", "US43849R1059", "NASDAQ", new Currency("USD"));
+
+        Instant exDate = Instant.parse("2026-06-29T13:30:00Z");
+        CorporateAction spinoff = new CorporateAction(
+                hon, hona, CorporateActionType.STOCK_SPLIT, exDate, null, null,
+                new BigDecimal("2"), new BigDecimal("1"), null, "USD",
+                "Honeywell Aerospace (HONA) spin-off split — 1 HONA per 2 HON",
+                "SYSTEM_CATALOG", "CATALOG-HON-HONA-SPINOFF-20260629"
+        );
+
+        UUID actionId = spinoff.getId();
+        when(corporateActionRepository.findById(actionId)).thenReturn(Optional.of(spinoff));
+        when(accountRepository.findById(account.getId())).thenReturn(Optional.of(account));
+
+        // 5 shares held of HON -> 1:2 ratio -> 2.5 shares of HONA
+        Transaction buyTx = new Transaction(
+                account, hon, TransactionType.BUY, exDate.minusSeconds(86400 * 10), null,
+                new BigDecimal("5.00"), new BigDecimal("200.00"), new BigDecimal("1000.00"),
+                BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null
+        );
+        when(transactionRepository.findByAccountIdAndInstrumentIdOrderByTradeDateAsc(account.getId(), hon.getId()))
+                .thenReturn(List.of(buyTx));
+
+        Transaction recordedTx = new Transaction(
+                account, hona, TransactionType.STOCK_SPLIT, exDate, exDate,
+                new BigDecimal("2.50000000"), null, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                "USD", null, null, spinoff.getDescription(), null
+        );
+        when(transactionService.recordTransaction(
+                eq(portfolioId), eq(account.getId()), eq(hona.getId()), eq(TransactionType.STOCK_SPLIT),
+                eq(exDate), eq(exDate), eq(new BigDecimal("2.50000000")), any(), any(), any(), any(),
+                eq("USD"), any(), any(), any(), any()
+        )).thenReturn(recordedTx);
+
+        ApplyCorporateActionRequest req = new ApplyCorporateActionRequest(account.getId(), null, null, null, null);
+        CorporateActionResponse resp = service.applyAction(portfolioId, actionId, req);
+
+        assertNotNull(resp);
+        assertEquals(CorporateActionStatus.APPLIED.name(), resp.status());
+        assertEquals("HON", resp.ticker());
+        assertEquals("HONA", resp.resultingInstrumentTicker());
+        assertEquals(new BigDecimal("2.50000000"), resp.proposedImpactQuantity());
+        verify(transactionService).recordTransaction(
+                eq(portfolioId), eq(account.getId()), eq(hona.getId()), eq(TransactionType.STOCK_SPLIT),
+                any(), any(), eq(new BigDecimal("2.50000000")), any(), any(), any(), any(),
+                eq("USD"), any(), any(), any(), any()
+        );
+    }
+
+    @Test
+    void scanPortfolio_catalogActionExistingByExternalIdOrDate_skips() {
+        when(portfolioRepository.existsById(portfolioId)).thenReturn(true);
+
+        Instrument hon = new Instrument("Honeywell", AssetClass.STOCK, "HON", "US4385162056", "NASDAQ", new Currency("USD"));
+        Position pos = new Position(account, hon, new Quantity(new BigDecimal("5.00000000")), new Money(new BigDecimal("1000.00"), new Currency("USD")));
+        when(positionRepository.findByAccountPortfolioIdAndStatus(portfolioId, PositionStatus.ACTIVE))
+                .thenReturn(List.of(pos));
+
+        CorporateAction dummyAction = new CorporateAction(
+                hon, CorporateActionType.STOCK_SPLIT, Instant.now(), null, null,
+                BigDecimal.ONE, BigDecimal.ONE, null, "USD", "test", "SYSTEM_CATALOG", "CATALOG-HON-HONA-SPINOFF-20260629"
+        );
+        when(corporateActionRepository.findBySourceAndExternalId(eq("SYSTEM_CATALOG"), any())).thenReturn(Optional.of(dummyAction));
+
+        ScanCorporateActionsResponse response = service.scanPortfolio(portfolioId);
+        assertNotNull(response);
+        verify(corporateActionRepository, never()).save(any());
+    }
+
+    @Test
+    void scanPortfolio_catalogActionAutoLinksMatchingTransaction() {
+        when(portfolioRepository.existsById(portfolioId)).thenReturn(true);
+
+        Instrument hon = new Instrument("Honeywell", AssetClass.STOCK, "HON", "US4385162056", "NASDAQ", new Currency("USD"));
+        Instrument hona = new Instrument("Honeywell Aerospace Inc.", AssetClass.STOCK, "HONA", "US43849R1059", "NASDAQ", new Currency("USD"));
+        Position pos = new Position(account, hon, new Quantity(new BigDecimal("5.00000000")), new Money(new BigDecimal("1000.00"), new Currency("USD")));
+        when(positionRepository.findByAccountPortfolioIdAndStatus(portfolioId, PositionStatus.ACTIVE))
+                .thenReturn(List.of(pos));
+
+        when(corporateActionRepository.findBySourceAndExternalId(eq("SYSTEM_CATALOG"), any())).thenReturn(Optional.empty());
+        when(corporateActionRepository.findByInstrumentIdAndActionTypeAndExDate(any(), any(), any())).thenReturn(Optional.empty());
+        when(instrumentRepository.findByTicker("HONA")).thenReturn(Optional.of(hona));
+
+        Instant exDate = Instant.parse("2026-06-29T13:30:00Z");
+        Transaction matchingTx = new Transaction(
+                account, hona, TransactionType.STOCK_SPLIT, exDate, exDate,
+                new BigDecimal("2.50000000"), null, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                "USD", null, null, "Spinoff", null
+        );
+        when(transactionRepository.findAll()).thenReturn(List.of(matchingTx));
+
+        ScanCorporateActionsResponse response = service.scanPortfolio(portfolioId);
+        assertNotNull(response);
+        assertEquals(0, response.newPendingActionsCount());
+        verify(corporateActionRepository).save(argThat(ca -> ca.getStatus() == CorporateActionStatus.APPLIED));
+    }
+
+    @Test
+    void scanPortfolio_catalogActionProvisionsMissingInstrument() {
+        when(portfolioRepository.existsById(portfolioId)).thenReturn(true);
+
+        Instrument hon = new Instrument("Honeywell", AssetClass.STOCK, "HON", "US4385162056", "NASDAQ", new Currency("USD"));
+        Position pos = new Position(account, hon, new Quantity(new BigDecimal("5.00000000")), new Money(new BigDecimal("1000.00"), new Currency("USD")));
+        when(positionRepository.findByAccountPortfolioIdAndStatus(portfolioId, PositionStatus.ACTIVE))
+                .thenReturn(List.of(pos));
+
+        when(corporateActionRepository.findBySourceAndExternalId(eq("SYSTEM_CATALOG"), any())).thenReturn(Optional.empty());
+        when(corporateActionRepository.findByInstrumentIdAndActionTypeAndExDate(any(), any(), any())).thenReturn(Optional.empty());
+        when(instrumentRepository.findByTicker("HONA")).thenReturn(Optional.empty());
+        when(instrumentRepository.findByIsin("US43849R1059")).thenReturn(Optional.empty());
+
+        Instrument savedHona = new Instrument("Honeywell Aerospace Inc.", AssetClass.STOCK, "HONA", "US43849R1059", "NASDAQ", new Currency("USD"));
+        when(instrumentRepository.save(any(Instrument.class))).thenReturn(savedHona);
+
+        ScanCorporateActionsResponse response = service.scanPortfolio(portfolioId);
+        assertNotNull(response);
+        verify(instrumentRepository).save(argThat(i -> i.getTicker().equals("HONA")));
+    }
+
+    @Test
+    void getPortfolioCorporateActions_includesAppliedActionsEvenIfCurrentHeldIsZero() {
+        when(portfolioRepository.existsById(portfolioId)).thenReturn(true);
+
+        CorporateAction action = new CorporateAction(
+                apple, CorporateActionType.DIVIDEND, Instant.now().minusSeconds(86400 * 5), null, null,
+                null, null, new BigDecimal("0.50"), "USD", "div", "YAHOO", "EXT-1"
+        );
+        Transaction tx = new Transaction(account, apple, TransactionType.DIVIDEND, Instant.now(), null,
+                null, null, new BigDecimal("5.00"), BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null);
+        action.markApplied(tx, account);
+
+        when(corporateActionRepository.findActivePortfolioCorporateActions(portfolioId)).thenReturn(List.of(action));
+
+        List<CorporateActionResponse> responses = service.getPortfolioCorporateActions(portfolioId, null);
+        assertEquals(1, responses.size());
+        assertEquals(CorporateActionStatus.APPLIED.name(), responses.get(0).status());
+    }
+
+    @Test
+    void applyAction_stockSplit_customNotesAndQuantity() {
+        when(portfolioRepository.existsById(portfolioId)).thenReturn(true);
+
+        Instant exDate = Instant.now().minusSeconds(86400 * 10);
+        CorporateAction split = new CorporateAction(
+                apple, CorporateActionType.STOCK_SPLIT, exDate, null, null,
+                BigDecimal.ONE, new BigDecimal("2"), null, null, "2:1 split", "YAHOO", "EXT-1"
+        );
+        UUID actionId = split.getId();
+        when(corporateActionRepository.findById(actionId)).thenReturn(Optional.of(split));
+        when(accountRepository.findById(account.getId())).thenReturn(Optional.of(account));
+
+        Transaction recordedTx = new Transaction(
+                account, apple, TransactionType.STOCK_SPLIT, exDate, exDate,
+                new BigDecimal("15.00000000"), null, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                "USD", null, null, "Custom note", null
+        );
+        when(transactionService.recordTransaction(
+                eq(portfolioId), eq(account.getId()), eq(apple.getId()), eq(TransactionType.STOCK_SPLIT),
+                any(), any(), eq(new BigDecimal("15.00000000")), any(), any(), any(), any(),
+                eq("USD"), any(), any(), eq("Custom note"), any()
+        )).thenReturn(recordedTx);
+
+        ApplyCorporateActionRequest req = new ApplyCorporateActionRequest(
+                account.getId(), new BigDecimal("15.00000000"), null, null, "Custom note"
+        );
+        CorporateActionResponse resp = service.applyAction(portfolioId, actionId, req);
+        assertNotNull(resp);
+        assertEquals(CorporateActionStatus.APPLIED.name(), resp.status());
+    }    @Test
+    void getPortfolioCorporateActions_handlesInstrumentsWithoutTickerAndReverseSplitAndDividend() {
+        when(portfolioRepository.existsById(portfolioId)).thenReturn(true);
+
+        Instrument nullTickerInst = new Instrument("Null Ticker", AssetClass.STOCK, null, null, null, new Currency("USD"));
+        Instrument blankTickerInst = new Instrument("Blank Ticker", AssetClass.STOCK, "   ", null, null, new Currency("USD"));
+        Position pos1 = new Position(account, nullTickerInst, new Quantity(new BigDecimal("10.00")), new Money(new BigDecimal("100.00"), new Currency("USD")));
+        Position pos2 = new Position(account, blankTickerInst, new Quantity(new BigDecimal("10.00")), new Money(new BigDecimal("100.00"), new Currency("USD")));
+        Position pos3 = new Position(account, apple, new Quantity(new BigDecimal("10.00")), new Money(new BigDecimal("1500.00"), new Currency("USD")));
+        when(positionRepository.findByAccountPortfolioIdAndStatus(portfolioId, PositionStatus.ACTIVE))
+                .thenReturn(List.of(pos1, pos2, pos3));
+
+        Instant exDate = Instant.now().minusSeconds(86400 * 10);
+        // Reverse split: 10 to 1 -> ratio 0.1
+        CorporateAction revSplit = new CorporateAction(
+                apple, CorporateActionType.REVERSE_STOCK_SPLIT, exDate, null, exDate.plusSeconds(86400 * 2),
+                new BigDecimal("10"), BigDecimal.ONE, null, null, "1:10 reverse split", "YAHOO", "EXT-REV"
+        );
+        // Dividend
+        CorporateAction div = new CorporateAction(
+                apple, CorporateActionType.DIVIDEND, exDate, null, exDate.plusSeconds(86400 * 2),
+                null, null, new BigDecimal("2.50"), "USD", "dividend", "YAHOO", "EXT-DIV"
+        );
+
+        when(corporateActionRepository.findActivePortfolioCorporateActions(portfolioId))
+                .thenReturn(List.of(revSplit, div));
+        when(accountRepository.findAllByPortfolioIdAndStatusOrderByNameAsc(portfolioId, AccountStatus.ACTIVE))
+                .thenReturn(List.of(account));
+
+        Transaction buyTx = new Transaction(
+                account, apple, TransactionType.BUY, exDate.minusSeconds(86400 * 5), null,
+                new BigDecimal("100.00"), new BigDecimal("10.00"), new BigDecimal("1000.00"),
+                BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null
+        );
+        when(transactionRepository.findByAccountIdAndInstrumentIdOrderByTradeDateAsc(account.getId(), apple.getId()))
+                .thenReturn(List.of(buyTx));
+
+        List<CorporateActionResponse> responses = service.getPortfolioCorporateActions(portfolioId, null);
+        assertEquals(2, responses.size());
+        // For reverse split 1:10 on 100 shares -> 100 * (1 - 0.1) = 90 reduction
+        CorporateActionResponse revResp = responses.stream()
+                .filter(r -> r.actionType().equals("REVERSE_STOCK_SPLIT")).findFirst().orElseThrow();
+        assertEquals(new BigDecimal("90.00000000"), revResp.proposedImpactQuantity());
+
+        CorporateActionResponse divResp = responses.stream()
+                .filter(r -> r.actionType().equals("DIVIDEND")).findFirst().orElseThrow();
+        assertEquals(new BigDecimal("250.0000"), divResp.proposedImpactAmount());
+    }
+
+    @Test
+    void getPortfolioCorporateActions_excludesActionAppliedToOtherPortfolioWhenHeldIsZero() {
+        when(portfolioRepository.existsById(portfolioId)).thenReturn(true);
+
+        Portfolio otherPortfolio = new Portfolio("Other", new Currency("USD"), CostBasisMethod.FIFO, ReturnMethod.TWR);
+        Account otherAccount = new Account(otherPortfolio, "Other Acc", "Broker", new Currency("USD"));
+
+        CorporateAction action = new CorporateAction(
+                apple, CorporateActionType.DIVIDEND, Instant.now().minusSeconds(86400 * 5), null, null,
+                null, null, new BigDecimal("0.50"), "USD", "div", "YAHOO", "EXT-OTHER"
+        );
+        Transaction otherTx = new Transaction(otherAccount, apple, TransactionType.DIVIDEND, Instant.now(), null,
+                null, null, new BigDecimal("5.00"), BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null);
+        action.markApplied(otherTx, otherAccount);
+
+        when(corporateActionRepository.findActivePortfolioCorporateActions(portfolioId)).thenReturn(List.of(action));
+        when(accountRepository.findAllByPortfolioIdAndStatusOrderByNameAsc(portfolioId, AccountStatus.ACTIVE))
+                .thenReturn(List.of(account));
+        when(transactionRepository.findByAccountIdAndInstrumentIdOrderByTradeDateAsc(any(), any()))
+                .thenReturn(List.of());
+
+        List<CorporateActionResponse> responses = service.getPortfolioCorporateActions(portfolioId, null);
+        assertTrue(responses.isEmpty());
+    }
+
+    @Test
+    void applyAction_stockSplitWithNullQuantityAndCustomNotes() {
+        when(portfolioRepository.existsById(portfolioId)).thenReturn(true);
+
+        Instant exDate = Instant.now().minusSeconds(86400 * 10);
+        Instant payDate = exDate.plusSeconds(86400 * 2);
+        CorporateAction split = new CorporateAction(
+                apple, CorporateActionType.STOCK_SPLIT, exDate, null, payDate,
+                BigDecimal.ONE, new BigDecimal("2"), null, null, "2:1 split", "YAHOO", "EXT-NC"
+        );
+        UUID actionId = split.getId();
+        when(corporateActionRepository.findById(actionId)).thenReturn(Optional.of(split));
+        when(accountRepository.findById(account.getId())).thenReturn(Optional.of(account));
+
+        Transaction buyTx = new Transaction(
+                account, apple, TransactionType.BUY, exDate.minusSeconds(86400 * 5), null,
+                new BigDecimal("10.00"), new BigDecimal("10.00"), new BigDecimal("100.00"),
+                BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null
+        );
+        when(transactionRepository.findByAccountIdAndInstrumentIdOrderByTradeDateAsc(account.getId(), apple.getId()))
+                .thenReturn(List.of(buyTx));
+
+        Transaction recordedSplitTx = new Transaction(
+                account, apple, TransactionType.STOCK_SPLIT, exDate, payDate,
+                new BigDecimal("10.00000000"), null, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                "USD", null, null, "Custom note", null
+        );
+        when(transactionService.recordTransaction(
+                eq(portfolioId), eq(account.getId()), eq(apple.getId()), eq(TransactionType.STOCK_SPLIT),
+                eq(exDate), eq(payDate), eq(new BigDecimal("10.00000000")), any(), eq(BigDecimal.ZERO),
+                eq(BigDecimal.ZERO), eq(BigDecimal.ZERO), eq("USD"), any(), any(), eq("Custom note"), any()
+        )).thenReturn(recordedSplitTx);
+
+        // quantity is null, custom notes -> calculated automatically
+        ApplyCorporateActionRequest req = new ApplyCorporateActionRequest(account.getId(), null, null, null, "Custom note");
+        CorporateActionResponse resp = service.applyAction(portfolioId, actionId, req);
+
+        assertNotNull(resp);
+        assertEquals(CorporateActionStatus.APPLIED.name(), resp.status());
+    }
+
+    @Test
+    void applyAction_reverseStockSplit_calculatesQuantityWhenNull() {
+        when(portfolioRepository.existsById(portfolioId)).thenReturn(true);
+
+        Instant exDate = Instant.now().minusSeconds(86400 * 10);
+        CorporateAction revSplit = new CorporateAction(
+                apple, CorporateActionType.REVERSE_STOCK_SPLIT, exDate, null, null,
+                new BigDecimal("4"), BigDecimal.ONE, null, null, "1:4 reverse", "YAHOO", "EXT-REV4"
+        );
+        UUID actionId = revSplit.getId();
+        when(corporateActionRepository.findById(actionId)).thenReturn(Optional.of(revSplit));
+        when(accountRepository.findById(account.getId())).thenReturn(Optional.of(account));
+
+        Transaction buyTx = new Transaction(
+                account, apple, TransactionType.BUY, exDate.minusSeconds(86400 * 5), null,
+                new BigDecimal("40.00"), new BigDecimal("10.00"), new BigDecimal("400.00"),
+                BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null
+        );
+        when(transactionRepository.findByAccountIdAndInstrumentIdOrderByTradeDateAsc(account.getId(), apple.getId()))
+                .thenReturn(List.of(buyTx));
+
+        // 40 * (1 - 0.25) = 30 reduction
+        Transaction recordedTx = new Transaction(
+                account, apple, TransactionType.REVERSE_STOCK_SPLIT, exDate, exDate,
+                new BigDecimal("30.00000000"), null, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                "USD", null, null, "1:4 reverse", null
+        );
+        when(transactionService.recordTransaction(
+                eq(portfolioId), eq(account.getId()), eq(apple.getId()), eq(TransactionType.REVERSE_STOCK_SPLIT),
+                eq(exDate), eq(exDate), eq(new BigDecimal("30.00000000")), any(), eq(BigDecimal.ZERO),
+                eq(BigDecimal.ZERO), eq(BigDecimal.ZERO), eq("USD"), any(), any(), eq("1:4 reverse"), any()
+        )).thenReturn(recordedTx);
+
+        ApplyCorporateActionRequest req = new ApplyCorporateActionRequest(account.getId(), null, null, null, null);
+        CorporateActionResponse resp = service.applyAction(portfolioId, actionId, req);
+
+        assertNotNull(resp);
+        assertEquals(CorporateActionStatus.APPLIED.name(), resp.status());
+    }
+
+    @Test
+    void applyAction_dividendWithNullCurrencyAndCalculatedGross() {
+        when(portfolioRepository.existsById(portfolioId)).thenReturn(true);
+
+        Instant exDate = Instant.now().minusSeconds(86400 * 10);
+        Instant payDate = exDate.plusSeconds(86400 * 3);
+        CorporateAction div = new CorporateAction(
+                apple, CorporateActionType.DIVIDEND, exDate, null, payDate,
+                null, null, new BigDecimal("1.50"), null, "Dividend action", "YAHOO", "EXT-DIVNC"
+        );
+        UUID actionId = div.getId();
+        when(corporateActionRepository.findById(actionId)).thenReturn(Optional.of(div));
+        when(accountRepository.findById(account.getId())).thenReturn(Optional.of(account));
+
+        Transaction buyTx = new Transaction(
+                account, apple, TransactionType.BUY, exDate.minusSeconds(86400 * 5), null,
+                new BigDecimal("20.00"), new BigDecimal("10.00"), new BigDecimal("200.00"),
+                BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null
+        );
+        when(transactionRepository.findByAccountIdAndInstrumentIdOrderByTradeDateAsc(account.getId(), apple.getId()))
+                .thenReturn(List.of(buyTx));
+
+        // 20 * 1.50 = 30.00
+        Transaction recordedTx = new Transaction(
+                account, apple, TransactionType.DIVIDEND, exDate, payDate,
+                null, null, new BigDecimal("30.0000"), BigDecimal.ZERO, new BigDecimal("4.5000"),
+                "USD", null, null, "Custom note", null
+        );
+        when(transactionService.recordTransaction(
+                eq(portfolioId), eq(account.getId()), eq(apple.getId()), eq(TransactionType.DIVIDEND),
+                eq(exDate), eq(payDate), any(), any(), eq(new BigDecimal("30.0000")),
+                eq(BigDecimal.ZERO), eq(new BigDecimal("4.5000")), eq("USD"), any(), any(), eq("Custom note"), any()
+        )).thenReturn(recordedTx);
+
+        ApplyCorporateActionRequest req = new ApplyCorporateActionRequest(
+                account.getId(), null, null, new BigDecimal("4.50"), "Custom note"
+        );
+        CorporateActionResponse resp = service.applyAction(portfolioId, actionId, req);
+
+        assertNotNull(resp);
+        assertEquals(CorporateActionStatus.APPLIED.name(), resp.status());
+    }
+
+    @Test
+    void scanPortfolio_matchesLedgerTransactionBranches() {
+        when(portfolioRepository.existsById(portfolioId)).thenReturn(true);
+        Position pos = new Position(account, apple, new Quantity(new BigDecimal("10.00")), new Money(new BigDecimal("1500.00"), new Currency("USD")));
+        when(positionRepository.findByAccountPortfolioIdAndStatus(portfolioId, PositionStatus.ACTIVE))
+                .thenReturn(List.of(pos));
+
+        Instant exDate = Instant.now().minusSeconds(86400 * 20);
+        // Transactions that will be tested in findMatchingLedgerTransaction
+        Instrument otherInst = new Instrument("Other", AssetClass.STOCK, "OTH", "US9999999999", "NASDAQ", new Currency("USD"));
+        Transaction txDiffInst = new Transaction(account, otherInst, TransactionType.STOCK_SPLIT, exDate, null,
+                BigDecimal.TEN, null, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null);
+        Transaction txDiffType = new Transaction(account, apple, TransactionType.BUY, exDate, null,
+                BigDecimal.TEN, new BigDecimal("100.00"), new BigDecimal("1000.00"), BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null);
+        Transaction txBeforeWindow = new Transaction(account, apple, TransactionType.STOCK_SPLIT, exDate.minusSeconds(86400 * 10), null,
+                BigDecimal.TEN, null, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null);
+        Transaction txAfterWindow = new Transaction(account, apple, TransactionType.STOCK_SPLIT, exDate.plusSeconds(86400 * 10), null,
+                BigDecimal.TEN, null, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null);
+
+        when(transactionRepository.findAll()).thenReturn(List.of(txDiffInst, txDiffType, txBeforeWindow, txAfterWindow));
+
+        DiscoveredCorporateAction split = new DiscoveredCorporateAction(
+                CorporateActionType.STOCK_SPLIT, exDate, BigDecimal.ONE, new BigDecimal("2"),
+                null, null, "2:1 split", "EXT-TEST"
+        );
+        when(yahooFinanceGateway.fetchCorporateActions("AAPL", "1y"))
+                .thenReturn(List.of(split));
+        when(accountRepository.findAllByPortfolioIdAndStatusOrderByNameAsc(portfolioId, AccountStatus.ACTIVE))
+                .thenReturn(List.of(account));
+        when(transactionRepository.findByAccountIdAndInstrumentIdOrderByTradeDateAsc(account.getId(), apple.getId()))
+                .thenReturn(List.of());
+
+        ScanCorporateActionsResponse resp = service.scanPortfolio(portfolioId);
+        assertNotNull(resp);
+        assertEquals(0, resp.newPendingActionsCount());
     }
 }

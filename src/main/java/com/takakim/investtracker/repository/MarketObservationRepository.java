@@ -47,4 +47,6 @@ public interface MarketObservationRepository extends JpaRepository<MarketObserva
     boolean existsByInstrumentIdAndObservedAt(UUID instrumentId, Instant observedAt);
 
     long countByInstrumentId(UUID instrumentId);
+
+    long countByInstrumentIdAndObservedAtBetween(UUID instrumentId, Instant from, Instant to);
 }

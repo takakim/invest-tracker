@@ -58,6 +58,17 @@ KNOWN_CORPORATE_ACTIONS = {
         "ratio_to": 1,
         "effective_date": "2024-08-27T08:00:00.000Z",
         "multiplier": 0.9  # 1232 -> 123.2 (-1108.8 shares removed)
+    },
+    "HON": {
+        "title": "Honeywell Aerospace",
+        "isin": "US43849R1059",
+        "ticker": "HONA",
+        "instrument_currency": "USD",
+        "action_type": "STOCK_SPLIT",
+        "ratio_from": 2,
+        "ratio_to": 1,
+        "effective_date": "2026-06-29T13:30:00.000Z",
+        "multiplier": 0.5  # 1 share of HONA allotted per 2 shares of HON held
     }
 }
 

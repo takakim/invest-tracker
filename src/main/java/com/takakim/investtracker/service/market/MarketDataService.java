@@ -316,7 +316,27 @@ public class MarketDataService {
         return marketObservationRepository.findByInstrumentIdAndObservedAtBetweenOrderByObservedAtAsc(instrumentId, start, end);
     }
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(MarketDataService.class);
+
+    public record BackfillInstrumentSummary(
+            UUID instrumentId,
+            String ticker,
+            String name,
+            int pointsSaved,
+            String status
+    ) {}
+
+    public record PortfolioBackfillResult(
+            UUID portfolioId,
+            int instrumentsProcessed,
+            int totalObservationsSynced,
+            List<BackfillInstrumentSummary> instrumentSummaries
+    ) {}
+
     public long getObservationCount(UUID instrumentId) {
+        if (instrumentId == null) {
+            return 0;
+        }
         return marketObservationRepository.countByInstrumentId(instrumentId);
     }
 
@@ -325,6 +345,21 @@ public class MarketDataService {
             return false;
         }
         return marketObservationRepository.findFirstByInstrumentIdAndObservedAtBefore(instrumentId, threshold).isPresent();
+    }
+
+    public boolean hasSufficientHistoricalCoverage(UUID instrumentId, Instant from, Instant to, int minPoints) {
+        if (instrumentId == null) {
+            return false;
+        }
+        Instant start = from != null ? from : Instant.now().minus(Duration.ofDays(365));
+        Instant end = to != null ? to : Instant.now();
+        if (start.isAfter(end)) {
+            Instant tmp = start;
+            start = end;
+            end = tmp;
+        }
+        long count = marketObservationRepository.countByInstrumentIdAndObservedAtBetween(instrumentId, start, end);
+        return count >= minPoints;
     }
 
     @Transactional
@@ -352,6 +387,61 @@ public class MarketDataService {
             }
         }
         return saved;
+    }
+
+    @Transactional
+    public PortfolioBackfillResult backfillPortfolioInstrumentsHistory(UUID portfolioId, Instant from, Instant to) {
+        if (portfolioId == null) {
+            throw new IllegalArgumentException("Portfolio ID must not be null");
+        }
+
+        List<Transaction> txs = transactionRepository.findByAccountPortfolioIdOrderByTradeDateDesc(portfolioId);
+        Map<UUID, Instrument> instruments = new LinkedHashMap<>();
+        Map<UUID, Instant> earliestDates = new java.util.HashMap<>();
+
+        for (Transaction tx : txs) {
+            if (tx.getStatus() != com.takakim.investtracker.domain.TransactionStatus.COMPLETED) {
+                continue;
+            }
+            Instrument inst = tx.getInstrument();
+            if (inst != null && inst.getId() != null && !inst.isManualPriceOnly() && inst.getTicker() != null && !inst.getTicker().isBlank()) {
+                instruments.put(inst.getId(), inst);
+                Instant tradeDate = tx.getTradeDate();
+                if (tradeDate != null) {
+                    earliestDates.merge(inst.getId(), tradeDate, (a, b) -> a.isBefore(b) ? a : b);
+                }
+            }
+        }
+
+        Instant defaultFrom = from != null ? from : Instant.now().minus(Duration.ofDays(365 * 2));
+        Instant defaultTo = to != null ? to : Instant.now();
+
+        int totalSynced = 0;
+        List<BackfillInstrumentSummary> summaries = new ArrayList<>();
+
+        for (Instrument inst : instruments.values()) {
+            UUID instId = inst.getId();
+            Instant instEarliest = earliestDates.get(instId);
+            Instant rangeStart = (instEarliest != null && instEarliest.isBefore(defaultFrom))
+                    ? instEarliest
+                    : defaultFrom;
+
+            try {
+                List<MarketObservation> saved = backfillHistoricalPrices(instId, rangeStart, defaultTo);
+                totalSynced += saved.size();
+                summaries.add(new BackfillInstrumentSummary(
+                        instId, inst.getTicker(), inst.getName(), saved.size(), "SUCCESS"
+                ));
+            } catch (Exception e) {
+                log.warn("Failed to backfill historical prices for instrument '{}' ({}): {}",
+                        inst.getName(), inst.getTicker(), e.getMessage());
+                summaries.add(new BackfillInstrumentSummary(
+                        instId, inst.getTicker(), inst.getName(), 0, "FAILED: " + e.getMessage()
+                ));
+            }
+        }
+
+        return new PortfolioBackfillResult(portfolioId, instruments.size(), totalSynced, summaries);
     }
 
     public BigDecimal adjustPriceForCorporateActions(

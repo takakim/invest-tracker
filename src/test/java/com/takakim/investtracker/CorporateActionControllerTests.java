@@ -29,6 +29,7 @@ class CorporateActionControllerTests {
 
         CorporateActionResponse response = new CorporateActionResponse(
                 actionId, instrumentId, "Apple Inc.", "AAPL", "US0378331005", "STOCK",
+                null, null, null,
                 "STOCK_SPLIT", "PENDING", Instant.now(), null, null,
                 BigDecimal.ONE, BigDecimal.TEN, null, "USD", "10:1 split", "YAHOO",
                 BigDecimal.TEN, new BigDecimal("90.00"), null, accountId, "Trading Account",

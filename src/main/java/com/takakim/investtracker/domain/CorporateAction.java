@@ -68,6 +68,10 @@ public class CorporateAction {
     private Transaction appliedTransaction;
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "resulting_instrument_id")
+    private Instrument resultingInstrument;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "account_id")
     private Account account;
 
@@ -93,8 +97,26 @@ public class CorporateAction {
             String description,
             String source,
             String externalId) {
+        this(instrument, null, actionType, exDate, recordDate, paymentDate, ratioFrom, ratioTo, amountPerShare, currency, description, source, externalId);
+    }
+
+    public CorporateAction(
+            Instrument instrument,
+            Instrument resultingInstrument,
+            CorporateActionType actionType,
+            Instant exDate,
+            Instant recordDate,
+            Instant paymentDate,
+            BigDecimal ratioFrom,
+            BigDecimal ratioTo,
+            BigDecimal amountPerShare,
+            String currency,
+            String description,
+            String source,
+            String externalId) {
         this.id = UUID.randomUUID();
         this.instrument = Objects.requireNonNull(instrument, "Instrument must not be null");
+        this.resultingInstrument = resultingInstrument;
         this.actionType = Objects.requireNonNull(actionType, "Action type must not be null");
         this.exDate = Objects.requireNonNull(exDate, "Ex-date must not be null");
         this.status = CorporateActionStatus.PENDING;
@@ -152,6 +174,10 @@ public class CorporateAction {
 
     public Instrument getInstrument() {
         return instrument;
+    }
+
+    public Instrument getResultingInstrument() {
+        return resultingInstrument;
     }
 
     public CorporateActionType getActionType() {

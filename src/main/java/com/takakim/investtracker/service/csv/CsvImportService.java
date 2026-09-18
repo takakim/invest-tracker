@@ -37,6 +37,7 @@ public class CsvImportService {
     private final TransactionService transactionService;
     private final com.takakim.investtracker.repository.TransactionRepository transactionRepository;
     private final com.takakim.investtracker.service.position.PositionEngine positionEngine;
+    private final com.takakim.investtracker.service.market.MarketDataService marketDataService;
     private final List<BrokerCsvParser> parsers;
 
     public CsvImportService(
@@ -46,7 +47,7 @@ public class CsvImportService {
             ImportRecordRepository importRecordRepository,
             TransactionService transactionService,
             List<BrokerCsvParser> parsers) {
-        this(accountRepository, instrumentRepository, importBatchRepository, importRecordRepository, transactionService, null, null, parsers);
+        this(accountRepository, instrumentRepository, importBatchRepository, importRecordRepository, transactionService, null, null, null, parsers);
     }
 
     public CsvImportService(
@@ -57,7 +58,19 @@ public class CsvImportService {
             TransactionService transactionService,
             com.takakim.investtracker.repository.TransactionRepository transactionRepository,
             List<BrokerCsvParser> parsers) {
-        this(accountRepository, instrumentRepository, importBatchRepository, importRecordRepository, transactionService, transactionRepository, null, parsers);
+        this(accountRepository, instrumentRepository, importBatchRepository, importRecordRepository, transactionService, transactionRepository, null, null, parsers);
+    }
+
+    public CsvImportService(
+            AccountRepository accountRepository,
+            InstrumentRepository instrumentRepository,
+            ImportBatchRepository importBatchRepository,
+            ImportRecordRepository importRecordRepository,
+            TransactionService transactionService,
+            com.takakim.investtracker.repository.TransactionRepository transactionRepository,
+            com.takakim.investtracker.service.position.PositionEngine positionEngine,
+            List<BrokerCsvParser> parsers) {
+        this(accountRepository, instrumentRepository, importBatchRepository, importRecordRepository, transactionService, transactionRepository, positionEngine, null, parsers);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -69,6 +82,7 @@ public class CsvImportService {
             TransactionService transactionService,
             com.takakim.investtracker.repository.TransactionRepository transactionRepository,
             com.takakim.investtracker.service.position.PositionEngine positionEngine,
+            com.takakim.investtracker.service.market.MarketDataService marketDataService,
             List<BrokerCsvParser> parsers) {
         this.accountRepository = accountRepository;
         this.instrumentRepository = instrumentRepository;
@@ -77,6 +91,7 @@ public class CsvImportService {
         this.transactionService = transactionService;
         this.transactionRepository = transactionRepository;
         this.positionEngine = positionEngine;
+        this.marketDataService = marketDataService;
         this.parsers = parsers;
     }
 
@@ -293,6 +308,21 @@ public class CsvImportService {
             for (Instrument instrument : affectedInstruments.values()) {
                 try {
                     positionEngine.recalculateAndSync(account, instrument);
+                } catch (Exception ignored) {
+                }
+            }
+        }
+
+        // Auto-backfill historical prices for all affected instruments (holding and sold)
+        if (marketDataService != null && !affectedInstruments.isEmpty()) {
+            java.time.Instant from = java.time.Instant.now().minus(java.time.Duration.ofDays(365 * 2));
+            java.time.Instant to = java.time.Instant.now();
+            for (Instrument instrument : affectedInstruments.values()) {
+                if (instrument.isManualPriceOnly() || instrument.getTicker() == null || instrument.getTicker().isBlank()) {
+                    continue;
+                }
+                try {
+                    marketDataService.backfillHistoricalPrices(instrument.getId(), from, to);
                 } catch (Exception ignored) {
                 }
             }
