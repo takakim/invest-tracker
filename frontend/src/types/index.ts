@@ -670,6 +670,13 @@ export interface PortfolioHistory {
   dataPoints: HistoricalValuationPoint[];
 }
 
+export interface PortfolioBackfillResponse {
+  portfolioId: string;
+  instrumentsProcessed: number;
+  totalObservationsSynced: number;
+  details: string[];
+}
+
 export interface CashFlowSummary {
   totalDeposits: number;
   totalWithdrawals: number;
@@ -734,6 +741,9 @@ export interface CorporateAction {
   ticker?: string | null;
   isin?: string | null;
   assetClass: AssetClass | string;
+  resultingInstrumentId?: string | null;
+  resultingInstrumentTicker?: string | null;
+  resultingInstrumentName?: string | null;
   actionType: CorporateActionType;
   status: CorporateActionStatus;
   exDate: string;

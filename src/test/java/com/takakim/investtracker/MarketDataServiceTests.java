@@ -1091,4 +1091,89 @@ class MarketDataServiceTests {
         assertFalse(marketDataService.hasHistoricalObservationBefore(null, threshold));
         assertFalse(marketDataService.hasHistoricalObservationBefore(id, null));
     }
+
+    @Test
+    @DisplayName("hasSufficientHistoricalCoverage validates parameters and observation density")
+    void testHasSufficientHistoricalCoverage() {
+        UUID id = instrument.getId();
+        Instant from = Instant.now().minus(30, ChronoUnit.DAYS);
+        Instant to = Instant.now();
+
+        // Null parameters check
+        assertFalse(marketDataService.hasSufficientHistoricalCoverage(null, from, to, 10));
+        assertFalse(marketDataService.hasSufficientHistoricalCoverage(id, null, to, 10));
+        assertFalse(marketDataService.hasSufficientHistoricalCoverage(id, from, null, 10));
+
+        // minPoints <= 0 check
+        assertTrue(marketDataService.hasSufficientHistoricalCoverage(id, from, to, 0));
+        assertTrue(marketDataService.hasSufficientHistoricalCoverage(id, from, to, -1));
+
+        // Observation count >= minPoints
+        when(marketObservationRepository.countByInstrumentIdAndObservedAtBetween(id, from, to)).thenReturn(15L);
+        assertTrue(marketDataService.hasSufficientHistoricalCoverage(id, from, to, 10));
+
+        // Observation count < minPoints
+        when(marketObservationRepository.countByInstrumentIdAndObservedAtBetween(id, from, to)).thenReturn(5L);
+        assertFalse(marketDataService.hasSufficientHistoricalCoverage(id, from, to, 10));
+    }
+
+    @Test
+    @DisplayName("backfillPortfolioInstrumentsHistory backfills all distinct instruments in portfolio")
+    void testBackfillPortfolioInstrumentsHistory() {
+        UUID portfolioId = UUID.randomUUID();
+        Instant from = Instant.now().minus(365, ChronoUnit.DAYS);
+        Instant to = Instant.now();
+
+        // Null portfolio check
+        assertThrows(IllegalArgumentException.class, () -> marketDataService.backfillPortfolioInstrumentsHistory(null, from, to));
+
+        // Empty transactions
+        when(transactionRepository.findByAccountPortfolioIdOrderByTradeDateDesc(portfolioId)).thenReturn(List.of());
+        var emptyResult = marketDataService.backfillPortfolioInstrumentsHistory(portfolioId, from, to);
+        assertEquals(0, emptyResult.instrumentsProcessed());
+
+        // Transactions with various instrument/status edge cases
+        Instrument inst2 = new Instrument("Apple Inc", AssetClass.STOCK, "AAPL", "US0378331005", "NASDAQ", new Currency("USD"));
+        Instrument manualOnly = new Instrument("Manual Coin", AssetClass.CRYPTO, "MCOIN", "MC123", "CRYPTO", new Currency("USD"));
+        manualOnly.setManualPriceOnly(true);
+        Instrument noTicker = new Instrument("No Ticker", AssetClass.STOCK, "   ", "NT123", "LSE", new Currency("GBP"));
+
+        Account acc = new Account(new Portfolio("P", new Currency("USD"), CostBasisMethod.FIFO, ReturnMethod.TWR), "A", "B", new Currency("USD"));
+        
+        // tx1 earlier than 'from' to trigger instEarliest.isBefore(defaultFrom)
+        Transaction tx1 = new Transaction(acc, instrument, TransactionType.BUY, from.minusSeconds(86400), from.minusSeconds(86400), BigDecimal.ONE, BigDecimal.TEN, BigDecimal.TEN, BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null);
+        // tx1b with a later trade date to exercise merge lambda when a is before b or b is before a
+        Transaction tx1b = new Transaction(acc, instrument, TransactionType.BUY, from.plusSeconds(3600), from.plusSeconds(3600), BigDecimal.ONE, BigDecimal.TEN, BigDecimal.TEN, BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null);
+        Transaction tx2 = new Transaction(acc, inst2, TransactionType.SELL, from.plusSeconds(7200), from.plusSeconds(7200), BigDecimal.ONE, BigDecimal.TEN, BigDecimal.TEN, BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null);
+        Transaction txNullInst = new Transaction(acc, null, TransactionType.DEPOSIT, from.plusSeconds(100), from.plusSeconds(100), null, null, BigDecimal.TEN, BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null);
+        
+        Transaction txCancelled = new Transaction(acc, instrument, TransactionType.BUY, from, from, BigDecimal.ONE, BigDecimal.TEN, BigDecimal.TEN, BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null);
+        txCancelled.markCorrected();
+        
+        Transaction txManual = new Transaction(acc, manualOnly, TransactionType.BUY, from, from, BigDecimal.ONE, BigDecimal.TEN, BigDecimal.TEN, BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null);
+        Transaction txNoTicker = new Transaction(acc, noTicker, TransactionType.BUY, from, from, BigDecimal.ONE, BigDecimal.TEN, BigDecimal.TEN, BigDecimal.ZERO, BigDecimal.ZERO, "USD", null, null, null, null);
+
+        when(transactionRepository.findByAccountPortfolioIdOrderByTradeDateDesc(portfolioId))
+                .thenReturn(List.of(tx1, tx1b, tx2, txNullInst, txCancelled, txManual, txNoTicker));
+        when(instrumentRepository.findById(instrument.getId())).thenReturn(Optional.of(instrument));
+        when(instrumentRepository.findById(inst2.getId())).thenReturn(Optional.of(inst2));
+
+        // Mock marketDataProvider.fetchHistoricalQuotes
+        PriceQuote quote1 = new PriceQuote(instrument.getId(), new BigDecimal("150.00"), "USD", from.minusSeconds(86400), ObservationSourceType.PROVIDER, "TEST", false, null);
+        when(marketDataProvider.fetchHistoricalQuotes(eq(instrument), any(Instant.class), any(Instant.class))).thenReturn(List.of(quote1));
+        when(marketDataProvider.fetchHistoricalQuotes(eq(inst2), any(Instant.class), any(Instant.class))).thenThrow(new RuntimeException("Provider failure for inst2"));
+
+        var result = marketDataService.backfillPortfolioInstrumentsHistory(portfolioId, from, to);
+        assertNotNull(result);
+        assertEquals(2, result.instrumentsProcessed());
+        assertEquals(1, result.totalObservationsSynced());
+        assertEquals(2, result.instrumentSummaries().size());
+
+        // Verify save for quote1
+        verify(marketObservationRepository, atLeastOnce()).save(any());
+
+        // Test with null 'from' and null 'to' to cover default timestamp fallback branches
+        var resultNullDates = marketDataService.backfillPortfolioInstrumentsHistory(portfolioId, null, null);
+        assertNotNull(resultNullDates);
+    }
 }

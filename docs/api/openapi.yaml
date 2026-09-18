@@ -362,6 +362,24 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/PortfolioHistory' }
         '404': { $ref: '#/components/responses/Problem' }
+  /portfolios/{portfolioId}/history/backfill:
+    parameters:
+      - { $ref: '#/components/parameters/PortfolioId' }
+    post:
+      operationId: backfillPortfolioHistory
+      summary: Backfill historical daily market observations for portfolio holdings and sold positions
+      parameters:
+        - name: range
+          in: query
+          required: false
+          schema: { type: string, enum: ['1M', '3M', '6M', '1Y', '2Y', '5Y'], default: '2Y' }
+      responses:
+        '200':
+          description: Summary of backfill operation detailing processed instruments and saved observations
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PortfolioBackfillResponse' }
+        '404': { $ref: '#/components/responses/Problem' }
   /portfolios/{portfolioId}/cash-flows:
     parameters:
       - { $ref: '#/components/parameters/PortfolioId' }
@@ -2007,6 +2025,16 @@ components:
         benchmarkReturnPercentage: { type: number, nullable: true }
         excessReturnPercentage: { type: number, nullable: true }
         maxDrawdownPercentage: { type: number }
+    PortfolioBackfillResponse:
+      type: object
+      required: [portfolioId, instrumentsProcessed, totalObservationsSynced, details]
+      properties:
+        portfolioId: { type: string, format: uuid }
+        instrumentsProcessed: { type: integer, example: 24 }
+        totalObservationsSynced: { type: integer, example: 5867 }
+        details:
+          type: array
+          items: { type: string }
     PortfolioHistory:
       type: object
       required: [portfolioId, portfolioName, baseCurrency, period, interval, periodStart, periodEnd, summary, dataPoints]
@@ -2099,6 +2127,9 @@ components:
         ticker: { type: string, nullable: true }
         isin: { type: string, nullable: true }
         assetClass: { type: string }
+        resultingInstrumentId: { type: string, format: uuid, nullable: true }
+        resultingInstrumentTicker: { type: string, nullable: true }
+        resultingInstrumentName: { type: string, nullable: true }
         actionType: { type: string, enum: [STOCK_SPLIT, REVERSE_STOCK_SPLIT, DIVIDEND] }
         status: { type: string, enum: [PENDING, APPLIED, DISMISSED] }
         exDate: { type: string, format: date-time }

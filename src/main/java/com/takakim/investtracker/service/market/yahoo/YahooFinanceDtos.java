@@ -8,7 +8,7 @@ public final class YahooFinanceDtos {
 
     private YahooFinanceDtos() {}
 
-    // ── QuoteSummary endpoint DTOs ────────────────────────────────────────────
+    // ── /v7/finance/quote endpoint DTOs ─────────────────────────────────────────
 
     /**
      * Yahoo Finance wraps every numeric value as {"raw": 1.23, "fmt": "1.23"}.
@@ -17,53 +17,42 @@ public final class YahooFinanceDtos {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record YahooValue(Double raw) {}
 
+    /**
+     * Top-level response from {@code /v7/finance/quote}.
+     * This endpoint does not require a crumb/cookie and returns
+     * rich fundamental data for equities and ETFs.
+     */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record QuoteSummaryResponse(QuoteSummaryWrapper quoteSummary) {}
+    public record QuoteResponse(QuoteWrapper quoteResponse) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record QuoteSummaryWrapper(
-            List<QuoteSummaryResult> result,
-            ChartError error
-    ) {}
-
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public record QuoteSummaryResult(
-            DefaultKeyStatistics defaultKeyStatistics,
-            SummaryDetail summaryDetail
+    public record QuoteWrapper(
+            List<QuoteResult> result,
+            Object error
     ) {}
 
     /**
-     * Populated from Yahoo's {@code defaultKeyStatistics} module.
-     * Key multiples: forwardPE, pegRatio, priceToBook, debtToEquity, returnOnEquity,
-     * fiftyTwoWeekHigh, fiftyTwoWeekLow, enterpriseValue, trailingEps, forwardEps.
+     * Per-symbol fundamental data returned by {@code /v7/finance/quote}.
+     * Fields present depend on the instrument type (EQUITY, ETF, etc.).
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record DefaultKeyStatistics(
-            YahooValue forwardPE,
-            YahooValue pegRatio,
-            YahooValue priceToBook,
-            YahooValue returnOnEquity,
-            YahooValue enterpriseValue,
-            YahooValue trailingEps,
-            YahooValue forwardEps,
-            YahooValue enterpriseToRevenue,
-            YahooValue enterpriseToEbitda
-    ) {}
-
-    /**
-     * Populated from Yahoo's {@code summaryDetail} module.
-     * Key multiples: trailingPE, dividendYield, fiftyTwoWeekHigh, fiftyTwoWeekLow,
-     * marketCap, beta, debtToEquity.
-     */
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public record SummaryDetail(
-            YahooValue trailingPE,
-            YahooValue dividendYield,
-            YahooValue fiftyTwoWeekHigh,
-            YahooValue fiftyTwoWeekLow,
-            YahooValue marketCap,
-            YahooValue beta,
-            YahooValue debtToEquity
+    public record QuoteResult(
+            // Valuation multiples
+            Double trailingPE,
+            Double forwardPE,
+            Double priceToBook,
+            Double trailingAnnualDividendYield,  // as a fraction (e.g. 0.005 = 0.5%)
+            // Growth / quality
+            Double epsTrailingTwelveMonths,
+            Double epsForward,
+            Double bookValue,
+            // Balance sheet / risk
+            // (debtToEquity and returnOnEquity are not in /v7/quote; sourced from AI fallback)
+            // Market data
+            Double marketCap,
+            Double fiftyTwoWeekHigh,
+            Double fiftyTwoWeekLow,
+            Double trailingAnnualDividendRate
     ) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)

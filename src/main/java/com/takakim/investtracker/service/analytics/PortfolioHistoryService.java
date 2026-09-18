@@ -2,6 +2,7 @@ package com.takakim.investtracker.service.analytics;
 
 import com.takakim.investtracker.api.ApiDtos.HistoricalPerformanceSummary;
 import com.takakim.investtracker.api.ApiDtos.HistoricalValuationPoint;
+import com.takakim.investtracker.api.ApiDtos.PortfolioBackfillResponse;
 import com.takakim.investtracker.api.ApiDtos.PortfolioHistoryResponse;
 import com.takakim.investtracker.domain.Currency;
 import com.takakim.investtracker.domain.Instrument;
@@ -111,18 +112,20 @@ public class PortfolioHistoryService {
             }
         }
 
-        // Auto-backfill historical quotes for portfolio held instruments if missing historical coverage
+        // Auto-backfill historical quotes for portfolio instruments (held and sold) if missing historical coverage
         long periodDays = ChronoUnit.DAYS.between(periodStart, now);
         Instant coverageThreshold = periodStart.plus(Math.max(5, periodDays / 4), ChronoUnit.DAYS);
-        Set<UUID> heldInstrumentIds = new HashSet<>();
+        int expectedMinPoints = Math.max(5, (int) (periodDays / 30));
+        Set<UUID> instrumentIds = new HashSet<>();
         for (Transaction tx : completedTxs) {
             if (tx.getInstrument() != null && tx.getInstrument().getId() != null) {
-                heldInstrumentIds.add(tx.getInstrument().getId());
+                instrumentIds.add(tx.getInstrument().getId());
             }
         }
-        for (UUID instId : heldInstrumentIds) {
+        for (UUID instId : instrumentIds) {
             try {
-                if (!marketDataService.hasHistoricalObservationBefore(instId, coverageThreshold)) {
+                if (!marketDataService.hasSufficientHistoricalCoverage(instId, periodStart, now, expectedMinPoints)
+                        || !marketDataService.hasHistoricalObservationBefore(instId, coverageThreshold)) {
                     marketDataService.backfillHistoricalPrices(instId, periodStart, now);
                 }
             } catch (Exception ignored) {
@@ -352,5 +355,36 @@ public class PortfolioHistoryService {
             }
         }
         return net;
+    }
+
+    public PortfolioBackfillResponse syncPortfolioHistory(UUID portfolioId, String range) {
+        Objects.requireNonNull(portfolioId, "Portfolio ID must not be null");
+        if (!portfolioRepository.existsById(portfolioId)) {
+            throw new ResourceNotFoundException("Portfolio not found: " + portfolioId);
+        }
+
+        Instant now = Instant.now();
+        Instant from = switch (range != null ? range.toUpperCase() : "2Y") {
+            case "1M" -> now.minus(30, ChronoUnit.DAYS);
+            case "3M" -> now.minus(90, ChronoUnit.DAYS);
+            case "6M" -> now.minus(180, ChronoUnit.DAYS);
+            case "1Y" -> now.minus(365, ChronoUnit.DAYS);
+            case "5Y" -> now.minus(5 * 365, ChronoUnit.DAYS);
+            default -> now.minus(2 * 365, ChronoUnit.DAYS); // 2Y
+        };
+
+        MarketDataService.PortfolioBackfillResult result =
+                marketDataService.backfillPortfolioInstrumentsHistory(portfolioId, from, now);
+
+        List<String> details = result.instrumentSummaries().stream()
+                .map(s -> s.ticker() + ": " + s.pointsSaved() + " points (" + s.status() + ")")
+                .toList();
+
+        return new PortfolioBackfillResponse(
+                portfolioId,
+                result.instrumentsProcessed(),
+                result.totalObservationsSynced(),
+                details
+        );
     }
 }

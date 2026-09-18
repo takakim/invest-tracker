@@ -428,6 +428,7 @@ export function CorporateActionsDetailPage() {
                           <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
                             <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
                               {act.ticker || '—'}
+                              {act.resultingInstrumentTicker && ` → ${act.resultingInstrumentTicker}`}
                             </Typography>
                             {act.isin && (
                               <Typography variant="caption" color="text.secondary">
@@ -435,8 +436,9 @@ export function CorporateActionsDetailPage() {
                               </Typography>
                             )}
                           </Stack>
-                          <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block', maxWidth: 200 }}>
+                          <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block', maxWidth: 220 }}>
                             {act.instrumentName}
+                            {act.resultingInstrumentName && ` → ${act.resultingInstrumentName}`}
                           </Typography>
                         </Box>
                       </TableCell>
@@ -486,6 +488,7 @@ export function CorporateActionsDetailPage() {
                           >
                             {act.actionType === 'STOCK_SPLIT' ? '+' : '-'}
                             {act.proposedImpactQuantity != null ? Number(act.proposedImpactQuantity).toFixed(4) : '0.0000'} shs
+                            {act.resultingInstrumentTicker ? ` ${act.resultingInstrumentTicker}` : ''}
                           </Typography>
                         ) : (
                           <Typography variant="body2" sx={{ fontWeight: 700, color: 'success.main' }}>
@@ -565,6 +568,14 @@ export function CorporateActionsDetailPage() {
               </Typography>
             </Box>
 
+            {selectedAction?.resultingInstrumentTicker && (
+              <Alert severity="info" sx={{ borderRadius: 2 }}>
+                Spin-off allotment: applying this corporate action will create a holding of{' '}
+                <strong>{selectedAction.resultingInstrumentTicker} ({selectedAction.resultingInstrumentName || 'Honeywell Aerospace'})</strong>{' '}
+                in your selected account.
+              </Alert>
+            )}
+
             <FormControl fullWidth size="small">
               <InputLabel id="select-account-label">Target Account</InputLabel>
               <Select
@@ -583,12 +594,12 @@ export function CorporateActionsDetailPage() {
 
             {(selectedAction?.actionType === 'STOCK_SPLIT' || selectedAction?.actionType === 'REVERSE_STOCK_SPLIT') ? (
               <TextField
-                label="Adjustment Quantity (Net Shares)"
+                label={selectedAction?.resultingInstrumentTicker ? `Allotment Quantity (${selectedAction.resultingInstrumentTicker} Shares)` : "Adjustment Quantity (Net Shares)"}
                 type="number"
                 size="small"
                 value={customQuantity}
                 onChange={(e) => setCustomQuantity(e.target.value)}
-                helperText="Pre-calculated net adjustment shares based on split ratio."
+                helperText={selectedAction?.resultingInstrumentTicker ? `Calculated allotment of ${selectedAction.resultingInstrumentTicker} shares based on distribution ratio.` : "Pre-calculated net adjustment shares based on split ratio."}
                 fullWidth
               />
             ) : (

@@ -48,6 +48,8 @@ class CsvImportServiceAutoDetectTests {
     private TransactionRepository transactionRepository;
     @Mock
     private PositionEngine positionEngine;
+    @Mock
+    private com.takakim.investtracker.service.market.MarketDataService marketDataService;
 
     private CsvImportService service;
     private List<BrokerCsvParser> parsers;
@@ -71,6 +73,7 @@ class CsvImportServiceAutoDetectTests {
                 transactionService,
                 transactionRepository,
                 positionEngine,
+                marketDataService,
                 parsers
         );
     }
@@ -402,6 +405,7 @@ class CsvImportServiceAutoDetectTests {
         assertEquals(2, batch.getTotalRows());
         assertEquals(1, batch.getImportedRows());
         assertEquals(1, batch.getSkippedRows());
+        verify(marketDataService, atLeastOnce()).backfillHistoricalPrices(any(), any(), any());
 
         // Preview import
         var preview = service.previewImport(portfolioId, accountId, "SIPP.csv", csv, null);

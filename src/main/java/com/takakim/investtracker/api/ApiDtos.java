@@ -649,6 +649,9 @@ public final class ApiDtos {
         String ticker,
         String isin,
         String assetClass,
+        UUID resultingInstrumentId,
+        String resultingInstrumentTicker,
+        String resultingInstrumentName,
         String actionType,
         String status,
         Instant exDate,
@@ -683,6 +686,12 @@ public final class ApiDtos {
         int discoveredActionsCount,
         int newPendingActionsCount,
         List<String> messages) { }
+
+    public record PortfolioBackfillResponse(
+        UUID portfolioId,
+        int instrumentsProcessed,
+        int totalObservationsSynced,
+        List<String> details) { }
 
     public record TaxSettingsRequest(
         String taxYear,

@@ -317,35 +317,29 @@ public class AiEvaluationService {
                 log.debug("Could not fetch Yahoo chart data for {}: {}", instrument.getTicker(), e.getMessage());
             }
             try {
-                // Valuation multiples from quoteSummary (defaultKeyStatistics + summaryDetail)
-                Optional<YahooFinanceDtos.QuoteSummaryResult> summaryOpt = yahooFinanceGateway.fetchQuoteSummary(instrument.getTicker());
-                if (summaryOpt.isPresent()) {
-                    YahooFinanceDtos.QuoteSummaryResult qs = summaryOpt.get();
-                    YahooFinanceDtos.SummaryDetail sd = qs.summaryDetail();
-                    YahooFinanceDtos.DefaultKeyStatistics dks = qs.defaultKeyStatistics();
-                    if (sd != null) {
-                        yahooTrailingPe = rawDouble(sd.trailingPE());
-                        yahooDividendYield = rawDouble(sd.dividendYield());
-                        // Prefer chart-derived 52w range; use summaryDetail as fallback
-                        if (fiftyTwoWeekHigh == null) fiftyTwoWeekHigh = rawDouble(sd.fiftyTwoWeekHigh());
-                        if (fiftyTwoWeekLow == null) fiftyTwoWeekLow = rawDouble(sd.fiftyTwoWeekLow());
-                        if (yahooMarketCap == null) yahooMarketCap = rawDouble(sd.marketCap());
-                        yahooDebtToEquity = rawDouble(sd.debtToEquity());
-                    }
-                    if (dks != null) {
-                        yahooForwardPe = rawDouble(dks.forwardPE());
-                        yahooPegRatio = rawDouble(dks.pegRatio());
-                        yahooPriceToBook = rawDouble(dks.priceToBook());
-                        yahooReturnOnEquity = rawDouble(dks.returnOnEquity());
-                        if (yahooMarketCap == null) yahooMarketCap = rawDouble(dks.enterpriseValue());
-                    }
-                    log.debug("Yahoo quoteSummary for {}: PE={} fwdPE={} PEG={} PB={} DY={} DE={} ROE={}",
-                            instrument.getTicker(), yahooTrailingPe, yahooForwardPe, yahooPegRatio,
-                            yahooPriceToBook, yahooDividendYield, yahooDebtToEquity, yahooReturnOnEquity);
+                // Valuation multiples from /v7/finance/quote (no crumb required)
+                Optional<YahooFinanceDtos.QuoteResult> quoteOpt = yahooFinanceGateway.fetchQuote(instrument.getTicker());
+                if (quoteOpt.isPresent()) {
+                    YahooFinanceDtos.QuoteResult q = quoteOpt.get();
+                    yahooTrailingPe      = q.trailingPE();
+                    yahooForwardPe       = q.forwardPE();
+                    yahooPriceToBook     = q.priceToBook();
+                    yahooDividendYield   = q.trailingAnnualDividendYield();
+                    yahooMarketCap       = q.marketCap();
+                    // /v7/quote doesn't include PEG, debtToEquity, or ROE — those fall back to AI
+                    // Prefer chart-derived 52w range; use quote fields as fallback
+                    if (fiftyTwoWeekHigh == null && q.fiftyTwoWeekHigh() != null && q.fiftyTwoWeekHigh() > 0)
+                        fiftyTwoWeekHigh = q.fiftyTwoWeekHigh();
+                    if (fiftyTwoWeekLow == null && q.fiftyTwoWeekLow() != null && q.fiftyTwoWeekLow() > 0)
+                        fiftyTwoWeekLow = q.fiftyTwoWeekLow();
+                    log.debug("Yahoo /v7/quote for {}: PE={} fwdPE={} PB={} DY={} 52wH={} 52wL={} cap={}",
+                            instrument.getTicker(), yahooTrailingPe, yahooForwardPe, yahooPriceToBook,
+                            yahooDividendYield, fiftyTwoWeekHigh, fiftyTwoWeekLow, yahooMarketCap);
                 }
             } catch (Exception e) {
-                log.debug("Could not fetch Yahoo quoteSummary for {}: {}", instrument.getTicker(), e.getMessage());
+                log.debug("Could not fetch Yahoo quote for {}: {}", instrument.getTicker(), e.getMessage());
             }
+
         }
 
         // Build prompt — fundamentalMetrics in JSON schema retained for AI-estimated fields (expenseRatio for ETFs)
@@ -912,18 +906,6 @@ public class AiEvaluationService {
                 providerName,
                 Instant.now()
         );
-    }
-
-    /**
-     * Safely extracts the {@code raw} numeric value from a Yahoo Finance {@link YahooFinanceDtos.YahooValue} wrapper.
-     * Returns {@code null} if the wrapper is null, or the raw value is missing / zero (which Yahoo sometimes uses
-     * as a sentinel for "not applicable").
-     */
-    private Double rawDouble(YahooFinanceDtos.YahooValue value) {
-        if (value == null || value.raw() == null) return null;
-        // Yahoo uses 0.0 as a sentinel for "not available" in some fields (e.g. dividendYield for non-dividend stocks).
-        // We intentionally allow 0.0 for dividendYield (a stock can genuinely have a 0% yield).
-        return value.raw();
     }
 
     /**

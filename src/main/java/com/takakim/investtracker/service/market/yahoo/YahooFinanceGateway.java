@@ -164,15 +164,20 @@ public class YahooFinanceGateway {
     }
 
     /**
-     * Fetches valuation multiples and fundamental metrics from Yahoo Finance's
-     * {@code /v10/finance/quoteSummary} endpoint using the {@code defaultKeyStatistics}
-     * and {@code summaryDetail} modules.
+     * Fetches real-time fundamental metrics from Yahoo Finance's
+     * {@code /v7/finance/quote} endpoint.
      *
-     * <p>Returns the first {@link YahooFinanceDtos.QuoteSummaryResult} or
+     * <p>Unlike {@code /v10/finance/quoteSummary}, this endpoint does <em>not</em>
+     * require a crumb or session cookie, making it suitable for unauthenticated
+     * server-side calls. It returns trailing P/E, forward P/E, price-to-book,
+     * dividend yield, 52-week high/low, market cap, and EPS directly as plain
+     * numeric fields on the result object.
+     *
+     * <p>Returns the first {@link YahooFinanceDtos.QuoteResult} or
      * {@link Optional#empty()} if the ticker is unknown, Yahoo is unavailable,
      * or the gateway is not configured / rate-limited.
      */
-    public Optional<YahooFinanceDtos.QuoteSummaryResult> fetchQuoteSummary(String symbol) {
+    public Optional<YahooFinanceDtos.QuoteResult> fetchQuote(String symbol) {
         if (!isConfigured() || symbol == null || symbol.isBlank()) {
             return Optional.empty();
         }
@@ -181,36 +186,36 @@ public class YahooFinanceGateway {
         }
 
         try {
-            YahooFinanceDtos.QuoteSummaryResponse response = restClient.get()
+            YahooFinanceDtos.QuoteResponse response = restClient.get()
                     .uri(uriBuilder -> uriBuilder
-                            .path("/v10/finance/quoteSummary/{symbol}")
-                            .queryParam("modules", "defaultKeyStatistics,summaryDetail")
-                            .build(symbol))
+                            .path("/v7/finance/quote")
+                            .queryParam("symbols", symbol)
+                            .queryParam("fields", "trailingPE,forwardPE,priceToBook,trailingAnnualDividendYield,epsTrailingTwelveMonths,epsForward,bookValue,marketCap,fiftyTwoWeekHigh,fiftyTwoWeekLow,trailingAnnualDividendRate")
+                            .build())
                     .retrieve()
-                    .body(YahooFinanceDtos.QuoteSummaryResponse.class);
+                    .body(YahooFinanceDtos.QuoteResponse.class);
 
-            if (response != null && response.quoteSummary() != null) {
-                if (response.quoteSummary().error() != null) {
-                    log.warn("Yahoo Finance quoteSummary returned error for symbol '{}': {} - {}",
-                            symbol, response.quoteSummary().error().code(), response.quoteSummary().error().description());
-                    return Optional.empty();
-                }
-                if (response.quoteSummary().result() != null && !response.quoteSummary().result().isEmpty()) {
-                    YahooFinanceDtos.QuoteSummaryResult result = response.quoteSummary().result().get(0);
-                    if (result != null) {
-                        return Optional.of(result);
-                    }
+            if (response != null && response.quoteResponse() != null
+                    && response.quoteResponse().result() != null
+                    && !response.quoteResponse().result().isEmpty()) {
+                YahooFinanceDtos.QuoteResult result = response.quoteResponse().result().get(0);
+                if (result != null) {
+                    log.debug("Yahoo /v7/quote for {}: PE={} fwdPE={} PB={} DY={} 52wH={} 52wL={}",
+                            symbol, result.trailingPE(), result.forwardPE(), result.priceToBook(),
+                            result.trailingAnnualDividendYield(), result.fiftyTwoWeekHigh(), result.fiftyTwoWeekLow());
+                    return Optional.of(result);
                 }
             }
             return Optional.empty();
         } catch (RestClientResponseException ex) {
-            handleException(ex, "quoteSummary", symbol);
+            handleException(ex, "quote", symbol);
             return Optional.empty();
         } catch (Exception ex) {
-            log.warn("Unexpected error requesting Yahoo Finance quoteSummary for symbol '{}': {}", symbol, ex.getMessage());
+            log.warn("Unexpected error requesting Yahoo Finance quote for symbol '{}': {}", symbol, ex.getMessage());
             return Optional.empty();
         }
     }
+
 
     public Optional<YahooFinanceDtos.ChartEntry> fetchChartWithEvents(String symbol, String interval, String range) {
         if (!isConfigured() || symbol == null || symbol.isBlank()) {

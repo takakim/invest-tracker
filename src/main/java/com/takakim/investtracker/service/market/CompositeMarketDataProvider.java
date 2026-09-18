@@ -92,17 +92,6 @@ public class CompositeMarketDataProvider implements MarketDataProvider {
         if (instrument == null) {
             return List.of();
         }
-        if (twelveDataProvider != null && twelveDataProvider.isConfigured()) {
-            try {
-                List<PriceQuote> tdQuotes = twelveDataProvider.fetchHistoricalQuotes(instrument, from, to);
-                if (tdQuotes != null && !tdQuotes.isEmpty() && tdQuotes.stream().anyMatch(q -> "TWELVE_DATA".equals(q.sourceReference()))) {
-                    return tdQuotes;
-                }
-            } catch (Exception ex) {
-                log.debug("Twelve Data historical fetch failed for '{}': {}", instrument.getName(), ex.getMessage());
-            }
-        }
-
         if (yahooProvider != null && yahooProvider.isConfigured()) {
             try {
                 List<PriceQuote> yahooQuotes = yahooProvider.fetchHistoricalQuotes(instrument, from, to);
@@ -111,6 +100,17 @@ public class CompositeMarketDataProvider implements MarketDataProvider {
                 }
             } catch (Exception ex) {
                 log.debug("Yahoo Finance historical fetch failed for '{}': {}", instrument.getName(), ex.getMessage());
+            }
+        }
+
+        if (twelveDataProvider != null && twelveDataProvider.isConfigured()) {
+            try {
+                List<PriceQuote> tdQuotes = twelveDataProvider.fetchHistoricalQuotes(instrument, from, to);
+                if (tdQuotes != null && !tdQuotes.isEmpty() && tdQuotes.stream().anyMatch(q -> "TWELVE_DATA".equals(q.sourceReference()))) {
+                    return tdQuotes;
+                }
+            } catch (Exception ex) {
+                log.debug("Twelve Data historical fetch failed for '{}': {}", instrument.getName(), ex.getMessage());
             }
         }
 

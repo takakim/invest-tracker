@@ -1,11 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  Alert,
   Box,
   Button,
   Card,
   CardContent,
   Chip,
+  CircularProgress,
   FormControl,
   Grid,
   InputLabel,
@@ -13,6 +15,7 @@ import {
   Paper,
   Select,
   Skeleton,
+  Snackbar,
   Stack,
   Tab,
   Tabs,
@@ -28,6 +31,9 @@ import AccountBalanceWalletOutlinedIcon from '@mui/icons-material/AccountBalance
 import QueryStatsOutlinedIcon from '@mui/icons-material/QueryStatsOutlined';
 import LayersOutlinedIcon from '@mui/icons-material/LayersOutlined';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
+import SyncIcon from '@mui/icons-material/Sync';
+import { useQueryClient } from '@tanstack/react-query';
+import { analyticsApi } from '../../api/analytics';
 import { usePortfolioHistory } from './useAnalytics';
 import { useBenchmarkList } from '../benchmark/useBenchmark';
 import type { HistoricalValuationPoint } from '../../types';
@@ -42,10 +48,33 @@ type TimePeriod = '1M' | '3M' | '6M' | 'YTD' | '1Y' | '3Y' | 'ALL';
 
 export function PortfolioHistoryCard({ portfolioId, currency }: PortfolioHistoryCardProps) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [period, setPeriod] = useState<TimePeriod>('1Y');
   const [mode, setMode] = useState<ChartMode>('VALUE');
   const [benchmarkId, setBenchmarkId] = useState<string>('');
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncToast, setSyncToast] = useState<{ message: string; severity: 'success' | 'error' } | null>(null);
+
+  const handleSyncHistory = async () => {
+    try {
+      setIsSyncing(true);
+      const res = await analyticsApi.backfillPortfolioHistory(portfolioId, period);
+      queryClient.invalidateQueries({ queryKey: ['portfolio-history', portfolioId] });
+      queryClient.invalidateQueries({ queryKey: ['portfolio-analytics', portfolioId] });
+      setSyncToast({
+        message: `Synced ${res.totalObservationsSynced} daily price points across ${res.instrumentsProcessed} holdings & sold positions.`,
+        severity: 'success',
+      });
+    } catch (err: any) {
+      setSyncToast({
+        message: 'Failed to sync historical prices: ' + (err.message || 'Unknown error'),
+        severity: 'error',
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // Fetch benchmark instruments list (only predefined benchmarks)
   const { data: benchmarkOptions = [] } = useBenchmarkList();
@@ -237,23 +266,38 @@ export function PortfolioHistoryCard({ portfolioId, currency }: PortfolioHistory
             </Stack>
           </Stack>
 
-          {/* Time Horizon Selector Chips */}
-          <Stack direction="row" spacing={1} sx={{ overflowX: 'auto', pb: 0.5, alignItems: 'center' }}>
-            <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', mr: 0.5 }}>
-              HORIZON:
-            </Typography>
-            {(['1M', '3M', '6M', 'YTD', '1Y', '3Y', 'ALL'] as TimePeriod[]).map((p) => (
-              <Chip
-                key={p}
-                label={p}
-                clickable
-                color={period === p ? 'primary' : 'default'}
-                variant={period === p ? 'filled' : 'outlined'}
-                size="small"
-                onClick={() => setPeriod(p)}
-                sx={{ fontWeight: 600, px: 1 }}
-              />
-            ))}
+          {/* Time Horizon Selector Chips & Sync Action */}
+          <Stack direction="row" spacing={1} sx={{ overflowX: 'auto', pb: 0.5, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+              <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', mr: 0.5 }}>
+                HORIZON:
+              </Typography>
+              {(['1M', '3M', '6M', 'YTD', '1Y', '3Y', 'ALL'] as TimePeriod[]).map((p) => (
+                <Chip
+                  key={p}
+                  label={p}
+                  clickable
+                  color={period === p ? 'primary' : 'default'}
+                  variant={period === p ? 'filled' : 'outlined'}
+                  size="small"
+                  onClick={() => setPeriod(p)}
+                  sx={{ fontWeight: 600, px: 1 }}
+                />
+              ))}
+            </Stack>
+
+            <Button
+              variant="outlined"
+              size="small"
+              color="inherit"
+              disabled={isSyncing}
+              startIcon={isSyncing ? <CircularProgress size={16} color="inherit" /> : <SyncIcon fontSize="small" />}
+              onClick={handleSyncHistory}
+              sx={{ textTransform: 'none', fontSize: '0.8rem', borderColor: 'divider' }}
+              data-testid="sync-history-btn"
+            >
+              {isSyncing ? 'Syncing History...' : 'Sync History'}
+            </Button>
           </Stack>
 
           {/* Key Summary Stat Cards */}
@@ -592,6 +636,18 @@ export function PortfolioHistoryCard({ portfolioId, currency }: PortfolioHistory
           </Stack>
         </Stack>
       </CardContent>
+      <Snackbar
+        open={Boolean(syncToast)}
+        autoHideDuration={6000}
+        onClose={() => setSyncToast(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        {syncToast ? (
+          <Alert onClose={() => setSyncToast(null)} severity={syncToast.severity} sx={{ width: '100%' }}>
+            {syncToast.message}
+          </Alert>
+        ) : undefined}
+      </Snackbar>
     </Card>
   );
 }
