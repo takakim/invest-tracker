@@ -16,7 +16,7 @@
     <description>Investment portfolio tracking and performance management platform</description>
     <properties>
         <java.version>25</java.version>
-        <flyway.version>13.5.0</flyway.version>
+        <flyway.version>13.6.0</flyway.version>
         <testcontainers.version>2.0.5</testcontainers.version>
         <dependency-check.version>13.0.0</dependency-check.version>
         <cyclonedx.version>2.9.3</cyclonedx.version>
