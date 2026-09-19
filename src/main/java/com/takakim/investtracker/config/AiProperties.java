@@ -33,7 +33,8 @@ public class AiProperties {
 
     /** Shared inference settings */
     private double temperature = 0.2;
-    private int maxTokens = 2048;
+    private int maxTokens = 4096;
+    private String reasoningEffort = "none";
     private int timeoutSeconds = 60;
 
     public boolean isEnabled() { return enabled; }
@@ -74,6 +75,9 @@ public class AiProperties {
 
     public int getMaxTokens() { return maxTokens; }
     public void setMaxTokens(int maxTokens) { this.maxTokens = maxTokens; }
+
+    public String getReasoningEffort() { return reasoningEffort; }
+    public void setReasoningEffort(String reasoningEffort) { this.reasoningEffort = reasoningEffort; }
 
     public int getTimeoutSeconds() { return timeoutSeconds; }
     public void setTimeoutSeconds(int timeoutSeconds) { this.timeoutSeconds = timeoutSeconds; }

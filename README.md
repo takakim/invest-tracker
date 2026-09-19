@@ -35,6 +35,7 @@ Spring Boot 4.1.1 is the current stable Spring Boot release selected for this pr
 - Dependabot checks Maven and GitHub Actions dependencies weekly.
 - Secrets are supplied through environment variables; no credentials are committed.
 - Local PostgreSQL binds to `127.0.0.1` only.
+- Detailed security architecture, supported versions, and vulnerability reporting procedures are documented in [docs/project/SECURITY.md](docs/project/SECURITY.md).
 
 ## Quickstart (One-Command Full Stack Docker)
 
@@ -160,9 +161,10 @@ AI_PROVIDER=AUTO
 AI_ENABLED=true
 AI_BASE_URL=http://host.docker.internal:1234
 AI_MODEL=auto
+AI_REASONING_EFFORT=none
 AI_TIMEOUT_SECONDS=1200
 ```
-> **Tip:** You can keep `AI_MODEL=auto` to dynamically use whatever model is loaded in LM Studio, or set `AI_MODEL` to a specific model ID if preferred.
+> **Tip:** You can keep `AI_MODEL=auto` to dynamically use whatever model is loaded in LM Studio, or set `AI_MODEL` to a specific model ID if preferred. Setting `AI_REASONING_EFFORT=none` (default) disables redundant internal chain-of-thought tokens on reasoning models (e.g. Qwen 3.5), reducing inference latency from ~150s down to ~15s.
 
 #### 2. Google Gemini
 ```env
@@ -199,6 +201,37 @@ Complex prompts evaluated by local LLMs can take several minutes. The stack is p
 
 ---
 
+## Historical Valuation & Native Price Backfill Engine
+
+Invest Tracker reconstructs exact daily portfolio valuations and equity trajectories without artificial cliff jumps:
+- **Dense Historical Daily Bars**: Prioritizes multi-year chart observations from Yahoo Finance for all instruments ever traded (both currently held and liquidated/sold positions) from the earliest acquisition date up to today.
+- **Dual Automatic Triggers**:
+  - Automatically triggers backfilling on portfolio valuation loads when observation point density is insufficient (`hasSufficientHistoricalCoverage`).
+  - Automatically backfills price observations for new instruments immediately after completing broker CSV imports.
+- **On-Demand Synchronization**: Includes a **Sync History** button on the Historical Valuation & Benchmark Performance card with live progress and automatic cache refresh.
+- **Dedicated Backfill API**: `POST /api/v1/portfolios/{id}/history/backfill?range={range}`.
+
+---
+
+## Operational & Diagnostic CLI Utilities (`scripts/`)
+
+Standalone Python 3 CLI utilities are provided in `scripts/` to accelerate diagnostics, audits, and operational tasks:
+
+| Script | Purpose | Key Arguments |
+| :--- | :--- | :--- |
+| `audit_ai_evaluations.py` | Audits persisted AI evaluations for reasoning leaks; triggers live re-evaluations. | `--ticker MU`, `--re-evaluate`, `--url` |
+| `test_llm_completion.py` | Benchmarks LLM endpoints, measures token latency, and analyzes reasoning content. | `--model`, `--max-tokens`, `--reasoning-param` |
+| `audit_holdings.py` | Verifies live holding calculations, cost-basis currencies, and cash reconciliation. | `--portfolio <UUID>`, `--url` |
+| `audit_csv_ledger.py` | Audits broker CSV cash balances, withholding taxes, and detects double deductions. | `<file.csv>`, `--target-cash <amount>` |
+| `backfill_history.py` | Backfills multi-year daily market price bars from Yahoo Finance directly to Postgres. | `--range 5y`, `--tickers AAPL NVDA` |
+| `freetrade_csv_tool.py` | Injects corporate actions (forward/reverse splits) and audits Freetrade statements. | `audit <file>`, `inject <in> <out>` |
+| `enrich_investengine_csv.py` | Cross-references ISINs to add ticker symbols and native currencies to InvestEngine CSVs. | `<file.csv> -o <out.csv>` |
+| `check_coverage.py` | Inspects JaCoCo reports against mandatory 90% line & branch coverage gates. | `--file <SourceFile.java>` |
+
+For detailed CLI usage, see [scripts/README.md](scripts/README.md).
+
+---
+
 ## Running Verification & Tests
 
 ### Full Repository Verification
@@ -218,21 +251,16 @@ npm --prefix frontend run build
 npm --prefix frontend test
 ```
 
-## Roadmap
+---
 
-- Phase 0: Foundation & security
-- Phase 0.5: Architecture and domain design
-- Phase 0.75: OpenAPI contract
-- Phase 1: Portfolio and accounts
-- Phase 1.5: React frontend foundation
-- Phase 2: Investments
-- Phase 3: Transactions
-- Phase 4: CSV import
-- Phase 5: Position engine
-- Phase 6: Performance engine
-- Phase 7: Market data
-- Phase 8: Currency engine
-- Phase 9: Reporting
-- Phase 10: Benchmarking
-- Phase 11: Frontend completion
-- Phase 12: Future enhancements
+## Project Governance & Documentation
+
+Detailed architectural documentation, security guidelines, and task records are organized in `docs/project/`:
+
+- 📋 **[PROJECT_CONTEXT.md](docs/project/PROJECT_CONTEXT.md)**: Canonical LLM and developer context, architectural decisions, and phase progression.
+- 🛡️ **[SECURITY.md](docs/project/SECURITY.md)**: Security policy, supported versions, and vulnerability disclosure SLA.
+- 🤖 **[AGENTS.md](AGENTS.md)**: AI agent rules, financial precision standards, and verification commands.
+- 📦 **[Features Archive](docs/project/features/)**: Detailed specifications and task history for completed features.
+- 📝 **[Active Task Tracker](docs/project/tasks/active_task.md)**: Current in-progress development task checklist.
+- 📐 **[Architecture Specifications](docs/architecture/)**: Domain models, ledger invariants, and API designs.
+- 📑 **[OpenAPI Contract](docs/api/openapi.yaml)**: OpenAPI 3.1.1 specification.

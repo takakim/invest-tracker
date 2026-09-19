@@ -1996,6 +1996,172 @@ class AiEvaluationServiceTests {
         verify(gatewayFactory).updateProvider("OPENAI");
         verify(gatewayFactory).updateModel("gpt-4o");
     }
+
+    @Test
+    @DisplayName("extractJson strips <think> tags and code fences")
+    void testExtractJsonWithThinkTags() {
+        String input = "<think>Internal thoughts with {brace} inside</think>```json\n{\"stance\": \"ACCUMULATE\", \"riskScore\": 4}\n```";
+        String extracted = service.extractJson(input);
+        assertEquals("{\"stance\": \"ACCUMULATE\", \"riskScore\": 4}", extracted);
+    }
+
+    @Test
+    @DisplayName("extractJson strips Thinking Process prefix before code fence or brace")
+    void testExtractJsonWithThinkingProcessPrefix() {
+        String input = "Thinking Process:\n1. Analyze the asset.\n```\n{\"stance\": \"TRIM\", \"riskScore\": 8}\n```";
+        String extracted = service.extractJson(input);
+        assertEquals("{\"stance\": \"TRIM\", \"riskScore\": 8}", extracted);
+
+        String inputDirectBrace = "Thinking:\nSome internal thought\n{\"stance\": \"HOLD\"}";
+        String extractedDirect = service.extractJson(inputDirectBrace);
+        assertEquals("{\"stance\": \"HOLD\"}", extractedDirect);
+
+        String inputNoFenceOrBrace = "Thinking Process:\nNo fences or braces here";
+        String extractedNoFence = service.extractJson(inputNoFenceOrBrace);
+        assertEquals("Thinking Process:\nNo fences or braces here", extractedNoFence);
+    }
+
+    @Test
+    @DisplayName("fallbackHoldingEvaluation sanitizes thinking trace leaks from executiveSummary")
+    void testFallbackHoldingEvaluationSanitizesThinkingTrace() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(testPortfolio));
+        when(instrumentRepository.findById(instrumentId)).thenReturn(Optional.of(testInstrument));
+        when(positionService.listPortfolioPositionsPerformance(portfolioId, false)).thenReturn(List.of(testPosition));
+        when(analyticsEngine.calculate(eq(portfolioId), any())).thenReturn(testAnalytics);
+
+        // 1. Long thinking process
+        String rawThinking = "Thinking Process:\n1. **Analyze the Request:**\nRole: Senior Portfolio Risk Manager...\n" + "x".repeat(600);
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(rawThinking);
+
+        HoldingAiEvaluationDto result = service.evaluateHolding(portfolioId, instrumentId);
+        assertNotNull(result);
+        assertEquals(AiStance.HOLD, result.stance());
+        assertFalse(result.executiveSummary().toLowerCase().contains("thinking process:"));
+        assertTrue(result.executiveSummary().contains("Apple Inc."));
+
+        // 2. Starts with "Thinking:"
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn("Thinking:\nAnalyzing risk factors");
+        HoldingAiEvaluationDto resThinking = service.evaluateHolding(portfolioId, instrumentId);
+        assertTrue(resThinking.executiveSummary().contains("Apple Inc."));
+
+        // 3. Starts with "<think>"
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn("<think>Some thoughts");
+        HoldingAiEvaluationDto resThinkTag = service.evaluateHolding(portfolioId, instrumentId);
+        assertTrue(resThinkTag.executiveSummary().contains("Apple Inc."));
+
+        // 4. Starts with "{"
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn("{ invalid json");
+        HoldingAiEvaluationDto resBrace = service.evaluateHolding(portfolioId, instrumentId);
+        assertTrue(resBrace.executiveSummary().contains("Apple Inc."));
+
+        // 5. Starts with "```"
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn("```\ninvalid fence");
+        HoldingAiEvaluationDto resFence = service.evaluateHolding(portfolioId, instrumentId);
+        assertTrue(resFence.executiveSummary().contains("Apple Inc."));
+
+        // 6. Clean, concise natural text under 500 chars (preserved as-is)
+        String cleanMsg = "Sound defensive equity position with modest upside potential.";
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn(cleanMsg);
+        HoldingAiEvaluationDto resClean = service.evaluateHolding(portfolioId, instrumentId);
+        assertEquals(cleanMsg, resClean.executiveSummary());
+    }
+
+    @Test
+    @DisplayName("evaluateHolding handles same native currency and null native price branches")
+    void testEvaluateHoldingCurrencyBranches() {
+        when(portfolioRepository.findById(portfolioId)).thenReturn(Optional.of(testPortfolio));
+        when(instrumentRepository.findById(instrumentId)).thenReturn(Optional.of(testInstrument));
+        when(analyticsEngine.calculate(eq(portfolioId), any())).thenReturn(testAnalytics);
+        when(gateway.generateChatCompletion(anyString(), anyString())).thenReturn("{}");
+
+        // Same currency GBP: nativePriceInfo should be empty
+        ApiDtos.PositionPerformanceResponse gbpPosition = new ApiDtos.PositionPerformanceResponse(
+                UUID.randomUUID(), UUID.randomUUID(), "ISA Account",
+                instrumentId, "Apple Inc.", "AAPL", "US0378331005", AssetClass.STOCK,
+                "ACTIVE",
+                new BigDecimal("10"), new BigDecimal("10"), BigDecimal.ZERO,
+                new BigDecimal("150.00"), BigDecimal.ZERO,
+                new BigDecimal("1500.00"), BigDecimal.ZERO,
+                new BigDecimal("1500.00"), new BigDecimal("180.00"),
+                new BigDecimal("1800.00"), BigDecimal.ZERO,
+                new BigDecimal("300.00"), new BigDecimal("25.00"),
+                BigDecimal.ZERO, BigDecimal.ZERO,
+                new BigDecimal("325.00"), new BigDecimal("21.67"),
+                "GBP", new BigDecimal("180.00"), "GBP", // native currency GBP == base currency GBP
+                new BigDecimal("325.00"), new BigDecimal("21.67"),
+                List.of(), List.of(), List.of()
+        );
+        when(positionService.listPortfolioPositionsPerformance(portfolioId, false)).thenReturn(List.of(gbpPosition));
+
+        HoldingAiEvaluationDto resGbp = service.evaluateHolding(portfolioId, instrumentId);
+        assertNotNull(resGbp);
+
+        // Null native price: nativePriceInfo should be empty
+        ApiDtos.PositionPerformanceResponse nullNativePricePos = new ApiDtos.PositionPerformanceResponse(
+                UUID.randomUUID(), UUID.randomUUID(), "ISA Account",
+                instrumentId, "Apple Inc.", "AAPL", "US0378331005", AssetClass.STOCK,
+                "ACTIVE",
+                new BigDecimal("10"), new BigDecimal("10"), BigDecimal.ZERO,
+                new BigDecimal("150.00"), BigDecimal.ZERO,
+                new BigDecimal("1500.00"), BigDecimal.ZERO,
+                new BigDecimal("1500.00"), new BigDecimal("180.00"),
+                new BigDecimal("1800.00"), BigDecimal.ZERO,
+                new BigDecimal("300.00"), new BigDecimal("25.00"),
+                BigDecimal.ZERO, BigDecimal.ZERO,
+                new BigDecimal("325.00"), new BigDecimal("21.67"),
+                "GBP", null, null, // null native price and currency
+                new BigDecimal("325.00"), new BigDecimal("21.67"),
+                List.of(), List.of(), List.of()
+        );
+        when(positionService.listPortfolioPositionsPerformance(portfolioId, false)).thenReturn(List.of(nullNativePricePos));
+
+        HoldingAiEvaluationDto resNullNative = service.evaluateHolding(portfolioId, instrumentId);
+        assertNotNull(resNullNative);
+    }
+
+    @Test
+    @DisplayName("extractJson handles various reasoning tags, code fences, and fallback cases")
+    void testExtractJsonEdgeCases() {
+        // Null and blank
+        assertEquals("{}", service.extractJson(null));
+        assertEquals("{}", service.extractJson("   "));
+
+        // Think tags stripped
+        assertEquals("{\"stance\": \"HOLD\"}",
+                service.extractJson("<think>Some thoughts</think> {\"stance\": \"HOLD\"}"));
+
+        // Thinking Process prefix with code fence
+        assertEquals("{\"stance\": \"BUY\"}",
+                service.extractJson("Thinking Process: First analyze.\n```json\n{\"stance\": \"BUY\"}\n```"));
+
+        // Thinking prefix with brace directly
+        assertEquals("{\"stance\": \"SELL\"}",
+                service.extractJson("Thinking: No code fence here {\"stance\": \"SELL\"}"));
+
+        // Thinking prefix with neither fence nor brace
+        assertEquals("Thinking: Plain thoughts without json",
+                service.extractJson("Thinking: Plain thoughts without json"));
+
+        // Code fence without newline immediately after ```json
+        assertEquals("{\"test\": 123}",
+                service.extractJson("```json{\"test\": 123}```"));
+
+        // Generic code fence ```
+        assertEquals("{\"generic\": true}",
+                service.extractJson("```\n{\"generic\": true}\n```"));
+
+        // Code fence containing non-json followed by braces
+        assertEquals("{\"fallback\": true}",
+                service.extractJson("```\nnot json\n``` then {\"fallback\": true}"));
+
+        // Plain braces without fences
+        assertEquals("{\"clean\": true}",
+                service.extractJson("Leading text {\"clean\": true} trailing text"));
+
+        // No braces at all
+        assertEquals("Just raw text",
+                service.extractJson("Just raw text"));
+    }
 }
 
 

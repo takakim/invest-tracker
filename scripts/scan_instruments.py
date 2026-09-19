@@ -4,7 +4,7 @@ import csv
 
 def scan_csv_instruments():
     instruments = {}
-    csv_files = glob.glob('docs/**/*.csv', recursive=True) + glob.glob('*.csv')
+    csv_files = glob.glob('docs/**/*.csv', recursive=True) + glob.glob('tmp/**/*.csv', recursive=True) + glob.glob('*.csv')
     for path in csv_files:
         if not os.path.isfile(path):
             continue
