@@ -2,7 +2,7 @@
 /target/
 !.mvn/wrapper/maven-wrapper.jar
 
-# IDEs
+# IDEs & Local Agent Config
 .idea/
 *.iml
 .vscode/
