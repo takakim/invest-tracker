@@ -36,12 +36,19 @@ Transaction ----+-------------+
 ```text
 invest-tracker/
 ├── pom.xml                                 # Root Maven POM (Spring Boot, JaCoCo, OWASP, CycloneDX)
-├── PROJECT_CONTEXT.md                      # Canonical LLM context & phase status
+├── PROJECT_CONTEXT.md                      # Symlink -> docs/project/PROJECT_CONTEXT.md
+├── SECURITY.md                             # Symlink -> docs/project/SECURITY.md
 ├── AGENTS.md                               # AI Agent instructions & repository guidelines
-├── docs/                                   # Architectural documentation, ADRs, & openapi.yaml
-│   ├── api/openapi.yaml
-│   ├── architecture/
-│   └── adr/
+├── docs/                                   # Architectural documentation, ADRs, openapi.yaml & project governance
+│   ├── project/                            # Centralized project governance, security & feature tracking
+│   │   ├── PROJECT_CONTEXT.md              # Canonical LLM context & phase status
+│   │   ├── SECURITY.md                     # Security policy, baseline, and reporting SLA
+│   │   ├── features/                       # Historical feature specifications & completed task checklists
+│   │   └── tasks/                          # Active task tracking & templates (active_task.md)
+│   ├── api/openapi.yaml                    # OpenAPI 3.1.1 contract
+│   ├── architecture/                       # Deep architectural specifications & threat models
+│   └── adr/                                # Architectural Decision Records
+├── scripts/                                # Reusable Python 3 CLI operational & diagnostic tools
 ├── src/main/java/com/takakim/investtracker/
 │   ├── api/                                # Thin REST Controllers & DTOs
 │   ├── domain/                             # Core Entities, Enums, Value Objects
@@ -50,13 +57,13 @@ invest-tracker/
 │   └── config/                             # Security & Application Configurations
 ├── src/main/resources/
 │   ├── application.yml
-│   └── db/migration/                       # Flyway SQL schema evolution (V1__baseline.sql, V2__core_domain.sql, V3__investments.sql, V4__transactions.sql, V5__csv_import.sql)
+│   └── db/migration/                       # Flyway SQL schema evolution
 ├── src/test/java/com/takakim/investtracker/ # Test suites (Testcontainers PostgreSQL, Unit Tests)
 └── frontend/                               # React + TypeScript Web Frontend
     ├── src/
     │   ├── api/                            # Typed HTTP client & RFC 9457 problem details handler
     │   ├── components/                     # Reusable UI primitives (Layout, LoadingState, ErrorAlert, etc.)
-    │   ├── features/                       # Domain feature modules (dashboard, portfolios, accounts, instruments, positions, transactions, imports)
+    │   ├── features/                       # Domain feature modules (dashboard, portfolios, accounts, etc.)
     │   ├── forms/                          # Zod schemas & form validation
     │   ├── routing/                        # React Router definitions
     │   ├── test/                           # Vitest & React Testing Library suites
@@ -72,7 +79,7 @@ invest-tracker/
 ## 3. Strict Development Rules for AI Agents
 
 1. **Always Branch from Fresh `main`**: Before starting any new phase, feature, or task, always checkout `main` and pull the latest changes (`git checkout main && git pull origin main`) before creating a feature branch (`git checkout -b <branch-name>`). Never start work from a stale or unmerged feature branch to avoid branch divergence and merge conflicts.
-2. **Check Canonical Context First**: Always inspect `PROJECT_CONTEXT.md` to understand active phase scope. Do not prematurely implement future phase functionality (e.g., transaction engine in Phase 1, CSV import in Phase 2).
+2. **Check Canonical Context First**: Always inspect [`docs/project/PROJECT_CONTEXT.md`](file:///Users/massanoritakaki/code/invest-tracker/docs/project/PROJECT_CONTEXT.md) (or root symlink `PROJECT_CONTEXT.md`) to understand active phase scope. Do not prematurely implement future phase functionality (e.g., transaction engine in Phase 1, CSV import in Phase 2).
 3. **Immutability of Flyway Migrations**: Applied Flyway migration scripts in `src/main/resources/db/migration` must **NEVER** be modified. Always create a new versioned migration script (e.g. `V6__description.sql`) for schema additions.
 4. **Database Schema Enforcement**: Hibernate is configured with `ddl-auto: validate`. Schema evolution is strictly owned by Flyway.
 5. **API & Contract Synchronization**:
@@ -87,8 +94,9 @@ invest-tracker/
    - Identify the root cause when tests fail.
    - Never suppress exceptions with empty fallbacks, comment out assertions, or delete failing tests.
 8. **Always Maintain an Active Task Checklist**:
-   - Always create a structured task list (`task.md` or equivalent checklist) before starting implementation.
+   - Always create and maintain a structured task list (`docs/project/tasks/active_task.md` or workspace checklist artifact) before starting implementation.
    - Keep the task list continuously updated as work progresses, marking items as pending (`[ ]`), in-progress (`[/]`), or completed (`[x]`), ensuring complete transparency into execution state.
+   - When a feature is completed, archive the feature specification and task record into `docs/project/features/`.
 9. **Prioritize Reusable Python CLI Scripts**:
    - Whenever writing diagnostic, inspection, auditing, or operational code, ALWAYS prioritize adding reusable, parameterized Python 3 CLI scripts in `scripts/` (with `argparse`, `--help`, and standard exit codes) instead of running ephemeral inline one-liner shell commands (`python3 -c`).
    - Document every new or modified script in `scripts/README.md` and Section 6 of `AGENTS.md`.
