@@ -254,6 +254,8 @@ public class AiEvaluationService {
         BigDecimal totalMarketValue = BigDecimal.ZERO;
         BigDecimal totalUnrealizedGain = BigDecimal.ZERO;
         BigDecimal latestPrice = BigDecimal.ZERO;
+        BigDecimal latestNativePrice = null;
+        String nativeCurrency = null;
         List<String> accountWrappers = new ArrayList<>();
 
         for (ApiDtos.PositionPerformanceResponse p : holdingPositions) {
@@ -263,6 +265,12 @@ public class AiEvaluationService {
             totalUnrealizedGain = totalUnrealizedGain.add(p.unrealizedGainLoss());
             if (p.currentPrice() != null && p.currentPrice().compareTo(BigDecimal.ZERO) > 0) {
                 latestPrice = p.currentPrice();
+            }
+            if (p.nativePrice() != null && p.nativePrice().compareTo(BigDecimal.ZERO) > 0) {
+                latestNativePrice = p.nativePrice();
+            }
+            if (p.nativeCurrency() != null && !p.nativeCurrency().isBlank()) {
+                nativeCurrency = p.nativeCurrency();
             }
             if (p.accountName() != null) {
                 accountWrappers.add(p.accountName());
@@ -368,7 +376,7 @@ public class AiEvaluationService {
                     "expenseRatio": number or null
                   }
                 }
-                Do not include markdown or conversational text outside of the JSON object.
+                Do not include markdown, thinking blocks, or conversational text outside of the JSON object.
                 """;
 
         // Build real-time metrics context string for the prompt (grounded facts from Yahoo)
@@ -376,6 +384,12 @@ public class AiEvaluationService {
                 yahooTrailingPe, yahooForwardPe, yahooPegRatio, yahooPriceToBook,
                 yahooDividendYield, yahooDebtToEquity, yahooReturnOnEquity,
                 fiftyTwoWeekLow, fiftyTwoWeekHigh, yahooMarketCap);
+
+        String nativePriceInfo = "";
+        if (latestNativePrice != null && nativeCurrency != null
+                && !portfolio.getBaseCurrency().code().equalsIgnoreCase(nativeCurrency)) {
+            nativePriceInfo = String.format(" (Native: %s %s)", latestNativePrice.toPlainString(), nativeCurrency);
+        }
 
         String userPrompt = String.format("""
                 Holding Analysis Request:
@@ -385,8 +399,8 @@ public class AiEvaluationService {
                 - Native Currency: %s
                 - Portfolio Reporting Currency: %s
                 - Quantity Held: %s
-                - Average Buy Price / Cost Basis: %s
-                - Current Market Price: %s
+                - Average Buy Price / Cost Basis: %s %s
+                - Current Market Price: %s %s%s
                 - Current Market Value: %s %s
                 - Unrealized Gain/Loss: %s %s (%.2f%%)
                 - Portfolio Weight: %.2f%%
@@ -403,14 +417,14 @@ public class AiEvaluationService {
                 instrument.getCurrency().code(),
                 portfolio.getBaseCurrency().code(),
                 totalQty.toPlainString(),
-                avgCost.toPlainString(),
-                latestPrice.toPlainString(),
+                avgCost.toPlainString(), portfolio.getBaseCurrency().code(),
+                latestPrice.toPlainString(), portfolio.getBaseCurrency().code(), nativePriceInfo,
                 totalMarketValue.toPlainString(), portfolio.getBaseCurrency().code(),
                 totalUnrealizedGain.toPlainString(), portfolio.getBaseCurrency().code(), unrealizedGainPct,
                 weightPct,
                 String.join(", ", accountWrappers),
-                fiftyTwoWeekLow != null ? String.format("%.2f", fiftyTwoWeekLow) : "N/A",
-                fiftyTwoWeekHigh != null ? String.format("%.2f", fiftyTwoWeekHigh) : "N/A",
+                fiftyTwoWeekLow != null ? String.format("%.2f %s", fiftyTwoWeekLow, instrument.getCurrency().code()) : "N/A",
+                fiftyTwoWeekHigh != null ? String.format("%.2f %s", fiftyTwoWeekHigh, instrument.getCurrency().code()) : "N/A",
                 metricsContext
         );
 
@@ -894,7 +908,7 @@ public class AiEvaluationService {
                 AiStance.HOLD,
                 5,
                 AiRiskLevel.MODERATE,
-                (rawText != null && !rawText.isBlank()) ? rawText.trim() : "Position reviewed based on cost basis and current market price.",
+                sanitizeSummary(rawText, instrument),
                 List.of("Established position within portfolio structure"),
                 List.of("Subject to standard market and sector volatility"),
                 "Evaluate position weight against target rebalancing plan before selling.",
@@ -906,6 +920,24 @@ public class AiEvaluationService {
                 providerName,
                 Instant.now()
         );
+    }
+
+    private String sanitizeSummary(String text, Instrument instrument) {
+        if (text == null || text.isBlank()) {
+            return "Position reviewed based on cost basis and current market price.";
+        }
+        String cleaned = text.trim();
+        String lower = cleaned.toLowerCase();
+        if (lower.startsWith("thinking process:")
+                || lower.startsWith("thinking:")
+                || lower.startsWith("<think>")
+                || lower.contains("analyze the request")
+                || cleaned.startsWith("{")
+                || cleaned.startsWith("```")
+                || cleaned.length() > 500) {
+            return "Position in " + instrument.getName() + " (" + instrument.getTicker() + ") reviewed based on cost basis and current market valuation.";
+        }
+        return cleaned;
     }
 
     /**
@@ -930,24 +962,47 @@ public class AiEvaluationService {
         return "\nReal-Time Financial Metrics (sourced from market data):\n" + sb;
     }
 
-    private String extractJson(String text) {
+    public String extractJson(String text) {
         if (text == null || text.isBlank()) {
             return "{}";
         }
-        int codeFenceStart = text.indexOf("```json");
-        if (codeFenceStart >= 0) {
-            int start = codeFenceStart + 7;
-            int codeFenceEnd = text.indexOf("```", start);
-            if (codeFenceEnd > start) {
-                return text.substring(start, codeFenceEnd).trim();
+        String cleaned = text.trim();
+
+        // Strip <think>...</think> tags if emitted by reasoning models
+        cleaned = cleaned.replaceAll("(?s)<think>.*?</think>", "").trim();
+
+        // If reasoning output starts with Thinking Process: or Thinking:, advance to code fence or JSON object
+        if (cleaned.startsWith("Thinking Process:") || cleaned.startsWith("Thinking:")) {
+            int fence = cleaned.indexOf("```");
+            int brace = cleaned.indexOf('{');
+            if (fence >= 0) {
+                cleaned = cleaned.substring(fence).trim();
+            } else if (brace >= 0) {
+                cleaned = cleaned.substring(brace).trim();
             }
         }
-        int firstBrace = text.indexOf('{');
-        int lastBrace = text.lastIndexOf('}');
-        if (firstBrace >= 0 && lastBrace > firstBrace) {
-            return text.substring(firstBrace, lastBrace + 1).trim();
+
+        int codeFenceStart = cleaned.indexOf("```json");
+        if (codeFenceStart < 0) {
+            codeFenceStart = cleaned.indexOf("```");
         }
-        return text.trim();
+        if (codeFenceStart >= 0) {
+            int lineBreak = cleaned.indexOf('\n', codeFenceStart);
+            int start = (lineBreak >= 0) ? lineBreak + 1 : codeFenceStart + 3;
+            int codeFenceEnd = cleaned.indexOf("```", start);
+            if (codeFenceEnd > start) {
+                String candidate = cleaned.substring(start, codeFenceEnd).trim();
+                if (candidate.startsWith("{") && candidate.endsWith("}")) {
+                    return candidate;
+                }
+            }
+        }
+        int firstBrace = cleaned.indexOf('{');
+        int lastBrace = cleaned.lastIndexOf('}');
+        if (firstBrace >= 0 && lastBrace > firstBrace) {
+            return cleaned.substring(firstBrace, lastBrace + 1).trim();
+        }
+        return cleaned;
     }
 
     private AiStance parseStance(String stanceStr) {

@@ -89,6 +89,9 @@ invest-tracker/
 8. **Always Maintain an Active Task Checklist**:
    - Always create a structured task list (`task.md` or equivalent checklist) before starting implementation.
    - Keep the task list continuously updated as work progresses, marking items as pending (`[ ]`), in-progress (`[/]`), or completed (`[x]`), ensuring complete transparency into execution state.
+9. **Prioritize Reusable Python CLI Scripts**:
+   - Whenever writing diagnostic, inspection, auditing, or operational code, ALWAYS prioritize adding reusable, parameterized Python 3 CLI scripts in `scripts/` (with `argparse`, `--help`, and standard exit codes) instead of running ephemeral inline one-liner shell commands (`python3 -c`).
+   - Document every new or modified script in `scripts/README.md` and Section 6 of `AGENTS.md`.
 
 ---
 
@@ -202,6 +205,29 @@ python3 scripts/backfill_history.py
 
 # Backfill specific tickers with a 5y range
 python3 scripts/backfill_history.py --range 5y --tickers NVDA AAPL RR. VUAG
+```
+
+### 8. `audit_ai_evaluations.py`
+Audits persisted portfolio and holding AI evaluations from the live API, detects reasoning artifacts and thinking trace leaks from local LLMs, validates fundamental valuation metrics, and provides automated re-evaluation triggers.
+```bash
+# Audit AI evaluations across all holdings
+python3 scripts/audit_ai_evaluations.py
+
+# Inspect a specific holding (e.g. MU)
+python3 scripts/audit_ai_evaluations.py --ticker MU
+
+# Trigger live re-evaluation of a specific holding against the active AI provider
+python3 scripts/audit_ai_evaluations.py --ticker MU --re-evaluate
+```
+
+### 9. `test_llm_completion.py`
+Benchmarks and tests completions directly against local LM Studio or remote OpenAI-compatible LLM endpoints, measuring token generation speed, finish reason, and analyzing reasoning vs content separation.
+```bash
+# Test local LM Studio completion with Qwen
+python3 scripts/test_llm_completion.py
+
+# Test custom prompt with higher max tokens
+python3 scripts/test_llm_completion.py --max-tokens 2048 --prompt "Evaluate Micron Technology"
 ```
 
 

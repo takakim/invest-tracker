@@ -52,15 +52,15 @@ def audit_live_portfolio(base_url=DEFAULT_BASE_URL, portfolio_id=None):
             for acc in accounts:
                 print(f"    • {acc.get('name')} [{acc.get('broker')}] - Currency: {acc.get('currency')} (ID: {acc.get('id')})")
 
-        # 3. Fetch Positions
-        positions = fetch_json(f"{base_url}/api/v1/positions?portfolioId={pid}")
+        # 3. Fetch Positions Performance
+        positions = fetch_json(f"{base_url}/api/v1/portfolios/{pid}/positions/performance")
         if not positions:
             print("  No positions found for this portfolio.")
             continue
 
-        print("\n" + "-" * 88)
-        print(f"{'Ticker':<8} {'Instrument':<22} {'Account':<18} {'Quantity':>10} {'Cost Basis':>12} {'Market Val':>12} {'Unrealized P&L':>15}")
-        print("-" * 88)
+        print("\n" + "-" * 96)
+        print(f"{'Ticker':<8} {'Instrument':<22} {'Account':<18} {'Quantity':>10} {'Cost Basis':>12} {'Market Val':>12} {'Unrealized P&L':>18}")
+        print("-" * 96)
 
         total_cost = Decimal("0")
         total_market = Decimal("0")
@@ -68,18 +68,17 @@ def audit_live_portfolio(base_url=DEFAULT_BASE_URL, portfolio_id=None):
 
         anomalies = []
 
-        for pos in sorted(positions, key=lambda x: x.get("instrument", {}).get("symbol", "")):
-            inst = pos.get("instrument", {})
-            ticker = inst.get("symbol", "N/A")
-            name = inst.get("name", "N/A")
+        for pos in sorted(positions, key=lambda x: x.get("ticker") or ""):
+            ticker = pos.get("ticker", "N/A")
+            name = pos.get("instrumentName", "N/A")
             account_name = pos.get("accountName", "N/A")
 
-            qty = Decimal(str(pos.get("quantity", 0)))
-            cost_amount = Decimal(str(pos.get("totalCost", {}).get("amount", 0)))
-            cost_curr = pos.get("totalCost", {}).get("currency", pbase)
-            market_amount = Decimal(str(pos.get("marketValue", {}).get("amount", 0)))
-            unrealized_amount = Decimal(str(pos.get("unrealizedPnl", {}).get("amount", 0)))
-            unrealized_pct = pos.get("unrealizedPnlPercent", 0)
+            qty = Decimal(str(pos.get("currentQuantity", 0)))
+            cost_amount = Decimal(str(pos.get("currentCostBasis", 0)))
+            cost_curr = pos.get("currency", pbase)
+            market_amount = Decimal(str(pos.get("currentMarketValue", 0)))
+            unrealized_amount = Decimal(str(pos.get("unrealizedGainLoss", 0)))
+            unrealized_pct = float(pos.get("totalReturnPercentage", 0))
 
             total_cost += cost_amount
             total_market += market_amount
@@ -92,11 +91,11 @@ def audit_live_portfolio(base_url=DEFAULT_BASE_URL, portfolio_id=None):
                 anomalies.append((ticker, f"Closed position has non-zero cost basis: {cost_amount}"))
 
             pnl_display = f"{unrealized_amount:+,.2f} ({unrealized_pct:+.1f}%)"
-            print(f"{ticker:<8} {name[:20]:<22} {account_name[:16]:<18} {qty:>10.4f} {cost_amount:>10.2f} {cost_curr} {market_amount:>10.2f} {cost_curr} {pnl_display:>15}")
+            print(f"{ticker:<8} {name[:20]:<22} {account_name[:16]:<18} {qty:>10.4f} {cost_amount:>10.2f} {cost_curr} {market_amount:>10.2f} {cost_curr} {pnl_display:>18}")
 
-        print("-" * 88)
-        print(f"{'TOTAL':<50} {total_cost:>10.2f} {pbase} {total_market:>10.2f} {pbase} {total_unrealized:>+13.2f} {pbase}")
-        print("=" * 88)
+        print("-" * 96)
+        print(f"{'TOTAL':<50} {total_cost:>10.2f} {pbase} {total_market:>10.2f} {pbase} {total_unrealized:>+16.2f} {pbase}")
+        print("=" * 96)
 
         if anomalies:
             print("\n⚠️ Anomalies Detected:")

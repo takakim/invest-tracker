@@ -16,7 +16,8 @@ class AiPropertiesTests {
         assertEquals("gemma4-12b", props.getModel());
         assertEquals("", props.getApiKey());
         assertEquals(0.2, props.getTemperature());
-        assertEquals(2048, props.getMaxTokens());
+        assertEquals(4096, props.getMaxTokens());
+        assertEquals("none", props.getReasoningEffort());
         assertEquals(60, props.getTimeoutSeconds());
 
         props.setEnabled(false);
@@ -34,8 +35,11 @@ class AiPropertiesTests {
         props.setTemperature(0.7);
         assertEquals(0.7, props.getTemperature());
 
-        props.setMaxTokens(4096);
-        assertEquals(4096, props.getMaxTokens());
+        props.setMaxTokens(8192);
+        assertEquals(8192, props.getMaxTokens());
+
+        props.setReasoningEffort("low");
+        assertEquals("low", props.getReasoningEffort());
 
         props.setTimeoutSeconds(120);
         assertEquals(120, props.getTimeoutSeconds());

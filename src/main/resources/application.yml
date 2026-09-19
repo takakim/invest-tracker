@@ -51,7 +51,8 @@ app:
     model: ${AI_MODEL:auto}
     api-key: ${AI_API_KEY:}
     temperature: ${AI_TEMPERATURE:0.2}
-    max-tokens: ${AI_MAX_TOKENS:2048}
+    max-tokens: ${AI_MAX_TOKENS:4096}
+    reasoning-effort: ${AI_REASONING_EFFORT:none}
     timeout-seconds: ${AI_TIMEOUT_SECONDS:1200}
     openai-api-key: ${OPENAI_API_KEY:}
     openai-base-url: ${OPENAI_BASE_URL:https://api.openai.com}

@@ -1036,6 +1036,133 @@ class LmStudioGatewayTests {
         assertEquals(30, gateway.getTimeoutSeconds());
         assertEquals("LM_STUDIO", gateway.getProviderName());
     }
+
+    @Test
+    @DisplayName("extractContentFromOpenAiResponse ignores reasoning_content if pure thinking text without valid JSON")
+    void testReasoningContentPureTextIgnored() {
+        String pureThinkingJson = """
+                {
+                  "choices": [
+                    {
+                      "message": {
+                        "content": "",
+                        "reasoning_content": "Thinking Process:\\n1. Analyze the request... no json here"
+                      }
+                    }
+                  ]
+                }
+                """;
+        var res = gateway.extractContentFromOpenAiResponse(pureThinkingJson);
+        assertTrue(res.isEmpty(), "Pure thinking text should not be extracted as chat completion content");
+    }
+
+    @Test
+    @DisplayName("extractJsonCandidate handles code fences, raw json, and invalid input")
+    void testExtractJsonCandidate() {
+        assertTrue(gateway.extractJsonCandidate(null).isEmpty());
+        assertTrue(gateway.extractJsonCandidate("   ").isEmpty());
+
+        // Code fence
+        String fenced = "Some thoughts\n```json\n{\"stance\": \"HOLD\"}\n```\nDone";
+        var res1 = gateway.extractJsonCandidate(fenced);
+        assertTrue(res1.isPresent());
+        assertEquals("{\"stance\": \"HOLD\"}", res1.get());
+
+        // Code fence with invalid json
+        String fencedInvalid = "Thinking\n```json\nnot valid json\n```";
+        assertTrue(gateway.extractJsonCandidate(fencedInvalid).isEmpty());
+
+        // Code fence unclosed
+        String fencedUnclosed = "Thinking\n```json\n{\"foo\": \"bar\"}";
+        assertTrue(gateway.extractJsonCandidate(fencedUnclosed).isPresent());
+
+        // Direct braces
+        String braces = "I think {\"riskScore\": 7} is appropriate";
+        var res2 = gateway.extractJsonCandidate(braces);
+        assertTrue(res2.isPresent());
+        assertEquals("{\"riskScore\": 7}", res2.get());
+
+        // Malformed braces
+        String invalidBraces = "Thinking { not valid json } process";
+        var res3 = gateway.extractJsonCandidate(invalidBraces);
+        assertTrue(res3.isEmpty());
+    }
+
+    @Test
+    @DisplayName("generateChatCompletion includes reasoning_effort in payload when configured")
+    void testGenerateChatCompletionWithReasoningEffort() {
+        properties.setReasoningEffort("none");
+
+        mockServer.expect(requestTo("http://localhost:1234/api/v1/chat"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.reasoning_effort").value("none"))
+                .andRespond(withSuccess("""
+                        { "output": [ { "type": "message", "content": "{\\"stance\\": \\"BUY\\"}" } ] }
+                        """, MediaType.APPLICATION_JSON));
+
+        String result = gateway.generateChatCompletion("sys", "user");
+        mockServer.verify();
+        assertNotNull(result);
+    }
+
+    @Test
+    @DisplayName("generateChatCompletion omits reasoning_effort when blank or null")
+    void testGenerateChatCompletionWithoutReasoningEffort() {
+        properties.setReasoningEffort("   ");
+
+        mockServer.expect(requestTo("http://localhost:1234/api/v1/chat"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.reasoning_effort").doesNotExist())
+                .andRespond(withSuccess("""
+                        { "output": [ { "type": "message", "content": "{\\"stance\\": \\"BUY\\"}" } ] }
+                        """, MediaType.APPLICATION_JSON));
+
+        String result = gateway.generateChatCompletion("sys", "user");
+        mockServer.verify();
+        assertNotNull(result);
+    }
+
+    @Test
+    @DisplayName("generateChatCompletion includes reasoning_effort in fallback OpenAI payload when configured")
+    void testGenerateChatCompletionFallbackWithReasoningEffort() {
+        properties.setReasoningEffort("none");
+
+        mockServer.expect(requestTo("http://localhost:1234/api/v1/chat"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withStatus(HttpStatus.NOT_FOUND));
+
+        mockServer.expect(requestTo("http://localhost:1234/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.reasoning_effort").value("none"))
+                .andRespond(withSuccess("""
+                        { "choices": [ { "message": { "content": "{\\"stance\\": \\"BUY\\"}" } } ] }
+                        """, MediaType.APPLICATION_JSON));
+
+        String result = gateway.generateChatCompletion("sys", "user");
+        mockServer.verify();
+        assertNotNull(result);
+    }
+
+    @Test
+    @DisplayName("generateChatCompletion omits reasoning_effort in fallback OpenAI payload when null")
+    void testGenerateChatCompletionFallbackWithoutReasoningEffort() {
+        properties.setReasoningEffort(null);
+
+        mockServer.expect(requestTo("http://localhost:1234/api/v1/chat"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withStatus(HttpStatus.NOT_FOUND));
+
+        mockServer.expect(requestTo("http://localhost:1234/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.reasoning_effort").doesNotExist())
+                .andRespond(withSuccess("""
+                        { "choices": [ { "message": { "content": "{\\"stance\\": \\"BUY\\"}" } } ] }
+                        """, MediaType.APPLICATION_JSON));
+
+        String result = gateway.generateChatCompletion("sys", "user");
+        mockServer.verify();
+        assertNotNull(result);
+    }
 }
 
 

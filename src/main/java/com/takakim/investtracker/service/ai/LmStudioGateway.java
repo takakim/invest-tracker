@@ -277,21 +277,23 @@ public class LmStudioGateway implements AiGateway {
     private String executeChatCompletion(String targetModel, String systemPrompt, String userPrompt) {
         // Try native LM Studio /api/v1/chat endpoint first
         try {
-            Map<String, Object> payload = Map.of(
-                    "model", targetModel,
-                    "input", List.of(
-                            Map.of("type", "message", "role", "system", "content", systemPrompt),
-                            Map.of("type", "message", "role", "user", "content", userPrompt)
-                    ),
-                    "temperature", properties.getTemperature(),
-                    "max_output_tokens", properties.getMaxTokens()
-            );
+            Map<String, Object> nativePayload = new java.util.LinkedHashMap<>();
+            nativePayload.put("model", targetModel);
+            nativePayload.put("input", List.of(
+                    Map.of("type", "message", "role", "system", "content", systemPrompt),
+                    Map.of("type", "message", "role", "user", "content", userPrompt)
+            ));
+            nativePayload.put("temperature", properties.getTemperature());
+            nativePayload.put("max_output_tokens", properties.getMaxTokens());
+            if (properties.getReasoningEffort() != null && !properties.getReasoningEffort().isBlank()) {
+                nativePayload.put("reasoning_effort", properties.getReasoningEffort().trim());
+            }
 
             String responseBody = restClient.post()
                     .uri("/api/v1/chat")
                     .headers(this::applyAuthHeaders)
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(payload)
+                    .body(nativePayload)
                     .retrieve()
                     .body(String.class);
 
@@ -304,15 +306,17 @@ public class LmStudioGateway implements AiGateway {
         }
 
         // Fallback to OpenAI-compatible /v1/chat/completions (universally supported by LM Studio)
-        Map<String, Object> payload = Map.of(
-                "model", targetModel,
-                "messages", List.of(
-                        Map.of("role", "system", "content", systemPrompt),
-                        Map.of("role", "user", "content", userPrompt)
-                ),
-                "temperature", properties.getTemperature(),
-                "max_tokens", properties.getMaxTokens()
-        );
+        Map<String, Object> payload = new java.util.LinkedHashMap<>();
+        payload.put("model", targetModel);
+        payload.put("messages", List.of(
+                Map.of("role", "system", "content", systemPrompt),
+                Map.of("role", "user", "content", userPrompt)
+        ));
+        payload.put("temperature", properties.getTemperature());
+        payload.put("max_tokens", properties.getMaxTokens());
+        if (properties.getReasoningEffort() != null && !properties.getReasoningEffort().isBlank()) {
+            payload.put("reasoning_effort", properties.getReasoningEffort().trim());
+        }
 
         String responseBody = restClient.post()
                 .uri("/v1/chat/completions")
@@ -378,7 +382,10 @@ public class LmStudioGateway implements AiGateway {
                     if (message.has("reasoning_content")) {
                         String reasoning = message.get("reasoning_content").asText();
                         if (reasoning != null && !reasoning.isBlank()) {
-                            return Optional.of(reasoning);
+                            Optional<String> jsonCandidate = extractJsonCandidate(reasoning);
+                            if (jsonCandidate.isPresent()) {
+                                return jsonCandidate;
+                            }
                         }
                     }
                 }
@@ -393,6 +400,41 @@ public class LmStudioGateway implements AiGateway {
             log.debug("Could not parse OpenAI-compatible response: {}", e.getMessage());
         }
         return Optional.empty();
+    }
+
+    public Optional<String> extractJsonCandidate(String text) {
+        if (text == null || text.isBlank()) {
+            return Optional.empty();
+        }
+        int codeFence = text.indexOf("```json");
+        if (codeFence >= 0) {
+            int start = codeFence + 7;
+            int end = text.indexOf("```", start);
+            if (end > start) {
+                String candidate = text.substring(start, end).trim();
+                if (isValidJson(candidate)) {
+                    return Optional.of(candidate);
+                }
+            }
+        }
+        int firstBrace = text.indexOf('{');
+        int lastBrace = text.lastIndexOf('}');
+        if (firstBrace >= 0 && lastBrace > firstBrace) {
+            String candidate = text.substring(firstBrace, lastBrace + 1).trim();
+            if (isValidJson(candidate)) {
+                return Optional.of(candidate);
+            }
+        }
+        return Optional.empty();
+    }
+
+    private boolean isValidJson(String candidate) {
+        try {
+            objectMapper.readTree(candidate);
+            return true;
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
 
