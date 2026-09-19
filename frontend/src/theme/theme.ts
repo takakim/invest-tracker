@@ -87,6 +87,42 @@ export const createAppTheme = (mode: 'light' | 'dark' = 'light') => {
           },
         },
       },
+      MuiCssBaseline: {
+        styleOverrides: {
+          body: {
+            scrollbarColor: isDark ? '#334155 #0B0F19' : '#CBD5E1 #F8FAFC',
+            '&::-webkit-scrollbar, & *::-webkit-scrollbar': {
+              width: 8,
+              height: 8,
+            },
+            '&::-webkit-scrollbar-thumb, & *::-webkit-scrollbar-thumb': {
+              borderRadius: 8,
+              backgroundColor: isDark ? '#334155' : '#CBD5E1',
+              minHeight: 24,
+              border: `2px solid ${isDark ? '#0B0F19' : '#F8FAFC'}`,
+            },
+            '&::-webkit-scrollbar-thumb:hover, & *::-webkit-scrollbar-thumb:hover': {
+              backgroundColor: isDark ? '#475569' : '#94A3B8',
+            },
+          },
+        },
+      },
+      MuiTooltip: {
+        styleOverrides: {
+          tooltip: {
+            backgroundColor: isDark ? '#1E293B' : '#0F172A',
+            color: '#FFFFFF',
+            fontSize: '0.75rem',
+            fontWeight: 500,
+            borderRadius: 6,
+            padding: '6px 10px',
+            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.2)',
+          },
+          arrow: {
+            color: isDark ? '#1E293B' : '#0F172A',
+          },
+        },
+      },
       MuiPaper: {
         defaultProps: {
           elevation: 0,
@@ -117,6 +153,10 @@ export const createAppTheme = (mode: 'light' | 'dark' = 'light') => {
             fontWeight: 600,
             color: isDark ? '#94A3B8' : '#475569',
             backgroundColor: isDark ? '#1E293B' : '#F1F5F9',
+            letterSpacing: '0.01em',
+          },
+          body: {
+            borderColor: isDark ? alpha('#94A3B8', 0.08) : alpha('#0F172A', 0.06),
           },
         },
       },

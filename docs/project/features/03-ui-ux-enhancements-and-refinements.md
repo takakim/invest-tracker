@@ -1,6 +1,6 @@
 # Feature Specification: UI/UX Enhancements & Refinements
 
-> **Status:** In Progress / Review  
+> **Status:** Completed & Verified  
 > **Phase:** Post-Phase 0 UX Polish & Optimization  
 > **Branch:** `main` (feature work stream)
 
@@ -30,10 +30,10 @@ This feature work stream focuses on reviewing current UI/UX ergonomics, visual c
 ## 3. Implementation Task Checklist
 
 > **Active Task Tracker:** [`docs/project/tasks/active_task.md`](../tasks/active_task.md)  
-> **Archived Task Target Upon Completion:** `docs/project/tasks/archived_03-ui-ux-enhancements-and-refinements.md`
+> **Archived Task Target Upon Completion:** [`docs/project/tasks/archived_03-ui-ux-enhancements-and-refinements.md`](../tasks/archived_03-ui-ux-enhancements-and-refinements.md)
 
 - [x] Create feature specification (`docs/project/features/03-ui-ux-enhancements-and-refinements.md`) and initialize active task tracker.
-- [ ] Review current frontend component structure and theme definitions.
-- [ ] Implement UX enhancements (e.g. enhanced empty states, refined KPI card typography, improved table responsiveness).
-- [ ] Run full frontend verification (`npm run build`, `npm test`, `npm audit`).
-- [ ] Archive completed feature specification and rename task record to `archived_03-ui-ux-enhancements-and-refinements.md`.
+- [x] Review current frontend component structure and theme definitions.
+- [x] Implement UX enhancements (e.g. enhanced empty states, refined KPI card typography, improved table responsiveness).
+- [x] Run full frontend verification (`npm run build`, `npm test`, `npm audit`).
+- [x] Archive completed feature specification and rename task record to `archived_03-ui-ux-enhancements-and-refinements.md`.
