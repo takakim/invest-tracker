@@ -94,9 +94,9 @@ invest-tracker/
    - Identify the root cause when tests fail.
    - Never suppress exceptions with empty fallbacks, comment out assertions, or delete failing tests.
 8. **Always Maintain an Active Task Checklist**:
-   - Always create and maintain a structured task list (`docs/project/tasks/active_task.md` or workspace checklist artifact) before starting implementation.
+   - Always create and maintain a structured task list in `docs/project/tasks/active_task.md` with an explicit link/reference to its corresponding feature specification in `docs/project/features/` (e.g. `[03-ui-ux-enhancements-and-refinements.md](../features/03-ui-ux-enhancements-and-refinements.md)`).
    - Keep the task list continuously updated as work progresses, marking items as pending (`[ ]`), in-progress (`[/]`), or completed (`[x]`), ensuring complete transparency into execution state.
-   - When a feature is completed, archive the feature specification and task record into `docs/project/features/`.
+   - Once all tasks for the feature are completed and verified, rename `active_task.md` to `docs/project/tasks/archived_<feature_id>.md` (e.g. `archived_03-ui-ux-enhancements-and-refinements.md`), and initialize a fresh `active_task.md` for the next active work stream.
 9. **Prioritize Reusable Python CLI Scripts**:
    - Whenever writing diagnostic, inspection, auditing, or operational code, ALWAYS prioritize adding reusable, parameterized Python 3 CLI scripts in `scripts/` (with `argparse`, `--help`, and standard exit codes) instead of running ephemeral inline one-liner shell commands (`python3 -c`).
    - Document every new or modified script in `scripts/README.md` and Section 6 of `AGENTS.md`.
