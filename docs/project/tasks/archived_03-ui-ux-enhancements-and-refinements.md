@@ -15,6 +15,7 @@ This document tracks active development tasks, implementation checklists, and pr
 - [x] Review current frontend feature architecture, theme configuration, and component layout
 - [x] Identify UX friction points, responsiveness gaps, accessibility enhancements, and visual consistency improvements
 - [x] Create detailed task checklist for proposed UI/UX enhancements
+- [x] Review and integrate Google AI Studio UI/UX refinements (theme switching, top bar quick portfolio switcher, Market Pulse strip, card quick actions)
 - [x] Implement approved UI/UX improvements across React components and Material UI theme
 - [x] Verify frontend build (`npm run build`) and test suite (`npm test`)
 
